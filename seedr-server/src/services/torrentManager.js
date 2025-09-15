@@ -9,6 +9,9 @@ const ROOT = process.env.ROOT || './src/storage/library';
 let WebTorrentMod;   // ESM default export
 let client;          // singleton
 
+// Store paused torrents in memory
+const pausedTorrents = new Map();
+
 // Simple human-readable bytes formatter (replaces pretty-bytes)
 function humanBytes(bytes) {
   const thresh = 1024;
@@ -50,7 +53,7 @@ function toSummary(t) {
     downloadSpeed: `${humanBytes(t.downloadSpeed)}/s`,
     uploadSpeed: `${humanBytes(t.uploadSpeed)}/s`,
     numPeers: t.numPeers,
-    paused: t.paused || false,
+    paused: false, // Active torrents are never paused
     files: t.files.map((f, i) => ({
       index: i,
       name: f.name,
@@ -135,13 +138,35 @@ async function getTorrent(infoHash) {
 
 async function listTorrents() {
   const c = await getClient();
-  return c.torrents.map(toSummary);
+  const activeTorrents = c.torrents.map(toSummary);
+
+  // Add paused torrents to the list
+  const pausedTorrentsList = Array.from(pausedTorrents.entries()).map(([infoHash, info]) => ({
+    id: infoHash,
+    name: info.name || infoHash,
+    progress: info.progress ? Number((info.progress * 100).toFixed(2)) : 0,
+    downloaded: humanBytes(info.downloaded || 0),
+    length: humanBytes(info.length || 0),
+    downloadSpeed: '0 B/s',
+    uploadSpeed: '0 B/s',
+    numPeers: 0,
+    paused: true,
+    files: info.files || [],
+    done: false
+  }));
+
+  return [...activeTorrents, ...pausedTorrentsList];
 }
 
 async function pauseTorrent(infoHash) {
   const c = await getClient();
 
-  // Try to find torrent in the torrents array instead of using c.get()
+  // First check if it's already paused
+  if (pausedTorrents.has(infoHash)) {
+    throw new Error('Torrent is already paused');
+  }
+
+  // Find the active torrent
   const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
 
   if (!t) {
@@ -152,46 +177,76 @@ async function pauseTorrent(infoHash) {
     throw new Error('Cannot pause completed torrent');
   }
 
-  // Check if pause method exists
-  if (typeof t.pause !== 'function') {
-    console.log('Torrent methods:', Object.getOwnPropertyNames(t).filter(prop => typeof t[prop] === 'function'));
-    console.log('Checking pause property type:', typeof t.pause);
-    throw new Error('Pause method not available on torrent object');
-  }
+  // Store torrent information for resume
+  const torrentInfo = {
+    magnetURI: t.magnetURI,
+    name: t.name,
+    path: t.path,
+    announce: t.announce,
+    progress: t.progress,
+    downloaded: t.downloaded,
+    length: t.length,
+    files: t.files.map((f, i) => ({
+      index: i,
+      name: f.name,
+      path: f.path,
+      length: f.length
+    }))
+  };
 
-  t.pause();
-  return true;
+  pausedTorrents.set(infoHash, torrentInfo);
+
+  // Remove torrent but keep files
+  return new Promise((resolve, reject) => {
+    c.remove(infoHash, { destroyStore: false }, (err) => {
+      if (err) {
+        // If removal fails, clean up the paused state
+        pausedTorrents.delete(infoHash);
+        return reject(err);
+      }
+      console.log('Torrent paused (removed from client but files kept):', infoHash);
+      resolve(true);
+    });
+  });
 }
 
 async function resumeTorrent(infoHash) {
-  const c = await getClient();
+  // Check if torrent is paused
+  const torrentInfo = pausedTorrents.get(infoHash);
 
-  // Try to find torrent in the torrents array instead of using c.get()
-  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
-
-  if (!t) {
-    throw new Error('Torrent not found or has been completed and removed');
+  if (!torrentInfo) {
+    throw new Error('Torrent is not paused or not found');
   }
 
-  if (t.done) {
-    throw new Error('Cannot resume completed torrent');
-  }
+  try {
+    // Re-add the torrent using the stored magnet URI
+    const result = await addMagnet(torrentInfo.magnetURI);
 
-  // Check if resume method exists
-  if (typeof t.resume !== 'function') {
-    console.log('Torrent methods:', Object.getOwnPropertyNames(t).filter(prop => typeof t[prop] === 'function'));
-    console.log('Checking resume property type:', typeof t.resume);
-    throw new Error('Resume method not available on torrent object');
-  }
+    // Remove from paused torrents
+    pausedTorrents.delete(infoHash);
 
-  t.resume();
-  return true;
+    console.log('Torrent resumed (re-added to client):', infoHash);
+    return result;
+  } catch (error) {
+    // If resume fails, keep it in paused state
+    throw new Error(`Failed to resume torrent: ${error.message}`);
+  }
 }
 
 async function stopTorrent(infoHash) {
   const c = await getClient();
-  const t = c.get(infoHash);
+
+  // Check if torrent is paused
+  if (pausedTorrents.has(infoHash)) {
+    // Just remove from paused state
+    pausedTorrents.delete(infoHash);
+    return true;
+  }
+
+  // Find active torrent
+  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
   if (!t) return false;
+
   return new Promise((resolve, reject) => {
     c.remove(infoHash, { destroyStore: false }, (err) => {
       if (err) return reject(err);
@@ -202,8 +257,18 @@ async function stopTorrent(infoHash) {
 
 async function removeTorrent(infoHash) {
   const c = await getClient();
-  const t = c.get(infoHash);
+
+  // Check if torrent is paused
+  if (pausedTorrents.has(infoHash)) {
+    // Just remove from paused state
+    pausedTorrents.delete(infoHash);
+    return true;
+  }
+
+  // Find active torrent
+  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
   if (!t) return false;
+
   return new Promise((resolve, reject) => {
     c.remove(infoHash, { destroyStore: false }, (err) => {
       if (err) return reject(err);
