@@ -80,11 +80,12 @@ exports.show = async (req, res) => {
  * Pauses a torrent.
  */
 exports.pause = async (req, res) => {
-  const ok = await pauseTorrent(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ error: 'Torrent not found' });
+  try {
+    await pauseTorrent(req.params.id);
+    res.json({ paused: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
-  res.json({ paused: true });
 };
 
 /**
@@ -92,11 +93,12 @@ exports.pause = async (req, res) => {
  * Resumes a torrent.
  */
 exports.resume = async (req, res) => {
-  const ok = await resumeTorrent(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ error: 'Torrent not found' });
+  try {
+    await resumeTorrent(req.params.id);
+    res.json({ resumed: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
-  res.json({ resumed: true });
 };
 
 /**

@@ -50,6 +50,7 @@ function toSummary(t) {
     downloadSpeed: `${humanBytes(t.downloadSpeed)}/s`,
     uploadSpeed: `${humanBytes(t.uploadSpeed)}/s`,
     numPeers: t.numPeers,
+    paused: t.paused || false,
     files: t.files.map((f, i) => ({
       index: i,
       name: f.name,
@@ -139,16 +140,50 @@ async function listTorrents() {
 
 async function pauseTorrent(infoHash) {
   const c = await getClient();
-  const t = c.get(infoHash);
-  if (!t) return false;
+
+  // Try to find torrent in the torrents array instead of using c.get()
+  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+
+  if (!t) {
+    throw new Error('Torrent not found or has been completed and removed');
+  }
+
+  if (t.done) {
+    throw new Error('Cannot pause completed torrent');
+  }
+
+  // Check if pause method exists
+  if (typeof t.pause !== 'function') {
+    console.log('Torrent methods:', Object.getOwnPropertyNames(t).filter(prop => typeof t[prop] === 'function'));
+    console.log('Checking pause property type:', typeof t.pause);
+    throw new Error('Pause method not available on torrent object');
+  }
+
   t.pause();
   return true;
 }
 
 async function resumeTorrent(infoHash) {
   const c = await getClient();
-  const t = c.get(infoHash);
-  if (!t) return false;
+
+  // Try to find torrent in the torrents array instead of using c.get()
+  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+
+  if (!t) {
+    throw new Error('Torrent not found or has been completed and removed');
+  }
+
+  if (t.done) {
+    throw new Error('Cannot resume completed torrent');
+  }
+
+  // Check if resume method exists
+  if (typeof t.resume !== 'function') {
+    console.log('Torrent methods:', Object.getOwnPropertyNames(t).filter(prop => typeof t[prop] === 'function'));
+    console.log('Checking resume property type:', typeof t.resume);
+    throw new Error('Resume method not available on torrent object');
+  }
+
   t.resume();
   return true;
 }

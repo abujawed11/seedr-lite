@@ -143,43 +143,48 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${
               torrent.progress === 100
                 ? 'bg-green-900 text-green-300'
+                : torrent.paused
+                ? 'bg-orange-900 text-orange-300'
                 : 'bg-yellow-900 text-yellow-300'
             }`}>
-              {torrent.progress === 100 ? 'Completed' : 'Downloading'}
+              {torrent.progress === 100 ? 'Completed' : torrent.paused ? 'Paused' : 'Downloading'}
             </div>
 
             {/* Control Buttons */}
             <div className="flex items-center gap-1">
               {torrent.progress < 100 && (
                 <>
-                  <button
-                    onClick={() => handleTorrentAction(pauseTorrent, 'pause')}
-                    disabled={actionLoading}
-                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
-                    title="Pause torrent"
-                  >
-                    {actionLoading === 'pause' ? (
-                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-3 h-3 text-gray-400 group-hover:text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleTorrentAction(resumeTorrent, 'resume')}
-                    disabled={actionLoading}
-                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
-                    title="Resume torrent"
-                  >
-                    {actionLoading === 'resume' ? (
-                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-3 h-3 text-gray-400 group-hover:text-green-400" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
-                    )}
-                  </button>
+                  {!torrent.paused ? (
+                    <button
+                      onClick={() => handleTorrentAction(pauseTorrent, 'pause')}
+                      disabled={actionLoading}
+                      className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                      title="Pause torrent"
+                    >
+                      {actionLoading === 'pause' ? (
+                        <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <svg className="w-3 h-3 text-gray-400 group-hover:text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                        </svg>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleTorrentAction(resumeTorrent, 'resume')}
+                      disabled={actionLoading}
+                      className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                      title="Resume torrent"
+                    >
+                      {actionLoading === 'resume' ? (
+                        <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <svg className="w-3 h-3 text-gray-400 group-hover:text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 </>
               )}
               <button
