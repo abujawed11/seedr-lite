@@ -50,17 +50,25 @@ export default function App() {
     await Promise.all([fetchTorrents(), fetchBrowse()]);
   }
 
+  // Initial load and path-based refresh
   useEffect(() => {
     fetchTorrents();
     fetchBrowse();
-
-    const interval = setInterval(() => {
-      fetchTorrents();
-      fetchBrowse();
-    }, 5000);
-
-    return () => clearInterval(interval);
   }, [currentPath]);
+
+  // Smart polling - only poll when there are active downloads
+  useEffect(() => {
+    const hasActiveDownloads = torrents.some(torrent => torrent.progress < 100);
+
+    if (hasActiveDownloads) {
+      const interval = setInterval(() => {
+        fetchTorrents();
+        fetchBrowse();
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [torrents, currentPath]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800">
@@ -117,6 +125,7 @@ export default function App() {
             currentPath={currentPath}
             onNavigate={navigateToPath}
             formatFileSize={formatFileSize}
+            onFileDeleted={() => fetchBrowse()}
           />
         </section>
       </main>

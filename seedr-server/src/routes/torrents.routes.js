@@ -5,6 +5,9 @@ const c = require('../controllers/torrents.controller');
 router.post('/', asyncH(c.create));        // add magnet
 router.get('/', asyncH(c.index));          // list torrents
 router.get('/:id', asyncH(c.show));        // files + URLs for one torrent
+router.put('/:id/pause', asyncH(c.pause)); // pause torrent
+router.put('/:id/resume', asyncH(c.resume)); // resume torrent
+router.put('/:id/stop', asyncH(c.stop));   // stop torrent
 router.delete('/:id', asyncH(c.destroy));  // remove torrent
 
 module.exports = router;

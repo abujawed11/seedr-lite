@@ -2,6 +2,9 @@ const {
   addMagnet,
   listTorrents,
   getTorrent,
+  pauseTorrent,
+  resumeTorrent,
+  stopTorrent,
   removeTorrent,
 } = require('../services/torrentManager');
 
@@ -70,6 +73,42 @@ exports.show = async (req, res) => {
     done: t.done,
     files,
   });
+};
+
+/**
+ * PUT /api/torrents/:id/pause
+ * Pauses a torrent.
+ */
+exports.pause = async (req, res) => {
+  const ok = await pauseTorrent(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: 'Torrent not found' });
+  }
+  res.json({ paused: true });
+};
+
+/**
+ * PUT /api/torrents/:id/resume
+ * Resumes a torrent.
+ */
+exports.resume = async (req, res) => {
+  const ok = await resumeTorrent(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: 'Torrent not found' });
+  }
+  res.json({ resumed: true });
+};
+
+/**
+ * PUT /api/torrents/:id/stop
+ * Stops a torrent (removes from client but keeps files).
+ */
+exports.stop = async (req, res) => {
+  const ok = await stopTorrent(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: 'Torrent not found' });
+  }
+  res.json({ stopped: true });
 };
 
 /**

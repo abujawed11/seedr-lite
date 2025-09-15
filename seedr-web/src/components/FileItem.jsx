@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function FileItem({ file, formatFileSize }) {
+export default function FileItem({ file, formatFileSize, onDelete }) {
   const [copyStatus, setCopyStatus] = useState("copy");
 
   function getFileIcon(fileName, mimeType) {
@@ -92,6 +92,18 @@ export default function FileItem({ file, formatFileSize }) {
           <span className="mr-1">{copyButton.icon}</span>
           {copyButton.text}
         </button>
+
+        {onDelete && (
+          <button
+            onClick={() => onDelete(file.path, file.name, 'file')}
+            className="px-3 py-2 bg-red-600/80 hover:bg-red-600 rounded-lg text-sm font-medium text-white transition-colors flex items-center"
+            title="Delete file"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

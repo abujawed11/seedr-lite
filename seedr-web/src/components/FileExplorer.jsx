@@ -1,12 +1,30 @@
 import { useState } from "react";
+import { deleteFile } from "../api";
 import Breadcrumb from "./Breadcrumb";
 import FolderItem from "./FolderItem";
 import FileItem from "./FileItem";
 
-export default function FileExplorer({ browseData, currentPath, onNavigate, formatFileSize }) {
+export default function FileExplorer({ browseData, currentPath, onNavigate, formatFileSize, onFileDeleted }) {
   const [viewMode, setViewMode] = useState("list"); // list or grid
 
   const isEmpty = browseData.dirs.length === 0 && browseData.files.length === 0;
+
+  const handleDelete = async (path, name, type) => {
+    let confirmMessage = `Are you sure you want to delete ${type} "${name}"?`;
+    if (type === 'directory') {
+      confirmMessage += ' This will permanently delete all files inside it.';
+    }
+
+    if (confirm(confirmMessage)) {
+      try {
+        await deleteFile(path);
+        onFileDeleted && onFileDeleted();
+      } catch (err) {
+        console.error('Failed to delete:', err);
+        alert(`Failed to delete ${type}`);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -74,6 +92,7 @@ export default function FileExplorer({ browseData, currentPath, onNavigate, form
                     key={dir.path}
                     folder={dir}
                     onNavigate={onNavigate}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>
@@ -96,6 +115,7 @@ export default function FileExplorer({ browseData, currentPath, onNavigate, form
                     key={file.path}
                     file={file}
                     formatFileSize={formatFileSize}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>

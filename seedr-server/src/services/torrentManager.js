@@ -137,6 +137,34 @@ async function listTorrents() {
   return c.torrents.map(toSummary);
 }
 
+async function pauseTorrent(infoHash) {
+  const c = await getClient();
+  const t = c.get(infoHash);
+  if (!t) return false;
+  t.pause();
+  return true;
+}
+
+async function resumeTorrent(infoHash) {
+  const c = await getClient();
+  const t = c.get(infoHash);
+  if (!t) return false;
+  t.resume();
+  return true;
+}
+
+async function stopTorrent(infoHash) {
+  const c = await getClient();
+  const t = c.get(infoHash);
+  if (!t) return false;
+  return new Promise((resolve, reject) => {
+    c.remove(infoHash, { destroyStore: false }, (err) => {
+      if (err) return reject(err);
+      resolve(true);
+    });
+  });
+}
+
 async function removeTorrent(infoHash) {
   const c = await getClient();
   const t = c.get(infoHash);
@@ -153,5 +181,8 @@ module.exports = {
   addMagnet,
   getTorrent,
   listTorrents,
+  pauseTorrent,
+  resumeTorrent,
+  stopTorrent,
   removeTorrent
 };

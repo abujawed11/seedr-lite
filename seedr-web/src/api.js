@@ -25,3 +25,23 @@ export async function browse(path = "") {
   const res = await api.get('/files/browse', { params: { path } });
   return res.data;
 }
+
+export async function pauseTorrent(id) {
+  return api.put(`/torrents/${id}/pause`);
+}
+
+export async function resumeTorrent(id) {
+  return api.put(`/torrents/${id}/resume`);
+}
+
+export async function stopTorrent(id) {
+  return api.put(`/torrents/${id}/stop`);
+}
+
+export async function deleteTorrent(id) {
+  return api.delete(`/torrents/${id}`);
+}
+
+export async function deleteFile(path) {
+  return api.delete('/files/delete', { data: { path } });
+}

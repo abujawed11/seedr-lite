@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { addTorrent } from "../api";
+import { addTorrent, pauseTorrent, resumeTorrent, stopTorrent, deleteTorrent } from "../api";
 
 export default function TorrentSection({ torrents, onTorrentAdded }) {
   const [magnet, setMagnet] = useState("");
@@ -79,7 +79,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
         ) : (
           <div className="space-y-3">
             {torrents.map((torrent) => (
-              <TorrentCard key={torrent.id} torrent={torrent} />
+              <TorrentCard key={torrent.id} torrent={torrent} onTorrentUpdated={onTorrentAdded} />
             ))}
           </div>
         )}
@@ -88,9 +88,10 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   );
 }
 
-function TorrentCard({ torrent }) {
+function TorrentCard({ torrent, onTorrentUpdated }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null);
 
   const hasFiles = Array.isArray(torrent.files) && torrent.files.length > 0;
 
@@ -99,6 +100,19 @@ function TorrentCard({ torrent }) {
     setIsAnimating(true);
     setIsExpanded(!isExpanded);
     setTimeout(() => setIsAnimating(false), 300);
+  };
+
+  const handleTorrentAction = async (action, actionName) => {
+    setActionLoading(actionName);
+    try {
+      await action(torrent.id);
+      onTorrentUpdated();
+    } catch (err) {
+      console.error(`Failed to ${actionName} torrent:`, err);
+      alert(`Failed to ${actionName} torrent`);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -125,7 +139,7 @@ function TorrentCard({ torrent }) {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${
               torrent.progress === 100
                 ? 'bg-green-900 text-green-300'
@@ -133,15 +147,84 @@ function TorrentCard({ torrent }) {
             }`}>
               {torrent.progress === 100 ? 'Completed' : 'Downloading'}
             </div>
+
+            {/* Control Buttons */}
+            <div className="flex items-center gap-1">
+              {torrent.progress < 100 && (
+                <>
+                  <button
+                    onClick={() => handleTorrentAction(pauseTorrent, 'pause')}
+                    disabled={actionLoading}
+                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                    title="Pause torrent"
+                  >
+                    {actionLoading === 'pause' ? (
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-3 h-3 text-gray-400 group-hover:text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleTorrentAction(resumeTorrent, 'resume')}
+                    disabled={actionLoading}
+                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                    title="Resume torrent"
+                  >
+                    {actionLoading === 'resume' ? (
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-3 h-3 text-gray-400 group-hover:text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    )}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => handleTorrentAction(stopTorrent, 'stop')}
+                disabled={actionLoading}
+                className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                title="Stop torrent"
+              >
+                {actionLoading === 'stop' ? (
+                  <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-3 h-3 text-gray-400 group-hover:text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm(`Are you sure you want to delete "${torrent.name}"?`)) {
+                    handleTorrentAction(deleteTorrent, 'delete');
+                  }
+                }}
+                disabled={actionLoading}
+                className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                title="Delete torrent"
+              >
+                {actionLoading === 'delete' ? (
+                  <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-3 h-3 text-gray-400 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+
             {/* Collapse/Expand Button */}
             {hasFiles && (
               <button
                 onClick={toggleExpanded}
-                className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+                className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group"
                 title={isExpanded ? 'Collapse files' : 'Expand files'}
               >
                 <svg
-                  className={`w-4 h-4 text-gray-400 group-hover:text-white transition-all duration-300 ${
+                  className={`w-3 h-3 text-gray-400 group-hover:text-white transition-all duration-300 ${
                     isExpanded ? 'rotate-180' : 'rotate-0'
                   }`}
                   fill="none"

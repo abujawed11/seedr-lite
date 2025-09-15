@@ -191,6 +191,41 @@ exports.direct = async (req, res) => {
   }
 };
 
+exports.deleteFile = async (req, res) => {
+  try {
+    const userPath = req.body.path || req.query.path;
+    if (!userPath) {
+      return res.status(400).json({ error: "Missing path parameter" });
+    }
+
+    const safePath = validatePath(userPath);
+    const fullPath = path.resolve(ROOT, safePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: "File or directory not found" });
+    }
+
+    const stat = fs.statSync(fullPath);
+
+    if (stat.isDirectory()) {
+      // Remove directory recursively
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      // Remove file
+      fs.unlinkSync(fullPath);
+    }
+
+    res.json({
+      deleted: true,
+      path: safePath,
+      type: stat.isDirectory() ? 'directory' : 'file'
+    });
+  } catch (err) {
+    console.error("Error deleting file:", err);
+    res.status(500).json({ error: "Failed to delete file or directory" });
+  }
+};
+
 exports.listFiles = (req, res) => {
   try {
     function walk(dir, base) {
