@@ -1,9 +1,15 @@
-// src/routes/files.routes.js
 const express = require("express");
-const { listFiles } = require("../controllers/files.controller");
+const { browse, stream, download, direct, listFiles } = require("../controllers/files.controller");
 
 const router = express.Router();
 
+// API routes (for /api/files/*)
 router.get("/", listFiles);
+router.get("/browse", browse);
+
+// File serving routes (for /files/*)
+router.get("/stream", stream);
+router.get("/download", download);
+router.get("/direct/:token", direct);
 
 module.exports = router;

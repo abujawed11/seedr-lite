@@ -20,3 +20,8 @@ export async function getTorrent(id) {
   const res = await api.get(`/torrents/${id}`);
   return res.data;
 }
+
+export async function browse(path = "") {
+  const res = await api.get('/files/browse', { params: { path } });
+  return res.data;
+}

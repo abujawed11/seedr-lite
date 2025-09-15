@@ -19,6 +19,7 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 app.use('/api/torrents', torrentsRoutes);
 app.use('/', streamRoutes); // /stream /download /direct
 app.use("/api/files", require("./routes/files.routes"));
+app.use("/files", require("./routes/files.routes"));
 
 app.use(errorHandler);
 
