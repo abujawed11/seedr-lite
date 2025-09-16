@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // 👇 Change this to your server domain or IP
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5080";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
@@ -24,14 +24,6 @@ export async function getTorrent(id) {
 export async function browse(path = "") {
   const res = await api.get('/files/browse', { params: { path } });
   return res.data;
-}
-
-export async function pauseTorrent(id) {
-  return api.put(`/torrents/${id}/pause`);
-}
-
-export async function resumeTorrent(id) {
-  return api.put(`/torrents/${id}/resume`);
 }
 
 export async function stopTorrent(id) {

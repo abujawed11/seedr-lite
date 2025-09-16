@@ -6,18 +6,32 @@ const { signLink, verifyLink } = require("../services/linkSigner");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
+// function validatePath(userPath) {
+//   if (!userPath) return "";
+
+//   const normalized = path.normalize(userPath).replace(/^(\.\.[\/\\])+/, "");
+//   const fullPath = path.resolve(ROOT, normalized);
+
+//   if (!fullPath.startsWith(ROOT)) {
+//     throw new Error("Path traversal attempt detected");
+//   }
+
+//   return normalized;
+// }
+
+
 function validatePath(userPath) {
   if (!userPath) return "";
-
-  const normalized = path.normalize(userPath).replace(/^(\.\.[\/\\])+/, "");
+  const normalized = path.normalize(userPath).replace(/^(\.\.(\/|\\|$))+/, "");
   const fullPath = path.resolve(ROOT, normalized);
+  const resolvedRoot = path.resolve(ROOT);
 
-  if (!fullPath.startsWith(ROOT)) {
+  if (!fullPath.startsWith(resolvedRoot)) {
     throw new Error("Path traversal attempt detected");
   }
-
   return normalized;
 }
+
 
 function getAbsolutePath(relativePath) {
   const safePath = validatePath(relativePath);
@@ -26,9 +40,13 @@ function getAbsolutePath(relativePath) {
 
 exports.browse = async (req, res) => {
   try {
-    const userPath = req.query.path || "";
-    const safePath = validatePath(userPath);
+    // const userPath = req.query.path || "";
+    const rawPath = req.query.path || "";
+    const decoded = decodeURIComponent(rawPath);
+    const safePath = validatePath(decoded);
     const fullPath = path.resolve(ROOT, safePath);
+    // const safePath = validatePath(userPath);
+    // const fullPath = path.resolve(ROOT, safePath);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: "Directory not found" });
@@ -155,21 +173,29 @@ async function streamFileFromDisk(req, res, { filePath, asAttachment = false }) 
 }
 
 exports.stream = async (req, res) => {
-  const filePath = req.query.path;
-  if (!filePath) {
+  // const filePath = req.query.path;
+  const rawPath = req.query.path || "";
+  const decoded = decodeURIComponent(rawPath);
+  const safePath = validatePath(decoded);
+  const fullPath = path.resolve(ROOT, safePath);
+  if (!decoded) {
     return res.status(400).json({ error: "Missing path parameter" });
   }
 
-  await streamFileFromDisk(req, res, { filePath, asAttachment: false });
+  await streamFileFromDisk(req, res, { filePath: decoded, asAttachment: false });
 };
 
 exports.download = async (req, res) => {
-  const filePath = req.query.path;
-  if (!filePath) {
+  // const filePath = req.query.path;
+  const rawPath = req.query.path || "";
+  const decoded = decodeURIComponent(rawPath);
+  const safePath = validatePath(decoded);
+  const fullPath = path.resolve(ROOT, safePath);
+  if (!decoded) {
     return res.status(400).json({ error: "Missing path parameter" });
   }
 
-  await streamFileFromDisk(req, res, { filePath, asAttachment: true });
+  await streamFileFromDisk(req, res, { filePath: decoded, asAttachment: true });
 };
 
 exports.direct = async (req, res) => {
@@ -193,7 +219,7 @@ exports.direct = async (req, res) => {
 
 exports.deleteFile = async (req, res) => {
   try {
-    const userPath = req.body.path || req.query.path;
+    const userPath = req.body.path;
     if (!userPath) {
       return res.status(400).json({ error: "Missing path parameter" });
     }

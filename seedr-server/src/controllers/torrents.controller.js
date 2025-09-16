@@ -2,8 +2,6 @@ const {
   addMagnet,
   listTorrents,
   getTorrent,
-  pauseTorrent,
-  resumeTorrent,
   stopTorrent,
   removeTorrent,
 } = require('../services/torrentManager');
@@ -75,31 +73,6 @@ exports.show = async (req, res) => {
   });
 };
 
-/**
- * PUT /api/torrents/:id/pause
- * Pauses a torrent.
- */
-exports.pause = async (req, res) => {
-  try {
-    await pauseTorrent(req.params.id);
-    res.json({ paused: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-/**
- * PUT /api/torrents/:id/resume
- * Resumes a torrent.
- */
-exports.resume = async (req, res) => {
-  try {
-    await resumeTorrent(req.params.id);
-    res.json({ resumed: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
 
 /**
  * PUT /api/torrents/:id/stop
@@ -118,6 +91,13 @@ exports.stop = async (req, res) => {
  * Stops and removes a torrent.
  */
 exports.destroy = async (req, res) => {
-  const ok = await removeTorrent(req.params.id);
-  res.json({ removed: ok });
+  try {
+    const ok = await removeTorrent(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ error: 'Torrent not found' });
+    }
+    res.json({ removed: ok });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };
