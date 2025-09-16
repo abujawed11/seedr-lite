@@ -174,7 +174,7 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
 
-  // snapshot for “one-off” file refresh when items complete
+  // Track previous torrent state for detecting changes
   const prevDoneRef = useRef(new Set());
 
   async function fetchTorrents() {
@@ -226,14 +226,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
-  // Smart polling — ONLY torrents (not files). Poll while at least one active (not paused) download exists.
+  // Smart polling — ONLY torrents (not files). Poll while at least one active download exists.
   useEffect(() => {
-    const hasActiveUnpaused = torrents.some((t) => t.progress < 100 && !t.paused);
+    const hasActiveDownloads = torrents.some((t) => t.progress < 100);
     let id;
-    if (hasActiveUnpaused) {
+    if (hasActiveDownloads) {
       id = setInterval(() => {
         fetchTorrents(); // only progress polling
-      }, 10000);
+      }, 5000); // Poll every 5 seconds for faster updates
     }
     return () => {
       if (id) clearInterval(id);
@@ -241,15 +241,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [torrents]);
 
-  // One-off file refresh whenever any torrent transitions to completed
+  // Refresh files when torrent count decreases (indicates completion and removal)
   useEffect(() => {
-    const prevDone = prevDoneRef.current;
+    const currentCount = torrents.length;
+    const prevCount = prevDoneRef.current.size || 0;
+
+    // If we have fewer torrents than before, likely one completed and was removed
+    if (currentCount < prevCount) {
+      console.log("Torrent count decreased, refreshing files...");
+      fetchBrowse(); // refresh files when torrents are removed (completed)
+    }
+
+    // Also refresh when any torrent reaches 100% (backup mechanism)
     const nowDone = new Set(torrents.filter((t) => t.progress === 100).map((t) => t.id));
-    const newlyDone = [...nowDone].filter((id) => !prevDone.has(id));
+    const newlyDone = [...nowDone].filter((id) => !prevDoneRef.current.has(id));
     if (newlyDone.length > 0) {
+      console.log("Torrent completed, refreshing files...");
       fetchBrowse(); // refresh files once
     }
-    prevDoneRef.current = nowDone;
+
+    // Store current torrent IDs for next comparison
+    prevDoneRef.current = new Set(torrents.map(t => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [torrents]);
 
@@ -304,6 +316,7 @@ export default function App() {
             onNavigate={navigateToPath}
             formatFileSize={formatFileSize}
             onFileDeleted={() => fetchBrowse()}
+            onRefresh={() => fetchBrowse()}
           />
         </section>
       </main>
@@ -316,7 +329,7 @@ export default function App() {
             <div className="flex items-center space-x-4">
               <span className="flex items-center">
                 <span className="mr-1">⚡</span>
-                {torrents.filter((t) => t.progress < 100 && !t.paused).length} active
+                {torrents.filter((t) => t.progress < 100).length} active
               </span>
               <span className="flex items-center">
                 <span className="mr-1">✅</span>
