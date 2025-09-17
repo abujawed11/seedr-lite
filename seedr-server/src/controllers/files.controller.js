@@ -3,6 +3,7 @@ const path = require("path");
 const mime = require("mime-types");
 const rangeParser = require("range-parser");
 const { signLink, verifyLink } = require("../services/linkSigner");
+const { getUserStorageDir } = require("../utils/storage");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
@@ -20,11 +21,11 @@ const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 // }
 
 
-function validatePath(userPath) {
+function validatePath(userPath, userRoot) {
   if (!userPath) return "";
   const normalized = path.normalize(userPath).replace(/^(\.\.(\/|\\|$))+/, "");
-  const fullPath = path.resolve(ROOT, normalized);
-  const resolvedRoot = path.resolve(ROOT);
+  const fullPath = path.resolve(userRoot, normalized);
+  const resolvedRoot = path.resolve(userRoot);
 
   if (!fullPath.startsWith(resolvedRoot)) {
     throw new Error("Path traversal attempt detected");
@@ -33,20 +34,20 @@ function validatePath(userPath) {
 }
 
 
-function getAbsolutePath(relativePath) {
-  const safePath = validatePath(relativePath);
-  return path.resolve(ROOT, safePath);
+function getAbsolutePath(relativePath, userRoot) {
+  const safePath = validatePath(relativePath, userRoot);
+  return path.resolve(userRoot, safePath);
 }
 
 exports.browse = async (req, res) => {
   try {
-    // const userPath = req.query.path || "";
+    const userId = req.user.id;
+    const userRoot = getUserStorageDir(userId);
+
     const rawPath = req.query.path || "";
     const decoded = decodeURIComponent(rawPath);
-    const safePath = validatePath(decoded);
-    const fullPath = path.resolve(ROOT, safePath);
-    // const safePath = validatePath(userPath);
-    // const fullPath = path.resolve(ROOT, safePath);
+    const safePath = validatePath(decoded, userRoot);
+    const fullPath = path.resolve(userRoot, safePath);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: "Directory not found" });
@@ -109,8 +110,11 @@ exports.browse = async (req, res) => {
 
 async function streamFileFromDisk(req, res, { filePath, asAttachment = false }) {
   try {
-    const safePath = validatePath(filePath);
-    const fullPath = path.resolve(ROOT, safePath);
+    const userId = req.user.id;
+    const userRoot = getUserStorageDir(userId);
+
+    const safePath = validatePath(filePath, userRoot);
+    const fullPath = path.resolve(userRoot, safePath);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: "File not found" });
@@ -219,13 +223,16 @@ exports.direct = async (req, res) => {
 
 exports.deleteFile = async (req, res) => {
   try {
+    const userId = req.user.id;
+    const userRoot = getUserStorageDir(userId);
+
     const userPath = req.body.path;
     if (!userPath) {
       return res.status(400).json({ error: "Missing path parameter" });
     }
 
-    const safePath = validatePath(userPath);
-    const fullPath = path.resolve(ROOT, safePath);
+    const safePath = validatePath(userPath, userRoot);
+    const fullPath = path.resolve(userRoot, safePath);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: "File or directory not found" });
@@ -254,8 +261,15 @@ exports.deleteFile = async (req, res) => {
 
 exports.listFiles = (req, res) => {
   try {
+    const userId = req.user.id;
+    const userRoot = getUserStorageDir(userId);
+
     function walk(dir, base) {
       const results = [];
+      if (!fs.existsSync(dir)) {
+        return results;
+      }
+
       const list = fs.readdirSync(dir);
 
       list.forEach((file) => {
@@ -275,7 +289,7 @@ exports.listFiles = (req, res) => {
       return results;
     }
 
-    const files = walk(ROOT, ROOT);
+    const files = walk(userRoot, userRoot);
     res.json(files);
   } catch (err) {
     console.error("Error listing files:", err);

@@ -298,6 +298,8 @@
 const path = require("path");
 const { logger } = require("../utils/logger");
 const { getTrackers } = require("../utils/trackers");
+const { getUserStorageDir, ensureUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
+const { validateStorageDuringDownload } = require("../middlewares/storageValidator");
 
 const ROOT = process.env.ROOT || "./src/storage/library";
 
@@ -336,7 +338,7 @@ async function getClient() {
   return client;
 }
 
-function toSummary(t) {
+function toSummary(t, userId = null) {
   return {
     id: t.infoHash,
     name: t.name,
@@ -353,6 +355,7 @@ function toSummary(t) {
       length: f.length,
     })),
     done: t.done,
+    userId: userId, // Track which user owns this torrent
   };
 }
 
@@ -364,29 +367,61 @@ function dedupeById(items) {
 
 /**
  * addMagnet: idempotent-ish; returns existing torrent summary if already added
+ * Now requires userId for user-specific storage
  */
-async function addMagnet(magnet) {
+async function addMagnet(magnet, userId) {
+  if (!userId) {
+    throw new Error('User ID is required for torrent operations');
+  }
+
   const c = await getClient();
   const announce = getTrackers();
 
-  // guard: if same magnet already added, just return its summary
-  const existing = c.torrents.find((t) => t.magnetURI === magnet);
-  if (existing) return toSummary(existing);
+  // Ensure user's storage directory exists
+  const userStorageDir = ensureUserStorageDir(userId);
+
+  // guard: if same magnet already added for this user, just return its summary
+  const existing = c.torrents.find((t) => t.magnetURI === magnet && t.userId === userId);
+  if (existing) return toSummary(existing, userId);
 
   return new Promise((resolve, reject) => {
     const t = c.add(
       magnet,
-      { path: path.resolve(ROOT), announce },
+      { path: path.resolve(userStorageDir), announce },
       (torrent) => {
-        torrent.on("infoHash", () => console.log("got infoHash", torrent.infoHash));
-        torrent.on("metadata", () => console.log("got metadata", torrent.name));
-        torrent.on("ready", () => console.log("torrent ready", torrent.name));
+        // Track which user owns this torrent
+        torrent.userId = userId;
+
+        torrent.on("infoHash", () => console.log("got infoHash", torrent.infoHash, "for user", userId));
+        torrent.on("metadata", () => console.log("got metadata", torrent.name, "for user", userId));
+        torrent.on("ready", () => console.log("torrent ready", torrent.name, "for user", userId));
         torrent.on("error", (err) => console.error("torrent error:", err));
         torrent.on("noPeers", (type) => console.log("no peers from", type));
 
-        // Immediately stop seeding when complete (keep files)
-        torrent.on("done", () => {
+        // Monitor download progress and validate storage
+        torrent.on("download", async () => {
+          try {
+            const hasSpace = await validateStorageDuringDownload(userId, torrent.length || 0);
+            if (!hasSpace) {
+              console.log("Storage limit exceeded, pausing torrent:", torrent.infoHash);
+              torrent.pause();
+            }
+          } catch (error) {
+            console.error("Error validating storage during download:", error);
+          }
+        });
+
+        // Immediately stop seeding when complete (keep files) and update storage usage
+        torrent.on("done", async () => {
           console.log("download complete → removing to stop seeding:", torrent.infoHash);
+
+          // Update user's storage usage
+          try {
+            await updateUserStorageUsage(userId);
+          } catch (error) {
+            console.error("Error updating storage usage:", error);
+          }
+
           c.remove(torrent.infoHash, { destroyStore: false }, (err) => {
             if (err) console.error("error removing after done:", err);
             else console.log("removed (done)", torrent.infoHash);
@@ -395,8 +430,8 @@ async function addMagnet(magnet) {
 
         torrent.on("ready", () => {
           // Store the original magnet for this torrent
-          originalMagnets.set(torrent.infoHash, magnet);
-          resolve(toSummary(torrent));
+          originalMagnets.set(torrent.infoHash, { magnet, userId });
+          resolve(toSummary(torrent, userId));
         });
       }
     );
@@ -409,9 +444,16 @@ async function getTorrent(infoHash) {
   return c.get(infoHash) || null;
 }
 
-async function listTorrents() {
+async function listTorrents(userId = null) {
   const c = await getClient();
-  return c.torrents.map(toSummary);
+  let torrents = c.torrents;
+
+  // Filter by user if userId provided
+  if (userId) {
+    torrents = torrents.filter(t => t.userId === userId);
+  }
+
+  return torrents.map(t => toSummary(t, t.userId));
 }
 
 

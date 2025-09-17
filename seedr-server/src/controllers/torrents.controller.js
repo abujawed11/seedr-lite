@@ -15,6 +15,7 @@ const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
  * Body: { magnet: "magnet:?xt=urn:btih:..." }
  *
  * Adds a torrent in the background and responds immediately.
+ * Requires authentication - torrents are user-specific.
  */
 exports.create = async (req, res) => {
   const { magnet } = req.body || {};
@@ -22,32 +23,46 @@ exports.create = async (req, res) => {
     return res.status(400).json({ error: 'magnet is required' });
   }
 
-  // Fire-and-forget: don’t await, just kick off torrent add
-  addMagnet(magnet).catch((e) => console.error('addMagnet failed:', e));
+  const userId = req.user.id;
 
-  return res.status(202).json({
-    status: 'accepted',
-    message: 'Torrent add started. Poll GET /api/torrents or /api/torrents/:id until ready.',
-  });
+  try {
+    // Fire-and-forget: kick off torrent add in background
+    addMagnet(magnet, userId).catch((e) => console.error('addMagnet failed:', e));
+
+    return res.status(202).json({
+      status: 'accepted',
+      message: 'Torrent add started. Will appear in list shortly.',
+    });
+  } catch (error) {
+    console.error('Error starting torrent:', error);
+    return res.status(500).json({ error: 'Failed to start torrent' });
+  }
 };
 
 /**
  * GET /api/torrents
- * Returns a list of all torrents with basic info.
+ * Returns a list of all torrents for the authenticated user.
  */
-exports.index = async (_req, res) => {
-  const items = await listTorrents();
+exports.index = async (req, res) => {
+  const userId = req.user.id;
+  const items = await listTorrents(userId);
   res.json(items);
 };
 
 /**
  * GET /api/torrents/:id
  * Returns details + file URLs for a specific torrent.
+ * Only shows torrents owned by the authenticated user.
  */
 exports.show = async (req, res) => {
   const t = await getTorrent(req.params.id);
   if (!t) {
     return res.status(404).json({ error: 'not found' });
+  }
+
+  // Check if user owns this torrent
+  if (t.userId && t.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Access denied - not your torrent' });
   }
 
   const files = t.files.map((f, i) => {

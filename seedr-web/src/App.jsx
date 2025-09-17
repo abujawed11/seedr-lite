@@ -165,14 +165,17 @@
 
 import { useState, useEffect, useRef } from "react";
 import { listTorrents, browse } from "./api";
+import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 
 export default function App() {
+  const { user, logout, getStorageInfo } = useAuth();
   const [torrents, setTorrents] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
+  const [waitingForTorrent, setWaitingForTorrent] = useState(false);
 
   // Track previous torrent state for detecting changes
   const prevDoneRef = useRef(new Set());
@@ -181,7 +184,14 @@ export default function App() {
     setLoading((prev) => ({ ...prev, torrents: true }));
     try {
       const data = await listTorrents();
-      setTorrents(Array.isArray(data) ? data : []);
+      const newTorrents = Array.isArray(data) ? data : [];
+
+      // If we were waiting for a torrent and now have more torrents, stop waiting
+      if (waitingForTorrent && newTorrents.length > torrents.length) {
+        setWaitingForTorrent(false);
+      }
+
+      setTorrents(newTorrents);
     } catch (err) {
       console.error("Torrents fetch error:", err);
     } finally {
@@ -215,8 +225,16 @@ export default function App() {
   }
 
   async function handleTorrentAdded() {
+    // Set waiting state to start polling
+    setWaitingForTorrent(true);
+
+    // Immediately fetch torrents
     await fetchTorrents();
-    // no automatic file refresh here; we refresh files once when a torrent completes (see below)
+
+    // Clear waiting state after 10 seconds (enough time for torrent to appear)
+    setTimeout(() => {
+      setWaitingForTorrent(false);
+    }, 10000);
   }
 
   // Initial load and refresh when path changes
@@ -226,20 +244,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
-  // Smart polling — ONLY torrents (not files). Poll while at least one active download exists.
+  // Smart polling — Poll when there are active downloads OR waiting for new torrent
   useEffect(() => {
     const hasActiveDownloads = torrents.some((t) => t.progress < 100);
+    const shouldPoll = hasActiveDownloads || waitingForTorrent;
+
     let id;
-    if (hasActiveDownloads) {
+    if (shouldPoll) {
       id = setInterval(() => {
-        fetchTorrents(); // only progress polling
-      }, 5000); // Poll every 5 seconds for faster updates
+        fetchTorrents(); // poll for updates
+      }, 2000); // Poll every 2 seconds for faster updates when waiting
     }
     return () => {
       if (id) clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [torrents]);
+  }, [torrents, waitingForTorrent]);
 
   // Refresh files when torrent count decreases (indicates completion and removal)
   useEffect(() => {
@@ -278,23 +298,60 @@ export default function App() {
               <div className="ml-4 text-sm text-gray-400">Modern torrent client</div>
             </div>
 
-            {/* Status indicators */}
-            <div className="flex items-center space-x-4">
-              {loading.torrents && (
-                <div className="flex items-center text-sm text-yellow-400">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
-                  Syncing torrents...
+            {/* User info and storage */}
+            <div className="flex items-center space-x-6">
+              {/* Storage Usage */}
+              {(() => {
+                const storageInfo = getStorageInfo();
+                return storageInfo ? (
+                  <div className="flex items-center space-x-3">
+                    <div className="text-sm text-gray-300">
+                      <div className="flex items-center space-x-2">
+                        <span>💾</span>
+                        <span>{storageInfo.used} / {storageInfo.quota}</span>
+                      </div>
+                      <div className="w-24 h-1 bg-gray-600 rounded-full mt-1">
+                        <div
+                          className="h-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(storageInfo.usedPercentage, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Status indicators */}
+              <div className="flex items-center space-x-4">
+                {/* {loading.torrents && (
+                  <div className="flex items-center text-sm text-yellow-400">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
+                    Syncing torrents...
+                  </div>
+                )}
+                {loading.files && (
+                  <div className="flex items-center text-sm text-blue-400">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
+                    Loading files...
+                  </div>
+                )} */}
+                <div className="flex items-center text-sm text-green-400">
+                  <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+                  Online
                 </div>
-              )}
-              {loading.files && (
-                <div className="flex items-center text-sm text-blue-400">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
-                  Loading files...
+              </div>
+
+              {/* User menu */}
+              <div className="flex items-center space-x-3">
+                <div className="text-sm text-gray-300">
+                  Welcome, <span className="text-yellow-400 font-medium">{user?.username}</span>
                 </div>
-              )}
-              <div className="flex items-center text-sm text-green-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-                Online
+                <button
+                  onClick={logout}
+                  className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
+                >
+                  Logout
+                </button>
               </div>
             </div>
           </div>

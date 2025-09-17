@@ -1,8 +1,25 @@
 require('dotenv').config();
 const { ensureDirs } = require('./utils/ensureDirs');
 const { logger } = require('./utils/logger');
+const database = require('./models/database');
 
-ensureDirs();
-require('./server');
+async function initServer() {
+  try {
+    // Initialize database
+    await database.init();
+    logger.info('Database initialized');
 
-logger.info('Seedr server booting…');
+    // Ensure storage directories
+    ensureDirs();
+
+    // Start server
+    require('./server');
+
+    logger.info('Seedr server booting…');
+  } catch (error) {
+    logger.error('Failed to initialize server:', error);
+    process.exit(1);
+  }
+}
+
+initServer();

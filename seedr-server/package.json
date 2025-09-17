@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -24,6 +25,7 @@
     "parse-torrent": "^11.0.18",
     "pretty-bytes": "^7.0.1",
     "range-parser": "^1.2.1",
+    "sqlite3": "^5.1.7",
     "webtorrent": "^2.8.4"
   },
   "devDependencies": {
