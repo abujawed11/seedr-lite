@@ -8,7 +8,9 @@
       "Bash(node:*)",
       "Bash(npm start)",
       "Bash(npm run lint)",
-      "Bash(npm install sqlite3 bcryptjs)"
+      "Bash(npm install sqlite3 bcryptjs)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

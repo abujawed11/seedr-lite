@@ -347,44 +347,18 @@ import {
 export default function TorrentSection({ torrents, onTorrentAdded }) {
   const [magnet, setMagnet] = useState("");
   const [loading, setLoading] = useState(false);
-  const [addingState, setAddingState] = useState('idle'); // idle, connecting, fetching, added
-  const [lastAddedName, setLastAddedName] = useState('');
 
   async function handleAddTorrent(e) {
     e.preventDefault();
     if (!magnet.trim()) return;
-
     setLoading(true);
-    setAddingState('connecting');
-
     try {
-      console.log('🚀 Frontend: Starting torrent addition process...');
-
-      // Simulate connection phase
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setAddingState('fetching');
-
-      const response = await addTorrent(magnet.trim());
-      console.log('✅ Frontend: Torrent addition response:', response);
-
-      // Extract torrent name from magnet link for display
-      const nameMatch = magnet.match(/dn=([^&]+)/);
-      const torrentName = nameMatch ? decodeURIComponent(nameMatch[1]) : 'New Torrent';
-      setLastAddedName(torrentName);
-
-      setAddingState('added');
+      await addTorrent(magnet.trim());
       setMagnet("");
-
-      // Show success state briefly before refreshing
-      setTimeout(() => {
-        setAddingState('idle');
-        onTorrentAdded();
-      }, 1500);
-
+      onTorrentAdded(); // parent will fetchTorrents (no files polling)
     } catch (err) {
-      console.error('❌ Frontend: Torrent addition failed:', err);
-      setAddingState('idle');
-      alert("Failed to add torrent: " + (err.message || 'Unknown error'));
+      console.error(err);
+      alert("Failed to add torrent");
     } finally {
       setLoading(false);
     }
@@ -415,98 +389,22 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
           <button
             type="submit"
             disabled={loading || !magnet.trim()}
-            className={`w-full px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center ${
-              addingState === 'added'
-                ? 'bg-green-500 text-white'
-                : loading
-                ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                : 'bg-yellow-500 hover:bg-yellow-600 text-gray-900'
-            }`}
+            className="w-full bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold text-gray-900 transition-colors flex items-center justify-center"
           >
-            {addingState === 'connecting' && (
+            {loading ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-300 mr-2"></div>
-                <span className="animate-pulse">Connecting to network...</span>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 mr-2"></div>
+                Adding...
               </>
-            )}
-            {addingState === 'fetching' && (
+            ) : (
               <>
-                <div className="flex space-x-1 mr-2">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                </div>
-                <span className="animate-pulse">Fetching torrent metadata...</span>
-              </>
-            )}
-            {addingState === 'added' && (
-              <>
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                <span>✨ {lastAddedName} added successfully!</span>
-              </>
-            )}
-            {addingState === 'idle' && !loading && (
-              <>
-                <span className="mr-2">🚀</span>
+                <span className="mr-2">➕</span>
                 Add Torrent
               </>
             )}
           </button>
         </form>
       </div>
-
-      {/* Adding Progress Notification */}
-      {addingState !== 'idle' && (
-        <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-700/50 rounded-xl p-4 backdrop-blur-sm">
-          <div className="flex items-center space-x-3">
-            {addingState === 'connecting' && (
-              <>
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-                <div>
-                  <p className="text-blue-300 font-medium">🌐 Connecting to torrent network...</p>
-                  <p className="text-blue-400/70 text-sm">Initializing peer connections</p>
-                </div>
-              </>
-            )}
-            {addingState === 'fetching' && (
-              <>
-                <div className="flex-shrink-0">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-8 bg-purple-400 rounded animate-pulse"></div>
-                    <div className="w-2 h-6 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-4 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                    <div className="w-2 h-6 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.3s'}}></div>
-                    <div className="w-2 h-8 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.4s'}}></div>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-purple-300 font-medium">📋 Fetching torrent metadata...</p>
-                  <p className="text-purple-400/70 text-sm">Processing torrent information and files</p>
-                </div>
-              </>
-            )}
-            {addingState === 'added' && (
-              <>
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-green-300 font-medium">🎉 Torrent added successfully!</p>
-                  <p className="text-green-400/70 text-sm">{lastAddedName} is now downloading</p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Active Torrents */}
       <div className="space-y-4">
@@ -558,27 +456,15 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
   };
 
   const isComplete = torrent.progress === 100;
-  const isLoading = torrent.name === 'Loading...' || torrent.progress === 0;
 
   return (
-    <div className={`bg-gray-800 rounded-xl border transition-all shadow-lg overflow-hidden ${
-      isLoading ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-gray-700 hover:border-gray-600'
-    }`}>
+    <div className="bg-gray-800 rounded-xl border border-gray-700 hover:border-gray-600 transition-all shadow-lg overflow-hidden">
       {/* Header */}
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
-            <h3 className={`text-lg font-semibold truncate mb-2 ${
-              isLoading ? 'text-yellow-300 animate-pulse' : 'text-white'
-            }`}>
-              {torrent.name === 'Loading...' ? (
-                <span className="flex items-center">
-                  <div className="w-4 h-4 border border-yellow-400 border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Initializing torrent...
-                </span>
-              ) : (
-                torrent.name || torrent.id
-              )}
+            <h3 className="text-lg font-semibold text-white truncate mb-2">
+              {torrent.name || torrent.id}
             </h3>
             <div className="flex items-center space-x-4 text-sm text-gray-400">
               <span className="flex items-center">

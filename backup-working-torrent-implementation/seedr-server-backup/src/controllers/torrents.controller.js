@@ -15,74 +15,39 @@ const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
  * Body: { magnet: "magnet:?xt=urn:btih:..." }
  *
  * Adds a torrent in the background and responds immediately.
- * Requires authentication - torrents are user-specific.
  */
 exports.create = async (req, res) => {
   const { magnet } = req.body || {};
   if (!magnet) {
-    console.log('❌ Torrent add failed: No magnet link provided');
     return res.status(400).json({ error: 'magnet is required' });
   }
 
-  const userId = req.user.id;
-  console.log('🚀 Starting torrent add process...');
-  console.log(`📋 User ID: ${userId}`);
-  console.log(`🔗 Magnet link: ${magnet.substring(0, 50)}...`);
+  // Fire-and-forget: don’t await, just kick off torrent add
+  addMagnet(magnet).catch((e) => console.error('addMagnet failed:', e));
 
-  try {
-    // Fire-and-forget: kick off torrent add in background
-    console.log('⚡ Initiating background torrent addition...');
-    addMagnet(magnet, userId).catch((e) => {
-      console.error('💥 CRITICAL: addMagnet failed:', e);
-      console.error('📊 Error details:', {
-        userId,
-        magnetPreview: magnet.substring(0, 50),
-        errorMessage: e.message,
-        errorStack: e.stack
-      });
-    });
-
-    console.log('✅ Torrent add request accepted and queued');
-    return res.status(202).json({
-      status: 'accepted',
-      message: 'Torrent add started. Will appear in list shortly.',
-    });
-  } catch (error) {
-    console.error('💥 Error in torrent controller:', error);
-    console.error('📊 Controller error details:', {
-      userId,
-      magnetPreview: magnet.substring(0, 50),
-      errorMessage: error.message,
-      errorStack: error.stack
-    });
-    return res.status(500).json({ error: 'Failed to start torrent' });
-  }
+  return res.status(202).json({
+    status: 'accepted',
+    message: 'Torrent add started. Poll GET /api/torrents or /api/torrents/:id until ready.',
+  });
 };
 
 /**
  * GET /api/torrents
- * Returns a list of all torrents for the authenticated user.
+ * Returns a list of all torrents with basic info.
  */
-exports.index = async (req, res) => {
-  const userId = req.user.id;
-  const items = await listTorrents(userId);
+exports.index = async (_req, res) => {
+  const items = await listTorrents();
   res.json(items);
 };
 
 /**
  * GET /api/torrents/:id
  * Returns details + file URLs for a specific torrent.
- * Only shows torrents owned by the authenticated user.
  */
 exports.show = async (req, res) => {
   const t = await getTorrent(req.params.id);
   if (!t) {
     return res.status(404).json({ error: 'not found' });
-  }
-
-  // Check if user owns this torrent
-  if (t.userId && t.userId !== req.user.id) {
-    return res.status(403).json({ error: 'Access denied - not your torrent' });
   }
 
   const files = t.files.map((f, i) => {

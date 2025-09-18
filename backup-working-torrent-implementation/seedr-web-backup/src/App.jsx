@@ -165,12 +165,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { listTorrents, browse } from "./api";
-import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 
 export default function App() {
-  const { user, logout, getStorageInfo } = useAuth();
   const [torrents, setTorrents] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
@@ -218,7 +216,7 @@ export default function App() {
 
   async function handleTorrentAdded() {
     await fetchTorrents();
-    // No complex logic needed - just fetch torrents once like in working backup
+    // no automatic file refresh here; we refresh files once when a torrent completes (see below)
   }
 
   // Initial load and refresh when path changes
@@ -228,17 +226,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
-  // Simple polling — Poll when there are active downloads (like working backup)
+  // Smart polling — ONLY torrents (not files). Poll while at least one active download exists.
   useEffect(() => {
     const hasActiveDownloads = torrents.some((t) => t.progress < 100);
-
+    let id;
     if (hasActiveDownloads) {
-      const interval = setInterval(() => {
-        fetchTorrents();
-      }, 5000); // Poll every 5 seconds like in backup
-
-      return () => clearInterval(interval);
+      id = setInterval(() => {
+        fetchTorrents(); // only progress polling
+      }, 5000); // Poll every 5 seconds for faster updates
     }
+    return () => {
+      if (id) clearInterval(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [torrents]);
 
@@ -279,60 +278,23 @@ export default function App() {
               <div className="ml-4 text-sm text-gray-400">Modern torrent client</div>
             </div>
 
-            {/* User info and storage */}
-            <div className="flex items-center space-x-6">
-              {/* Storage Usage */}
-              {(() => {
-                const storageInfo = getStorageInfo();
-                return storageInfo ? (
-                  <div className="flex items-center space-x-3">
-                    <div className="text-sm text-gray-300">
-                      <div className="flex items-center space-x-2">
-                        <span>💾</span>
-                        <span>{storageInfo.used} / {storageInfo.quota}</span>
-                      </div>
-                      <div className="w-24 h-1 bg-gray-600 rounded-full mt-1">
-                        <div
-                          className="h-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(storageInfo.usedPercentage, 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ) : null;
-              })()}
-
-              {/* Status indicators */}
-              <div className="flex items-center space-x-4">
-                {/* {loading.torrents && (
-                  <div className="flex items-center text-sm text-yellow-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
-                    Syncing torrents...
-                  </div>
-                )}
-                {loading.files && (
-                  <div className="flex items-center text-sm text-blue-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
-                    Loading files...
-                  </div>
-                )} */}
-                <div className="flex items-center text-sm text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-                  Online
+            {/* Status indicators */}
+            <div className="flex items-center space-x-4">
+              {loading.torrents && (
+                <div className="flex items-center text-sm text-yellow-400">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
+                  Syncing torrents...
                 </div>
-              </div>
-
-              {/* User menu */}
-              <div className="flex items-center space-x-3">
-                <div className="text-sm text-gray-300">
-                  Welcome, <span className="text-yellow-400 font-medium">{user?.username}</span>
+              )}
+              {loading.files && (
+                <div className="flex items-center text-sm text-blue-400">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
+                  Loading files...
                 </div>
-                <button
-                  onClick={logout}
-                  className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
-                >
-                  Logout
-                </button>
+              )}
+              <div className="flex items-center text-sm text-green-400">
+                <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+                Online
               </div>
             </div>
           </div>
