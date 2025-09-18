@@ -57,11 +57,6 @@ const AuthProvider = ({ children }) => {
   const register = async (username, email, password) => {
     try {
       const response = await apiRegister(username, email, password);
-      const { token: newToken, user: userData } = response;
-
-      localStorage.setItem('seedr_token', newToken);
-      setToken(newToken);
-      setUser(userData);
 
       return { success: true };
     } catch (error) {

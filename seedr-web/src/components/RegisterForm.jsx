@@ -36,6 +36,9 @@ export default function RegisterForm({ onSwitchToLogin }) {
 
       if (!result.success) {
         setError(result.error);
+      } else {
+        // Registration successful, switch to login screen
+        onSwitchToLogin();
       }
     } catch (error) {
       setError('Registration failed. Please check your connection and try again.');

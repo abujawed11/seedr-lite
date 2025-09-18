@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/react/seedr-lite/seedr-server/**)",
+      "Read(//d/react/seedr-lite/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
