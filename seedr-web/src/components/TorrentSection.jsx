@@ -359,11 +359,13 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
 
     try {
       console.log('🚀 Frontend: Starting torrent addition process...');
+      console.log('🔗 Frontend: Magnet link:', magnet.substring(0, 80) + '...');
 
       // Simulate connection phase
       await new Promise(resolve => setTimeout(resolve, 500));
       setAddingState('fetching');
 
+      console.log('📡 Frontend: Sending add torrent request...');
       const response = await addTorrent(magnet.trim());
       console.log('✅ Frontend: Torrent addition response:', response);
 
@@ -371,18 +373,31 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
       const nameMatch = magnet.match(/dn=([^&]+)/);
       const torrentName = nameMatch ? decodeURIComponent(nameMatch[1]) : 'New Torrent';
       setLastAddedName(torrentName);
+      console.log('📝 Frontend: Extracted torrent name:', torrentName);
 
       setAddingState('added');
       setMagnet("");
 
-      // Show success state briefly before refreshing
+      // Wait a bit before refreshing to allow backend to process
+      console.log('⏳ Frontend: Waiting for backend to process...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log('🔄 Frontend: Refreshing torrent list...');
+      onTorrentAdded();
+
+      // Show success state briefly
       setTimeout(() => {
         setAddingState('idle');
-        onTorrentAdded();
+        console.log('✨ Frontend: Torrent addition process complete');
       }, 1500);
 
     } catch (err) {
       console.error('❌ Frontend: Torrent addition failed:', err);
+      console.error('❌ Frontend: Error details:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data
+      });
       setAddingState('idle');
       alert("Failed to add torrent: " + (err.message || 'Unknown error'));
     } finally {
@@ -559,17 +574,20 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
 
   const isComplete = torrent.progress === 100;
   const isLoading = torrent.name === 'Loading...' || torrent.progress === 0;
+  const isConnecting = torrent.progress === 0 && torrent.numPeers === 0;
 
   return (
     <div className={`bg-gray-800 rounded-xl border transition-all shadow-lg overflow-hidden ${
-      isLoading ? 'border-yellow-500/50 shadow-yellow-500/10' : 'border-gray-700 hover:border-gray-600'
+      isLoading || isConnecting
+        ? 'border-yellow-500/50 shadow-yellow-500/10'
+        : 'border-gray-700 hover:border-gray-600'
     }`}>
       {/* Header */}
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
             <h3 className={`text-lg font-semibold truncate mb-2 ${
-              isLoading ? 'text-yellow-300 animate-pulse' : 'text-white'
+              isLoading || isConnecting ? 'text-yellow-300' : 'text-white'
             }`}>
               {torrent.name === 'Loading...' ? (
                 <span className="flex items-center">
@@ -593,6 +611,12 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
                 <span className="mr-1">👥</span>
                 {torrent.numPeers} peers
               </span>
+              {isConnecting && (
+                <span className="flex items-center text-blue-400 animate-pulse">
+                  <span className="mr-1">🔍</span>
+                  Searching for peers...
+                </span>
+              )}
             </div>
           </div>
 
@@ -601,10 +625,17 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
               className={`px-3 py-1 rounded-full text-xs font-medium ${
                 isComplete
                   ? "bg-green-900 text-green-300"
+                  : isConnecting
+                  ? "bg-blue-900 text-blue-300"
                   : "bg-yellow-900 text-yellow-300"
               }`}
             >
-              {isComplete ? "Completed" : "Downloading"}
+              {isComplete
+                ? "Completed"
+                : isConnecting
+                ? "🔍 Connecting..."
+                : "📥 Downloading"
+              }
             </div>
 
             {/* Controls */}
@@ -666,10 +697,14 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
 
         {/* Progress Bar */}
         <div className="w-full bg-gray-700 h-2 rounded-full">
-          <div
-            className={`h-2 rounded-full transition-all duration-300 ${isComplete ? "bg-green-500" : "bg-yellow-500"}`}
-            style={{ width: `${torrent.progress || 0}%` }}
-          />
+          {isConnecting ? (
+            <div className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 animate-pulse" style={{ width: '20%' }} />
+          ) : (
+            <div
+              className={`h-2 rounded-full transition-all duration-300 ${isComplete ? "bg-green-500" : "bg-yellow-500"}`}
+              style={{ width: `${torrent.progress || 0}%` }}
+            />
+          )}
         </div>
       </div>
 

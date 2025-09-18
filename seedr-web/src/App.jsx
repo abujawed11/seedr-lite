@@ -180,12 +180,20 @@ export default function App() {
   const prevDoneRef = useRef(new Set());
 
   async function fetchTorrents() {
+    console.log('🔄 App: fetchTorrents called');
     setLoading((prev) => ({ ...prev, torrents: true }));
     try {
+      console.log('📡 App: Calling listTorrents API...');
       const data = await listTorrents();
+      console.log('📊 App: Received torrents data:', {
+        isArray: Array.isArray(data),
+        length: Array.isArray(data) ? data.length : 'N/A',
+        data: data
+      });
       setTorrents(Array.isArray(data) ? data : []);
+      console.log('✅ App: Torrents state updated');
     } catch (err) {
-      console.error("Torrents fetch error:", err);
+      console.error("❌ App: Torrents fetch error:", err);
     } finally {
       setLoading((prev) => ({ ...prev, torrents: false }));
     }
@@ -217,7 +225,9 @@ export default function App() {
   }
 
   async function handleTorrentAdded() {
+    console.log('🎯 App: handleTorrentAdded called');
     await fetchTorrents();
+    console.log('✅ App: handleTorrentAdded completed');
     // No complex logic needed - just fetch torrents once like in working backup
   }
 

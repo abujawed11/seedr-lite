@@ -410,8 +410,9 @@ async function addMagnet(magnet, userId) {
       (torrent) => {
         console.log('🎯 Torrent added to client successfully!');
 
-        // Track which user owns this torrent
+        // Track which user owns this torrent - SET IMMEDIATELY
         torrent.userId = userId;
+        console.log('👤 User ID assigned to torrent:', torrent.userId);
 
         // Enhanced event logging
         torrent.on("infoHash", () => {
@@ -517,9 +518,16 @@ async function addMagnet(magnet, userId) {
           userId
         });
 
+        // IMPORTANT: Resolve immediately so torrent appears in listTorrents
+        console.log("🚀 Resolving torrent addition - should now be visible in API");
         resolve(summary);
       }
     );
+
+    // Set userId immediately on the torrent object (backup mechanism)
+    console.log('🔧 Setting userId on torrent object immediately...');
+    t.userId = userId;
+    console.log('✅ Backup userId set on torrent:', t.userId);
 
     t.on("error", (err) => {
       console.error("💥 Critical error adding torrent:", {
@@ -539,15 +547,27 @@ async function getTorrent(infoHash) {
 }
 
 async function listTorrents(userId = null) {
+  console.log('📋 listTorrents called with userId:', userId);
   const c = await getClient();
+  console.log('📊 Total torrents in client:', c.torrents.length);
+
   let torrents = c.torrents;
+  console.log('🔍 All torrents:', torrents.map(t => ({
+    id: t.infoHash,
+    name: t.name,
+    userId: t.userId,
+    progress: Math.round(t.progress * 100)
+  })));
 
   // Filter by user if userId provided
   if (userId) {
     torrents = torrents.filter(t => t.userId === userId);
+    console.log('🎯 Filtered torrents for user', userId + ':', torrents.length);
   }
 
-  return torrents.map(t => toSummary(t, t.userId));
+  const result = torrents.map(t => toSummary(t, t.userId));
+  console.log('📤 Returning torrent summaries:', result.length);
+  return result;
 }
 
 
