@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Read(//d/react/seedr-lite/seedr-server/**)",
-      "Read(//d/react/seedr-lite/**)"
+      "Read(//d/react/seedr-lite/**)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

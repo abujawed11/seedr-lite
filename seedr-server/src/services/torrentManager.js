@@ -541,9 +541,20 @@ async function addMagnet(magnet, userId) {
   });
 }
 
-async function getTorrent(infoHash) {
+async function getTorrent(infoHash, userId = null) {
   const c = await getClient();
-  return c.get(infoHash) || null;
+  const torrent = c.get(infoHash);
+
+  if (!torrent) {
+    return null;
+  }
+
+  // If userId is provided, ensure the torrent belongs to the user
+  if (userId && torrent.userId !== userId) {
+    return null;
+  }
+
+  return torrent;
 }
 
 async function listTorrents(userId = null) {

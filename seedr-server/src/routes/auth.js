@@ -2,6 +2,7 @@ const express = require('express');
 const database = require('../models/database');
 const { generateToken, authenticateToken } = require('../middlewares/auth');
 const asyncHandler = require('../middlewares/asyncHandler');
+const { updateUserStorageUsage } = require('../utils/storage');
 
 const router = express.Router();
 
@@ -85,9 +86,28 @@ router.post('/login', asyncHandler(async (req, res) => {
 
 // Get current user profile
 router.get('/profile', authenticateToken, asyncHandler(async (req, res) => {
-  res.json({
-    user: req.user
-  });
+  // Update storage usage before returning profile
+  try {
+    await updateUserStorageUsage(req.user.id);
+    // Get fresh user data with updated storage
+    const updatedUser = await database.getUserById(req.user.id);
+    res.json({
+      user: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        storageQuota: updatedUser.storage_quota,
+        storageUsed: updatedUser.storage_used,
+        plan: updatedUser.plan
+      }
+    });
+  } catch (error) {
+    console.error('Error updating storage usage:', error);
+    // Fallback to cached user data
+    res.json({
+      user: req.user
+    });
+  }
 }));
 
 // Update storage quota (admin endpoint for upgrades)

@@ -72,7 +72,9 @@ const { verifyLink } = require('../services/linkSigner');
 
 async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false }) {
   // getTorrent is async now — await it
-  const t = await getTorrent(torrentId);
+  // Pass user ID to ensure users can only access their own torrents (if authenticated)
+  const userId = req.user?.id;
+  const t = await getTorrent(torrentId, userId);
   if (!t) return res.status(404).json({ error: 'torrent not found' });
 
   const idx = Number(fileIndex);
@@ -137,7 +139,13 @@ exports.download = async (req, res) => {
 
 exports.direct = async (req, res) => {
   try {
-    const payload = verifyLink(req.params.token); // { torrentId, fileIndex, asAttachment? }
+    const payload = verifyLink(req.params.token); // { torrentId, fileIndex, asAttachment?, userId? }
+
+    // For direct links, we need to simulate the user context
+    if (payload.userId) {
+      req.user = { id: payload.userId };
+    }
+
     await streamFile(req, res, payload);
   } catch (e) {
     return res.status(401).json({ error: 'invalid or expired link' });

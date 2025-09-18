@@ -75,28 +75,27 @@ exports.index = async (req, res) => {
  * Only shows torrents owned by the authenticated user.
  */
 exports.show = async (req, res) => {
-  const t = await getTorrent(req.params.id);
+  const userId = req.user.id;
+  const t = await getTorrent(req.params.id, userId);
   if (!t) {
     return res.status(404).json({ error: 'not found' });
   }
 
-  // Check if user owns this torrent
-  if (t.userId && t.userId !== req.user.id) {
-    return res.status(403).json({ error: 'Access denied - not your torrent' });
-  }
-
   const files = t.files.map((f, i) => {
-    const token = signLink(
-      makeDirectLinkPayload({ torrentId: t.infoHash, fileIndex: i })
+    const streamToken = signLink(
+      makeDirectLinkPayload({ torrentId: t.infoHash, fileIndex: i, userId: req.user.id, asAttachment: false })
+    );
+    const downloadToken = signLink(
+      makeDirectLinkPayload({ torrentId: t.infoHash, fileIndex: i, userId: req.user.id, asAttachment: true })
     );
 
     return {
       index: i,
       name: f.name,
       length: f.length,
-      streamUrl: `${BASE}/stream/${t.infoHash}/${i}`,
-      downloadUrl: `${BASE}/download/${t.infoHash}/${i}`,
-      directUrl: `${BASE}/direct/${token}`, // signed expiring link
+      streamUrl: `${BASE}/direct/${streamToken}`,
+      downloadUrl: `${BASE}/direct/${downloadToken}`,
+      directUrl: `${BASE}/direct/${downloadToken}`, // signed expiring download link
     };
   });
 

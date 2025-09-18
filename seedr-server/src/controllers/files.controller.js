@@ -3,7 +3,7 @@ const path = require("path");
 const mime = require("mime-types");
 const rangeParser = require("range-parser");
 const { signLink, verifyLink } = require("../services/linkSigner");
-const { getUserStorageDir } = require("../utils/storage");
+const { getUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
@@ -44,6 +44,13 @@ exports.browse = async (req, res) => {
     const userId = req.user.id;
     const userRoot = getUserStorageDir(userId);
 
+    // Update storage usage when browsing (to keep it current)
+    try {
+      await updateUserStorageUsage(userId);
+    } catch (error) {
+      console.error("Error updating storage usage during browse:", error);
+    }
+
     const rawPath = req.query.path || "";
     const decoded = decodeURIComponent(rawPath);
     const safePath = validatePath(decoded, userRoot);
@@ -76,16 +83,17 @@ exports.browse = async (req, res) => {
         const mimeType = mime.lookup(item) || "application/octet-stream";
         const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
-        const directToken = signLink({ path: relativePath, asAttachment: false });
+        const streamToken = signLink({ path: relativePath, asAttachment: false, userId: userId });
+        const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId });
 
         files.push({
           name: item,
           path: relativePath,
           size: itemStat.size,
           mime: mimeType,
-          streamUrl: `${baseUrl}/files/stream?path=${encodeURIComponent(relativePath)}`,
-          downloadUrl: `${baseUrl}/files/download?path=${encodeURIComponent(relativePath)}`,
-          directUrl: `${baseUrl}/files/direct/${directToken}`
+          streamUrl: `${baseUrl}/files/direct/${streamToken}`,
+          downloadUrl: `${baseUrl}/files/direct/${downloadToken}`,
+          directUrl: `${baseUrl}/files/direct/${downloadToken}`
         });
       }
     }
@@ -108,10 +116,10 @@ exports.browse = async (req, res) => {
   }
 };
 
-async function streamFileFromDisk(req, res, { filePath, asAttachment = false }) {
+async function streamFileFromDisk(req, res, { filePath, asAttachment = false, userId = null }) {
   try {
-    const userId = req.user.id;
-    const userRoot = getUserStorageDir(userId);
+    // For direct links, userId might not be available, use a default storage root
+    const userRoot = userId ? getUserStorageDir(userId) : ROOT;
 
     const safePath = validatePath(filePath, userRoot);
     const fullPath = path.resolve(userRoot, safePath);
@@ -177,29 +185,31 @@ async function streamFileFromDisk(req, res, { filePath, asAttachment = false }) 
 }
 
 exports.stream = async (req, res) => {
-  // const filePath = req.query.path;
   const rawPath = req.query.path || "";
   const decoded = decodeURIComponent(rawPath);
-  const safePath = validatePath(decoded);
-  const fullPath = path.resolve(ROOT, safePath);
   if (!decoded) {
     return res.status(400).json({ error: "Missing path parameter" });
   }
 
-  await streamFileFromDisk(req, res, { filePath: decoded, asAttachment: false });
+  await streamFileFromDisk(req, res, {
+    filePath: decoded,
+    asAttachment: false,
+    userId: req.user.id
+  });
 };
 
 exports.download = async (req, res) => {
-  // const filePath = req.query.path;
   const rawPath = req.query.path || "";
   const decoded = decodeURIComponent(rawPath);
-  const safePath = validatePath(decoded);
-  const fullPath = path.resolve(ROOT, safePath);
   if (!decoded) {
     return res.status(400).json({ error: "Missing path parameter" });
   }
 
-  await streamFileFromDisk(req, res, { filePath: decoded, asAttachment: true });
+  await streamFileFromDisk(req, res, {
+    filePath: decoded,
+    asAttachment: true,
+    userId: req.user.id
+  });
 };
 
 exports.direct = async (req, res) => {
@@ -211,9 +221,11 @@ exports.direct = async (req, res) => {
       return res.status(400).json({ error: "Invalid token payload" });
     }
 
+    // Use the userId from the token to get the correct user directory
     await streamFileFromDisk(req, res, {
       filePath: payload.path,
-      asAttachment: payload.asAttachment || false
+      asAttachment: payload.asAttachment || false,
+      userId: payload.userId  // Use userId from token
     });
   } catch (err) {
     console.error("Direct link error:", err);
@@ -246,6 +258,13 @@ exports.deleteFile = async (req, res) => {
     } else {
       // Remove file
       fs.unlinkSync(fullPath);
+    }
+
+    // Update user's storage usage after deletion
+    try {
+      await updateUserStorageUsage(userId);
+    } catch (error) {
+      console.error("Error updating storage usage after deletion:", error);
     }
 
     res.json({

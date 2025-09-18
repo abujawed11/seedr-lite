@@ -80,6 +80,7 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
           href={file.downloadUrl}
           className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium text-white transition-colors flex items-center"
           title="Download file"
+          download
         >
           <span className="mr-1">⬇</span>
           Download

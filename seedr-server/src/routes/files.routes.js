@@ -4,17 +4,14 @@ const { browse, stream, download, direct, listFiles, deleteFile } = require("../
 
 const router = express.Router();
 
-// All file operations require authentication
-router.use(authenticateToken);
-
-// API routes (for /api/files/*)
-router.get("/", listFiles);
-router.get("/browse", browse);
-router.delete("/delete", deleteFile);
-
-// File serving routes (for /files/*)
-router.get("/stream", stream);
-router.get("/download", download);
+// Public routes (no authentication required)
 router.get("/direct/:token", direct);
+
+// Protected routes (authentication required)
+router.get("/", authenticateToken, listFiles);
+router.get("/browse", authenticateToken, browse);
+router.delete("/delete", authenticateToken, deleteFile);
+router.get("/stream", authenticateToken, stream);
+router.get("/download", authenticateToken, download);
 
 module.exports = router;
