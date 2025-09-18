@@ -51,20 +51,20 @@ router.post('/register', asyncHandler(async (req, res) => {
 
 // Login user
 router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const user = await database.getUserByEmail(email);
+  const user = await database.getUserByUsername(username);
   if (!user) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   const isValidPassword = await database.verifyPassword(password, user.password);
   if (!isValidPassword) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   const token = generateToken(user.id);

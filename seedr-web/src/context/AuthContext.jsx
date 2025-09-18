@@ -3,7 +3,7 @@ import { login as apiLogin, register as apiRegister, getUserProfile } from '../a
 
 const AuthContext = createContext();
 
-export const useAuth = () => {
+const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
@@ -11,7 +11,7 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider = ({ children }) => {
+const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('seedr_token'));
@@ -35,9 +35,9 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [token]);
 
-  const login = async (email, password) => {
+  const login = async (username, password) => {
     try {
-      const response = await apiLogin(email, password);
+      const response = await apiLogin(username, password);
       const { token: newToken, user: userData } = response;
 
       localStorage.setItem('seedr_token', newToken);
@@ -120,3 +120,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+export { useAuth, AuthProvider };

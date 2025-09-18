@@ -60,8 +60,8 @@ export async function deleteFile(path) {
 }
 
 // Auth functions
-export async function login(email, password) {
-  const res = await api.post('/auth/login', { email, password });
+export async function login(username, password) {
+  const res = await api.post('/auth/login', { username, password });
   return res.data;
 }
 

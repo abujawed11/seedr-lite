@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function LoginForm({ onSwitchToRegister }) {
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: ''
   });
   const [loading, setLoading] = useState(false);
@@ -14,18 +14,30 @@ export default function LoginForm({ onSwitchToRegister }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError(''); // Clear previous errors
 
-    const result = await login(formData.email, formData.password);
+    try {
+      const result = await login(formData.username, formData.password);
 
-    if (!result.success) {
-      setError(result.error);
+      if (!result.success) {
+        setError(result.error);
+      }
+      // If login is successful, no need to do anything here -
+      // AuthContext will handle the state update and redirect
+    } catch (error) {
+      // Handle network errors or other unexpected errors
+      setError('Login failed. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleChange = (e) => {
+    // Clear error when user starts typing
+    if (error) {
+      setError('');
+    }
+
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
@@ -54,18 +66,18 @@ export default function LoginForm({ onSwitchToRegister }) {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-                Email Address
+              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
+                Username
               </label>
               <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
+                type="text"
+                id="username"
+                name="username"
+                value={formData.username}
                 onChange={handleChange}
                 required
                 className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                placeholder="Enter your email"
+                placeholder="Enter your username"
               />
             </div>
 

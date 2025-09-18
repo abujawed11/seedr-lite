@@ -100,6 +100,19 @@ class Database {
     });
   }
 
+  async getUserByUsername(username) {
+    return new Promise((resolve, reject) => {
+      const sql = 'SELECT * FROM users WHERE username = ?';
+      this.db.get(sql, [username], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
   async getUserById(id) {
     return new Promise((resolve, reject) => {
       const sql = 'SELECT * FROM users WHERE id = ?';

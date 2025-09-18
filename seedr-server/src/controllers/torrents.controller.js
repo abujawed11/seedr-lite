@@ -18,17 +18,25 @@ const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
  * Requires authentication - torrents are user-specific.
  */
 exports.create = async (req, res) => {
+  console.log('=== TORRENT CREATE REQUEST ===');
+  console.log('Request body:', req.body);
+  console.log('User:', req.user);
+
   const { magnet } = req.body || {};
   if (!magnet) {
+    console.log('ERROR: No magnet provided');
     return res.status(400).json({ error: 'magnet is required' });
   }
 
   const userId = req.user.id;
+  console.log('Adding torrent for user:', userId);
 
   try {
     // Fire-and-forget: kick off torrent add in background
+    console.log('Starting addMagnet...');
     addMagnet(magnet, userId).catch((e) => console.error('addMagnet failed:', e));
 
+    console.log('Torrent add request accepted');
     return res.status(202).json({
       status: 'accepted',
       message: 'Torrent add started. Will appear in list shortly.',

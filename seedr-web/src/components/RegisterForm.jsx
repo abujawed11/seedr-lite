@@ -31,16 +31,25 @@ export default function RegisterForm({ onSwitchToLogin }) {
       return;
     }
 
-    const result = await register(formData.username, formData.email, formData.password);
+    try {
+      const result = await register(formData.username, formData.email, formData.password);
 
-    if (!result.success) {
-      setError(result.error);
+      if (!result.success) {
+        setError(result.error);
+      }
+    } catch (error) {
+      setError('Registration failed. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleChange = (e) => {
+    // Clear error when user starts typing
+    if (error) {
+      setError('');
+    }
+
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
