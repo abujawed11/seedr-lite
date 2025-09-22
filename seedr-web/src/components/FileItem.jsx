@@ -5,14 +5,62 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
 
   function getFileIcon(fileName, mimeType) {
     const ext = fileName.split('.').pop()?.toLowerCase();
-    if (mimeType?.startsWith('video/')) return '🎬';
-    if (mimeType?.startsWith('audio/')) return '🎵';
-    if (mimeType?.startsWith('image/')) return '🖼️';
-    if (mimeType?.includes('pdf')) return '📄';
-    if (['txt', 'md', 'readme'].includes(ext)) return '📝';
-    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '🗜️';
-    if (['exe', 'msi', 'dmg', 'deb', 'rpm'].includes(ext)) return '⚙️';
-    if (['iso', 'img'].includes(ext)) return '💿';
+
+    // Video files
+    if (mimeType?.startsWith('video/') ||
+        ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp', 'ogv'].includes(ext)) {
+      return '🎬';
+    }
+
+    // Audio files
+    if (mimeType?.startsWith('audio/') ||
+        ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a', 'opus', 'aiff'].includes(ext)) {
+      return '🎵';
+    }
+
+    // Image files
+    if (mimeType?.startsWith('image/') ||
+        ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'tiff', 'ico', 'heic', 'avif'].includes(ext)) {
+      return '🖼️';
+    }
+
+    // Document files
+    if (mimeType?.includes('pdf') || ext === 'pdf') return '📕';
+    if (['doc', 'docx'].includes(ext)) return '📘';
+    if (['xls', 'xlsx'].includes(ext)) return '📗';
+    if (['ppt', 'pptx'].includes(ext)) return '📙';
+    if (['txt', 'md', 'readme', 'log'].includes(ext)) return '📝';
+    if (['json', 'xml', 'yaml', 'yml', 'csv'].includes(ext)) return '📄';
+
+    // Code files
+    if (['js', 'jsx', 'ts', 'tsx', 'vue', 'svelte'].includes(ext)) return '⚛️';
+    if (['html', 'htm', 'css', 'scss', 'sass', 'less'].includes(ext)) return '🌐';
+    if (['py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'swift'].includes(ext)) return '💻';
+    if (['sql', 'db', 'sqlite'].includes(ext)) return '🗄️';
+
+    // Archive files
+    if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'lzma'].includes(ext)) return '🗜️';
+
+    // Executable files
+    if (['exe', 'msi', 'dmg', 'deb', 'rpm', 'appimage', 'snap'].includes(ext)) return '⚙️';
+
+    // Disk images
+    if (['iso', 'img', 'dmg', 'vhd', 'vmdk'].includes(ext)) return '💿';
+
+    // Fonts
+    if (['ttf', 'otf', 'woff', 'woff2', 'eot'].includes(ext)) return '🔤';
+
+    // 3D and design files
+    if (['blend', 'obj', 'fbx', 'dae', 'stl', '3ds', 'max'].includes(ext)) return '🎨';
+    if (['psd', 'ai', 'sketch', 'fig', 'xd'].includes(ext)) return '🎨';
+
+    // eBook files
+    if (['epub', 'mobi', 'azw', 'azw3', 'fb2'].includes(ext)) return '📚';
+
+    // Subtitles
+    if (['srt', 'vtt', 'ass', 'ssa', 'sub'].includes(ext)) return '💬';
+
+    // Default fallback
     return '📄';
   }
 
