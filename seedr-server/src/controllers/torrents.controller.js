@@ -89,13 +89,16 @@ exports.show = async (req, res) => {
       makeDirectLinkPayload({ torrentId: t.infoHash, fileIndex: i, userId: req.user.id, asAttachment: true })
     );
 
+    // Encode filename for URL but keep it readable
+    const encodedFilename = encodeURIComponent(f.name);
+
     return {
       index: i,
       name: f.name,
       length: f.length,
-      streamUrl: `${BASE}/direct/${streamToken}`,
-      downloadUrl: `${BASE}/direct/${downloadToken}`,
-      directUrl: `${BASE}/direct/${downloadToken}`, // signed expiring download link
+      streamUrl: `${BASE}/direct/${streamToken}/${encodedFilename}`,
+      downloadUrl: `${BASE}/direct/${downloadToken}/${encodedFilename}`,
+      directUrl: `${BASE}/direct/${downloadToken}/${encodedFilename}`, // signed expiring download link
     };
   });
 

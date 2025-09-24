@@ -108,8 +108,13 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
   if (status === 206) {
     res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
   }
+
+  // Always set Content-Disposition header to help media players identify the filename
   if (asAttachment) {
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  } else {
+    // For streaming, use 'inline' disposition but still include filename
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
   }
 
   const stream = file.createReadStream({ start, end });

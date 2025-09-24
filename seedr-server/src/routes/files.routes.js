@@ -6,6 +6,7 @@ const router = express.Router();
 
 // Public routes (no authentication required)
 router.get("/direct/:token", direct);
+router.get("/direct/:token/:filename", direct);
 
 // Protected routes (authentication required)
 router.get("/", authenticateToken, listFiles);
