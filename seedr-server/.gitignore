@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # runtime storage (keep the folder, ignore contents)
 src/storage/*
 !src/storage/.gitkeep
+
+
+seedr-server/data/users.db
