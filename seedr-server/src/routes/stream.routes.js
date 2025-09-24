@@ -8,5 +8,6 @@ router.get('/download/:id/:fileIndex', authenticateToken, s.download);  // attac
 
 // Public route with signed token (no auth required)
 router.get('/direct/:token', s.direct);              // signed public link
+router.get('/direct/:token/:filename', s.direct);    // signed public link with filename
 
 module.exports = router;
