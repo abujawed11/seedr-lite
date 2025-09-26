@@ -94,6 +94,7 @@ seedr-lite
 │  │  │  ├─ FileItem.jsx
 │  │  │  ├─ FolderItem.jsx
 │  │  │  ├─ LoginForm.jsx
+│  │  │  ├─ MediaPlayer.jsx
 │  │  │  ├─ RegisterForm.jsx
 │  │  │  └─ TorrentSection.jsx
 │  │  ├─ context
