@@ -31,6 +31,11 @@ export default function MediaPlayer({
     const video = videoRef.current;
     if (!video) return;
 
+    // Set src only once to prevent repeated requests
+    if (video.src !== src) {
+      video.src = src;
+    }
+
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleDurationChange = () => setDuration(video.duration);
     const handlePlay = () => setIsPlaying(true);
@@ -40,6 +45,26 @@ export default function MediaPlayer({
       setIsBuffering(false);
       setIsLoadingInitial(false);
       setHasError(false);
+      // Ensure audio is not muted when media can play
+      if (video.muted && volume > 0) {
+        video.muted = false;
+        video.volume = volume;
+      }
+    };
+
+    const handleStalled = () => {
+      console.log('Video stalled - network or decoding issue');
+      setIsBuffering(true);
+    };
+
+    const handleSuspend = () => {
+      console.log('Video loading suspended');
+      // Don't treat suspend as an error, it's normal behavior
+    };
+
+    const handleAbort = () => {
+      console.log('Video loading aborted');
+      // This can happen during normal playback, don't treat as error
     };
     const handleLoadStart = () => {
       setIsBuffering(true);
@@ -50,6 +75,11 @@ export default function MediaPlayer({
       setIsBuffering(false);
       setIsLoadingInitial(false);
       setHasError(true);
+
+      // Stop any potential error loops by pausing
+      if (video && !video.paused) {
+        video.pause();
+      }
 
       // Determine error message based on error type
       if (e.target.error) {
@@ -86,6 +116,9 @@ export default function MediaPlayer({
     video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('error', handleError);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('stalled', handleStalled);
+    video.addEventListener('suspend', handleSuspend);
+    video.addEventListener('abort', handleAbort);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
@@ -97,15 +130,27 @@ export default function MediaPlayer({
       video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('error', handleError);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('stalled', handleStalled);
+      video.removeEventListener('suspend', handleSuspend);
+      video.removeEventListener('abort', handleAbort);
     };
-  }, []);
+  }, [src]);
 
   // Auto-hide controls
   useEffect(() => {
+    const startHideTimer = () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      if (isPlaying) {
+        controlsTimeoutRef.current = setTimeout(() => {
+          setShowControls(false);
+        }, 3000);
+      }
+    };
+
     if (showControls && isPlaying) {
-      controlsTimeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 3000);
+      startHideTimer();
     }
 
     return () => {
@@ -115,10 +160,23 @@ export default function MediaPlayer({
     };
   }, [showControls, isPlaying]);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = async () => {
     const video = videoRef.current;
     if (video.paused) {
-      video.play();
+      try {
+        // Ensure video is not muted before playing
+        if (video.muted && volume > 0) {
+          video.muted = false;
+          video.volume = volume;
+        }
+        await video.play();
+      } catch (error) {
+        console.error('Error playing video:', error);
+        // Handle autoplay restrictions
+        if (error.name === 'NotAllowedError') {
+          // User interaction required - the play button click should handle this
+        }
+      }
     } else {
       video.pause();
     }
@@ -189,8 +247,40 @@ export default function MediaPlayer({
 
   const handleMouseMove = () => {
     setShowControls(true);
+    // Clear existing timeout and start a new one
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
+    }
+    if (isPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 3000);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isPlaying) {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 1000);
+    }
+  };
+
+  // Handle mouse activity on control elements to prevent hiding
+  const handleControlsMouseEnter = () => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+  };
+
+  const handleControlsMouseLeave = () => {
+    if (isPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 2000);
     }
   };
 
@@ -238,6 +328,7 @@ export default function MediaPlayer({
     <div
       className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 backdrop-blur-sm"
       onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
@@ -257,10 +348,12 @@ export default function MediaPlayer({
         <video
           ref={videoRef}
           className="w-full h-full object-contain"
-          src={src}
           poster={poster}
           preload="metadata"
           crossOrigin="anonymous"
+          playsInline
+          muted={false}
+          controls={false}
         />
 
         {/* Loading Spinner */}
@@ -290,7 +383,12 @@ export default function MediaPlayer({
                     setIsLoadingInitial(true);
                     const video = videoRef.current;
                     if (video) {
-                      video.load();
+                      // Reset the src to trigger a fresh load
+                      video.src = '';
+                      setTimeout(() => {
+                        video.src = src;
+                        video.load();
+                      }, 100);
                     }
                   }}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
@@ -309,7 +407,11 @@ export default function MediaPlayer({
         )}
 
         {/* Controls Overlay */}
-        <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+        <div
+          className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+          onMouseEnter={handleControlsMouseEnter}
+          onMouseLeave={handleControlsMouseLeave}
+        >
 
           {/* Top Bar */}
           <div className="absolute top-0 left-0 right-0 p-4">
@@ -354,7 +456,11 @@ export default function MediaPlayer({
             </div>
 
             {/* Control Buttons Row */}
-            <div className="flex items-center justify-between text-white">
+            <div
+              className="flex items-center justify-between text-white"
+              onMouseEnter={handleControlsMouseEnter}
+              onMouseLeave={handleControlsMouseLeave}
+            >
 
               {/* Left Controls */}
               <div className="flex items-center space-x-4">
