@@ -31,11 +31,6 @@ export default function MediaPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // Set src only once to prevent repeated requests
-    if (video.src !== src) {
-      video.src = src;
-    }
-
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleDurationChange = () => setDuration(video.duration);
     const handlePlay = () => setIsPlaying(true);
@@ -52,20 +47,6 @@ export default function MediaPlayer({
       }
     };
 
-    const handleStalled = () => {
-      console.log('Video stalled - network or decoding issue');
-      setIsBuffering(true);
-    };
-
-    const handleSuspend = () => {
-      console.log('Video loading suspended');
-      // Don't treat suspend as an error, it's normal behavior
-    };
-
-    const handleAbort = () => {
-      console.log('Video loading aborted');
-      // This can happen during normal playback, don't treat as error
-    };
     const handleLoadStart = () => {
       setIsBuffering(true);
       setIsLoadingInitial(true);
@@ -116,9 +97,6 @@ export default function MediaPlayer({
     video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('error', handleError);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    video.addEventListener('stalled', handleStalled);
-    video.addEventListener('suspend', handleSuspend);
-    video.addEventListener('abort', handleAbort);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
@@ -130,10 +108,15 @@ export default function MediaPlayer({
       video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('error', handleError);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      video.removeEventListener('stalled', handleStalled);
-      video.removeEventListener('suspend', handleSuspend);
-      video.removeEventListener('abort', handleAbort);
     };
+  }, []);
+
+  // Separate effect to handle src changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && src) {
+      video.src = src;
+    }
   }, [src]);
 
   // Auto-hide controls
@@ -316,8 +299,27 @@ export default function MediaPlayer({
         e.preventDefault();
         toggleMute();
         break;
+      case 'k':
+      case 'K':
+        e.preventDefault();
+        togglePlayPause();
+        break;
+      case 'j':
+      case 'J':
+        e.preventDefault();
+        skipTime(-10);
+        break;
+      case 'l':
+      case 'L':
+        e.preventDefault();
+        skipTime(10);
+        break;
       case 'Escape':
-        if (onClose) onClose();
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else if (onClose) {
+          onClose();
+        }
         break;
       default:
         break;
@@ -331,6 +333,7 @@ export default function MediaPlayer({
       onMouseLeave={handleMouseLeave}
       onKeyDown={handleKeyDown}
       tabIndex={0}
+      style={{ outline: 'none' }}
     >
       {/* Close Button */}
       <button
@@ -383,12 +386,7 @@ export default function MediaPlayer({
                     setIsLoadingInitial(true);
                     const video = videoRef.current;
                     if (video) {
-                      // Reset the src to trigger a fresh load
-                      video.src = '';
-                      setTimeout(() => {
-                        video.src = src;
-                        video.load();
-                      }, 100);
+                      video.load();
                     }
                   }}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
@@ -603,6 +601,7 @@ export default function MediaPlayer({
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
