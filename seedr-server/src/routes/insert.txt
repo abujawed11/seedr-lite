@@ -1,0 +1,1 @@
+router.post("/inspect", asyncH(c.inspect)); // inspect magnet metadata without downloading

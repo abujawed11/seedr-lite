@@ -32,7 +32,6 @@ const upload = multer({
 // All torrent operations require authentication
 router.use(authenticateToken);
 
-router.post("/inspect", asyncH(c.inspect)); // inspect magnet metadata without downloading
 router.post('/', upload.single('torrentFile'), asyncH(c.create));        // add magnet or torrent file with quota validation
 router.get('/', asyncH(c.index));          // list torrents
 router.get('/:id', asyncH(c.show));        // files + URLs for one torrent

@@ -28,10 +28,6 @@ api.interceptors.response.use(
   }
 );
 
-export async function inspectTorrent(magnet) {
-  const res = await api.post("/torrents/inspect", { magnet });
-  return res.data;
-}
 export async function addTorrent(magnet) {
   return api.post("/torrents", { magnet });
 }

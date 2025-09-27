@@ -1,205 +1,190 @@
-import { useState, useRef, useCallback } from "react";
+
+
+import { useState } from "react";
 import {
-  inspectTorrent,
   addTorrent,
   stopTorrent,
   deleteTorrent,
 } from "../api";
 
-function humanBytes(bytes) {
-  const thresh = 1024;
-  if (typeof bytes !== 'number' || isNaN(bytes)) return '0 B';
-  if (Math.abs(bytes) < thresh) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
-  let u = -1;
-  do {
-    bytes /= thresh;
-    ++u;
-  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-  const fixed = u < 2 ? 0 : 2;
-  return `${bytes.toFixed(fixed)} ${units[u]}`;
-}
-
 export default function TorrentSection({ torrents, onTorrentAdded }) {
-  const [magnets, setMagnets] = useState([{ id: 1, value: "", metadata: null, state: 'idle', error: null }]);
-  const [nextId, setNextId] = useState(2);
-  const inspectTimeouts = useRef(new Map());
-  const inspectControllers = useRef(new Map());
+  const [magnet, setMagnet] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [addingState, setAddingState] = useState('idle'); // idle, connecting, fetching, added
+  const [lastAddedName, setLastAddedName] = useState('');
 
-  // Debounced inspect function
-  const debouncedInspect = useCallback((magnetId, magnetValue) => {
-    // Clear existing timeout
-    if (inspectTimeouts.current.has(magnetId)) {
-      clearTimeout(inspectTimeouts.current.get(magnetId));
-    }
+  async function handleAddTorrent(e) {
+    e.preventDefault();
+    if (!magnet.trim()) return;
 
-    // Cancel existing request
-    if (inspectControllers.current.has(magnetId)) {
-      inspectControllers.current.get(magnetId).abort();
-      inspectControllers.current.delete(magnetId);
-    }
-
-    if (!magnetValue.trim() || !magnetValue.startsWith('magnet:')) {
-      updateMagnetState(magnetId, { state: 'idle', metadata: null, error: null });
-      return;
-    }
-
-    // Set timeout for debounced inspection
-    const timeoutId = setTimeout(async () => {
-      updateMagnetState(magnetId, { state: 'inspecting', metadata: null, error: null });
-
-      try {
-        const controller = new AbortController();
-        inspectControllers.current.set(magnetId, controller);
-
-        console.log(`[INSPECT] Starting for magnet ${magnetId}`);
-        const metadata = await inspectTorrent(magnetValue);
-
-        // Check if this request was cancelled
-        if (controller.signal.aborted) return;
-
-        console.log(`[INSPECT OK] ${metadata.name}, size=${humanBytes(metadata.sizeBytes)}`);
-        updateMagnetState(magnetId, {
-          state: 'ready',
-          metadata: {
-            ...metadata,
-            sizeFormatted: humanBytes(metadata.sizeBytes)
-          },
-          error: null
-        });
-      } catch (error) {
-        // Check if this request was cancelled
-        if (inspectControllers.current.get(magnetId)?.signal.aborted) return;
-
-        console.log(`[INSPECT FAILED] ${error.message}`);
-        updateMagnetState(magnetId, {
-          state: 'error',
-          metadata: null,
-          error: error.message
-        });
-      } finally {
-        inspectControllers.current.delete(magnetId);
-        inspectTimeouts.current.delete(magnetId);
-      }
-    }, 500); // 500ms debounce
-
-    inspectTimeouts.current.set(magnetId, timeoutId);
-  }, []);
-
-  const updateMagnetState = (magnetId, updates) => {
-    setMagnets(prev => prev.map(m =>
-      m.id === magnetId ? { ...m, ...updates } : m
-    ));
-  };
-
-  const handleMagnetChange = (magnetId, value) => {
-    updateMagnetState(magnetId, { value });
-    debouncedInspect(magnetId, value);
-  };
-
-  const addNewMagnetField = () => {
-    setMagnets(prev => [...prev, {
-      id: nextId,
-      value: "",
-      metadata: null,
-      state: 'idle',
-      error: null
-    }]);
-    setNextId(prev => prev + 1);
-  };
-
-  const removeMagnetField = (magnetId) => {
-    // Cancel any pending operations
-    if (inspectTimeouts.current.has(magnetId)) {
-      clearTimeout(inspectTimeouts.current.get(magnetId));
-      inspectTimeouts.current.delete(magnetId);
-    }
-    if (inspectControllers.current.has(magnetId)) {
-      inspectControllers.current.get(magnetId).abort();
-      inspectControllers.current.delete(magnetId);
-    }
-
-    setMagnets(prev => prev.filter(m => m.id !== magnetId));
-  };
-
-  const handleAddTorrent = async (magnetId) => {
-    const magnet = magnets.find(m => m.id === magnetId);
-    if (!magnet || !magnet.value.trim()) return;
-
-    updateMagnetState(magnetId, { state: 'adding' });
+    setLoading(true);
+    setAddingState('connecting');
 
     try {
-      console.log('[ADD] Starting torrent addition for:', magnet.metadata?.name || 'Unknown');
-      const response = await addTorrent(magnet.value.trim());
-      console.log('[ADD] Success:', response);
+      console.log('🚀 Frontend: Starting torrent addition process...');
+      console.log('🔗 Frontend: Magnet link:', magnet.substring(0, 80) + '...');
 
-      updateMagnetState(magnetId, { state: 'added' });
+      // Simulate connection phase
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setAddingState('fetching');
 
-      // Clear the magnet field after successful add
-      setTimeout(() => {
-        updateMagnetState(magnetId, {
-          value: "",
-          state: 'idle',
-          metadata: null,
-          error: null
-        });
-      }, 2000);
+      console.log('📡 Frontend: Sending add torrent request...');
+      const response = await addTorrent(magnet.trim());
+      console.log('✅ Frontend: Torrent addition response:', response);
 
-      // Refresh torrent list
+      // Extract torrent name from magnet link for display
+      const nameMatch = magnet.match(/dn=([^&]+)/);
+      const torrentName = nameMatch ? decodeURIComponent(nameMatch[1]) : 'New Torrent';
+      setLastAddedName(torrentName);
+      console.log('📝 Frontend: Extracted torrent name:', torrentName);
+
+      setAddingState('added');
+      setMagnet("");
+
+      // Wait a bit before refreshing to allow backend to process
+      console.log('⏳ Frontend: Waiting for backend to process...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log('🔄 Frontend: Refreshing torrent list...');
       onTorrentAdded();
 
-    } catch (err) {
-      console.error('[ADD] Failed:', err);
-
-      let errorMessage = 'Failed to add torrent';
-      if (err.response?.data?.error) {
-        errorMessage = err.response.data.error;
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      updateMagnetState(magnetId, {
-        state: 'error',
-        error: errorMessage
-      });
-
-      // Reset state after showing error
+      // Show success state briefly
       setTimeout(() => {
-        updateMagnetState(magnetId, { state: 'ready' });
-      }, 3000);
+        setAddingState('idle');
+        console.log('✨ Frontend: Torrent addition process complete');
+      }, 1500);
+
+    } catch (err) {
+      console.error('❌ Frontend: Torrent addition failed:', err);
+      console.error('❌ Frontend: Error details:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data
+      });
+      setAddingState('idle');
+      alert("Failed to add torrent: " + (err.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="space-y-6">
-      {/* Add Torrents Section */}
+      {/* Add Torrent Form */}
       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
         <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center">
           <span className="mr-2">⚡</span>
-          Add New Torrents
+          Add New Torrent
         </h2>
-
-        <div className="space-y-4">
-          {magnets.map((magnet, index) => (
-            <MagnetField
-              key={magnet.id}
-              magnet={magnet}
-              index={index}
-              onChange={(value) => handleMagnetChange(magnet.id, value)}
-              onAdd={() => handleAddTorrent(magnet.id)}
-              onRemove={() => removeMagnetField(magnet.id)}
-              canRemove={magnets.length > 1}
+        <form onSubmit={handleAddTorrent} className="space-y-4">
+          <div>
+            <label htmlFor="magnet" className="block text-sm font-medium text-gray-300 mb-2">
+              Magnet Link
+            </label>
+            <input
+              id="magnet"
+              type="text"
+              placeholder="magnet:?xt=urn:btih:..."
+              value={magnet}
+              onChange={(e) => setMagnet(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
             />
-          ))}
-
+          </div>
           <button
-            onClick={addNewMagnetField}
-            className="w-full py-2 px-4 border-2 border-dashed border-gray-600 hover:border-yellow-500 rounded-lg text-gray-400 hover:text-yellow-400 transition-colors"
+            type="submit"
+            disabled={loading || !magnet.trim()}
+            className={`w-full px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center ${
+              addingState === 'added'
+                ? 'bg-green-500 text-white'
+                : loading
+                ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-gray-900'
+            }`}
           >
-            + Add Another Magnet Link
+            {addingState === 'connecting' && (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-300 mr-2"></div>
+                <span className="animate-pulse">Connecting to network...</span>
+              </>
+            )}
+            {addingState === 'fetching' && (
+              <>
+                <div className="flex space-x-1 mr-2">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                </div>
+                <span className="animate-pulse">Fetching torrent metadata...</span>
+              </>
+            )}
+            {addingState === 'added' && (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <span>✨ {lastAddedName} added successfully!</span>
+              </>
+            )}
+            {addingState === 'idle' && !loading && (
+              <>
+                <span className="mr-2">🚀</span>
+                Add Torrent
+              </>
+            )}
           </button>
-        </div>
+        </form>
       </div>
+
+      {/* Adding Progress Notification */}
+      {addingState !== 'idle' && (
+        <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-700/50 rounded-xl p-4 backdrop-blur-sm">
+          <div className="flex items-center space-x-3">
+            {addingState === 'connecting' && (
+              <>
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <div>
+                  <p className="text-blue-300 font-medium">🌐 Connecting to torrent network...</p>
+                  <p className="text-blue-400/70 text-sm">Initializing peer connections</p>
+                </div>
+              </>
+            )}
+            {addingState === 'fetching' && (
+              <>
+                <div className="flex-shrink-0">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-8 bg-purple-400 rounded animate-pulse"></div>
+                    <div className="w-2 h-6 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-4 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-2 h-6 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.3s'}}></div>
+                    <div className="w-2 h-8 bg-purple-400 rounded animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-purple-300 font-medium">📋 Fetching torrent metadata...</p>
+                  <p className="text-purple-400/70 text-sm">Processing torrent information and files</p>
+                </div>
+              </>
+            )}
+            {addingState === 'added' && (
+              <>
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-green-300 font-medium">🎉 Torrent added successfully!</p>
+                  <p className="text-green-400/70 text-sm">{lastAddedName} is now downloading</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Active Torrents */}
       <div className="space-y-4">
@@ -212,7 +197,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
           <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center">
             <div className="text-gray-400 text-6xl mb-4">📦</div>
             <p className="text-gray-400 text-lg">No active torrents</p>
-            <p className="text-gray-500 text-sm mt-2">Add magnet links above to get started</p>
+            <p className="text-gray-500 text-sm mt-2">Add a magnet link above to get started</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -222,90 +207,6 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function MagnetField({ magnet, index, onChange, onAdd, onRemove, canRemove }) {
-  const { value, metadata, state, error } = magnet;
-
-  const canAdd = state === 'ready' && metadata && !error;
-  const isLoading = state === 'inspecting' || state === 'adding';
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <input
-            type="text"
-            placeholder="magnet:?xt=urn:btih:..."
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
-          />
-        </div>
-
-        <button
-          onClick={onAdd}
-          disabled={!canAdd || isLoading}
-          className={`px-6 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center min-w-[120px] ${
-            state === 'added'
-              ? 'bg-green-500 text-white'
-              : canAdd
-              ? 'bg-yellow-500 hover:bg-yellow-600 text-gray-900'
-              : 'bg-gray-600 cursor-not-allowed text-gray-300'
-          }`}
-        >
-          {state === 'adding' && (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-300 mr-2"></div>
-          )}
-          {state === 'added' ? '✓ Added' : canAdd ? 'Add' : 'Add'}
-        </button>
-
-        {canRemove && (
-          <button
-            onClick={onRemove}
-            className="px-3 py-3 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors"
-            title="Remove this magnet field"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      {/* Status indicators */}
-      {state === 'inspecting' && (
-        <div className="flex items-center space-x-2 text-sm text-blue-400">
-          <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-400"></div>
-          <span>Fetching torrent info...</span>
-        </div>
-      )}
-
-      {state === 'ready' && metadata && (
-        <div className="bg-green-900/30 border border-green-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-green-300 font-medium">{metadata.name}</h4>
-              <p className="text-green-400/70 text-sm">
-                Size: {metadata.sizeFormatted} • Files: {metadata.files.length}
-              </p>
-            </div>
-            <div className="text-green-400">✓</div>
-          </div>
-        </div>
-      )}
-
-      {state === 'error' && error && (
-        <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-red-300 font-medium">Error</h4>
-              <p className="text-red-400/70 text-sm">{error}</p>
-            </div>
-            <div className="text-red-400">⚠</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
