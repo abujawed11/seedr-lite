@@ -26,6 +26,7 @@ const authenticateToken = async (req, res, next) => {
       email: user.email,
       storageQuota: user.storage_quota,
       storageUsed: user.storage_used,
+      remainingQuota: user.remaining_quota,
       plan: user.plan
     };
 

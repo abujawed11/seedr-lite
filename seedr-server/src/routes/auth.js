@@ -37,6 +37,7 @@ router.post('/register', asyncHandler(async (req, res) => {
         email: user.email,
         storageQuota: user.storageQuota,
         storageUsed: user.storageUsed,
+        remainingQuota: user.remainingQuota,
         plan: user.plan
       },
       token
@@ -78,6 +79,7 @@ router.post('/login', asyncHandler(async (req, res) => {
       email: user.email,
       storageQuota: user.storage_quota,
       storageUsed: user.storage_used,
+      remainingQuota: user.remaining_quota,
       plan: user.plan
     },
     token
@@ -98,6 +100,7 @@ router.get('/profile', authenticateToken, asyncHandler(async (req, res) => {
         email: updatedUser.email,
         storageQuota: updatedUser.storage_quota,
         storageUsed: updatedUser.storage_used,
+        remainingQuota: updatedUser.remaining_quota,
         plan: updatedUser.plan
       }
     });

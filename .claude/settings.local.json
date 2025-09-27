@@ -10,7 +10,10 @@
       "Bash(npm run lint)",
       "Bash(npm install sqlite3 bcryptjs)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Read(//d/Abu/screenShots/**)",
+      "Bash(npm install:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

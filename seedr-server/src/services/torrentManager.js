@@ -299,7 +299,7 @@ const path = require("path");
 const { logger } = require("../utils/logger");
 const { getTrackers } = require("../utils/trackers");
 const { getUserStorageDir, ensureUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
-const { validateStorageDuringDownload } = require("../middlewares/storageValidator");
+const { startQuotaMonitoring, stopQuotaMonitoring } = require("../utils/quotaMonitor");
 
 const ROOT = process.env.ROOT || "./src/storage/library";
 
@@ -450,7 +450,7 @@ async function addMagnet(magnet, userId) {
           console.log("🔍 No peers found from:", type, "for torrent:", torrent.name);
         });
 
-        // Enhanced download monitoring
+        // Enhanced download monitoring with quota enforcement
         let lastLoggedProgress = 0;
         torrent.on("download", () => {
           const currentProgress = Math.floor(torrent.progress * 100);
@@ -460,6 +460,10 @@ async function addMagnet(magnet, userId) {
             lastLoggedProgress = currentProgress;
           }
         });
+
+        // Start real-time quota monitoring for this user
+        console.log(`🔍 Starting quota monitoring for user ${userId}`);
+        startQuotaMonitoring(userId, c);
 
         // Immediately stop seeding when complete (keep files) and update storage usage
         torrent.on("done", async () => {
@@ -486,6 +490,10 @@ async function addMagnet(magnet, userId) {
               console.log("🗑️ Torrent removed from client (files kept):", torrent.infoHash);
             }
           });
+
+          // Stop quota monitoring when torrent completes
+          console.log(`🛑 Stopping quota monitoring for completed torrent (user ${userId})`);
+          // Note: Global monitoring will automatically stop monitoring if no active torrents remain
         });
 
         // ⚡ IMMEDIATE RESOLUTION: Don't wait for events, resolve immediately with torrent object
@@ -583,17 +591,27 @@ async function listTorrents(userId = null) {
 
 
 
-async function stopTorrent(infoHash) {
+async function stopTorrent(infoHash, userId = null) {
   const c = await getClient();
   const t = c.get(infoHash);
   if (!t) return false;
 
+  // Get userId from torrent if not provided
+  const torrentUserId = userId || t.userId;
+
   return new Promise((resolve, reject) => {
     c.remove(infoHash, { destroyStore: false }, (err) => {
       if (err) return reject(err);
+
       // Clean up stored magnet URI
       originalMagnets.delete(infoHash);
       console.log("Torrent stopped (removed, files kept):", infoHash);
+
+      // Note: Global monitoring will automatically clean up monitoring for users with no active torrents
+      if (torrentUserId) {
+        console.log(`🛑 Torrent stopped for user ${torrentUserId} - monitoring will be cleaned up automatically`);
+      }
+
       resolve(true);
     });
   });
@@ -610,4 +628,5 @@ module.exports = {
   listTorrents,
   stopTorrent,
   removeTorrent,
+  getClient, // Export for quota monitoring initialization
 };

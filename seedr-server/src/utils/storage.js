@@ -53,21 +53,24 @@ async function updateUserStorageUsage(userId) {
 
 // Check if user has enough space for a new download
 async function checkStorageAvailable(userId, requiredBytes) {
-  const user = await database.getUserById(userId);
-  if (!user) {
+  const storageInfo = await database.getUserStorageInfo(userId);
+  if (!storageInfo) {
     throw new Error('User not found');
   }
 
-  // Get current storage usage
+  // Update current storage usage and remaining quota
   const currentUsage = await updateUserStorageUsage(userId);
-  const availableSpace = user.storage_quota - currentUsage;
+
+  // Get updated storage info after usage calculation
+  const updatedStorageInfo = await database.getUserStorageInfo(userId);
 
   return {
-    hasSpace: availableSpace >= requiredBytes,
-    availableSpace,
+    hasSpace: updatedStorageInfo.remaining_quota >= requiredBytes,
+    availableSpace: updatedStorageInfo.remaining_quota,
     requiredSpace: requiredBytes,
-    currentUsage,
-    quota: user.storage_quota
+    currentUsage: updatedStorageInfo.storage_used,
+    quota: updatedStorageInfo.storage_quota,
+    remainingQuota: updatedStorageInfo.remaining_quota
   };
 }
 
@@ -107,6 +110,55 @@ function cleanupEmptyDirectories(dirPath) {
   }
 }
 
+// Import the production quota enforcer
+const { enforceQuota } = require('./productionQuotaEnforcer');
+
+// Check quota before adding torrent using production-grade enforcement
+async function checkQuotaBeforeAddingTorrent(userId, input, options = {}) {
+  try {
+    console.log('🔒 Starting production quota enforcement...');
+    const result = await enforceQuota(userId, input);
+
+    if (result.allowed) {
+      return {
+        canAdd: true,
+        detectedSize: result.detectedSize,
+        torrentName: result.torrentName,
+        detectionMethod: result.method,
+        quotaInfo: result.quotaInfo,
+        sizeDetected: !!result.detectedSize,
+        reliable: result.reliable || false,
+        warning: result.warning,
+        suggestion: result.suggestion
+      };
+    } else {
+      return {
+        canAdd: false,
+        detectedSize: result.detectedSize || null,
+        quotaInfo: result.quotaInfo || null,
+        sizeDetectionFailed: !result.detectedSize,
+        detectionError: result.error,
+        failureType: result.method,
+        appliedPolicy: result.method,
+        suggestion: result.suggestion,
+        policyReason: result.policyReason
+      };
+    }
+  } catch (error) {
+    console.error('💥 Critical error in quota enforcement:', error);
+
+    return {
+      canAdd: false,
+      detectedSize: null,
+      quotaInfo: null,
+      sizeDetectionFailed: true,
+      detectionError: error.message,
+      failureType: 'critical_error',
+      appliedPolicy: 'system_error'
+    };
+  }
+}
+
 module.exports = {
   getUserStorageDir,
   ensureUserStorageDir,
@@ -114,5 +166,6 @@ module.exports = {
   updateUserStorageUsage,
   checkStorageAvailable,
   humanBytes,
-  cleanupEmptyDirectories
+  cleanupEmptyDirectories,
+  checkQuotaBeforeAddingTorrent
 };
