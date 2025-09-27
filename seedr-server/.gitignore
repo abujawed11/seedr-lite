@@ -146,5 +146,8 @@ vite.config.ts.timestamp-*
 src/storage/*
 !src/storage/.gitkeep
 
+<<<<<<< HEAD
 
 seedr-server/data/users.db
+=======
+>>>>>>> 556b193f8acae103ca73715e326773715828e1a6

@@ -1,7 +1,9 @@
 import { useState } from "react";
+import MediaPlayer from "./MediaPlayer";
 
 export default function FileItem({ file, formatFileSize, onDelete }) {
   const [copyStatus, setCopyStatus] = useState("copy");
+  const [showMediaPlayer, setShowMediaPlayer] = useState(false);
 
   function getFileIcon(fileName, mimeType) {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -89,6 +91,28 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
 
   const copyButton = getCopyButtonContent();
 
+  const isVideoFile = (fileName, mimeType) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    return mimeType?.startsWith('video/') ||
+      ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp', 'ogv'].includes(ext);
+  };
+
+  const isAudioFile = (fileName, mimeType) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    return mimeType?.startsWith('audio/') ||
+      ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a', 'opus', 'aiff'].includes(ext);
+  };
+
+  const handlePlayClick = (e) => {
+    e.preventDefault();
+    if (isVideoFile(file.name, file.mime) || isAudioFile(file.name, file.mime)) {
+      setShowMediaPlayer(true);
+    } else {
+      // For non-media files, open in new tab as before
+      window.open(file.streamUrl, '_blank');
+    }
+  };
+
   return (
     <div className="group flex items-center justify-between p-4 bg-gray-800 rounded-lg hover:bg-gray-750 border border-gray-700 hover:border-gray-600 transition-all">
       <div className="flex items-center min-w-0 flex-1">
@@ -114,16 +138,14 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
       </div>
 
       <div className="flex items-center gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-        <a
-          href={file.streamUrl}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          onClick={handlePlayClick}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors flex items-center"
           title="Play/Stream file"
         >
           <span className="mr-1">▶</span>
           Play
-        </a>
+        </button>
         <a
           href={file.downloadUrl}
           className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium text-white transition-colors flex items-center"
@@ -154,6 +176,16 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
           </button>
         )}
       </div>
+
+      {/* Media Player Modal */}
+      {showMediaPlayer && (
+        <MediaPlayer
+          src={file.streamUrl}
+          title={file.name}
+          onClose={() => setShowMediaPlayer(false)}
+          type={file.mime}
+        />
+      )}
     </div>
   );
 }

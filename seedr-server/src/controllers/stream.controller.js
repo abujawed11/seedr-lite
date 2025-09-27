@@ -105,6 +105,13 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', type);
   res.setHeader('Content-Length', chunkSize);
+
+  // CORS headers for media streaming
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Authorization, Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+
   if (status === 206) {
     res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
   }
