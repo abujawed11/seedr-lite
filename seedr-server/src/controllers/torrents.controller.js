@@ -380,6 +380,9 @@ const {
   stopTorrent,
   removeTorrent,
   getClient,
+  getQuotaExceededNotifications,
+  clearQuotaExceededNotification,
+  clearAllQuotaExceededNotifications
 } = require('../services/torrentManager');
 
 const { signLink, makeDirectLinkPayload } = require('../services/linkSigner');
@@ -710,6 +713,57 @@ exports.cleanupReservations = async (req, res) => {
   } catch (error) {
     console.error('Error cleaning up reservations:', error);
     res.status(500).json({ error: 'Failed to clean up reservations' });
+  }
+};
+
+/**
+ * GET /api/torrents/notifications
+ * Returns quota exceeded notifications for the user
+ */
+exports.getNotifications = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const notifications = getQuotaExceededNotifications(userId);
+    res.json({ notifications });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+};
+
+/**
+ * DELETE /api/torrents/notifications/:id
+ * Clears a specific notification
+ */
+exports.clearNotification = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const notificationId = req.params.id;
+    const cleared = clearQuotaExceededNotification(userId, notificationId);
+
+    if (cleared) {
+      res.json({ message: 'Notification cleared', id: notificationId });
+    } else {
+      res.status(404).json({ error: 'Notification not found' });
+    }
+  } catch (error) {
+    console.error('Error clearing notification:', error);
+    res.status(500).json({ error: 'Failed to clear notification' });
+  }
+};
+
+/**
+ * DELETE /api/torrents/notifications
+ * Clears all notifications for the user
+ */
+exports.clearAllNotifications = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    clearAllQuotaExceededNotifications(userId);
+    res.json({ message: 'All notifications cleared' });
+  } catch (error) {
+    console.error('Error clearing all notifications:', error);
+    res.status(500).json({ error: 'Failed to clear notifications' });
   }
 };
 

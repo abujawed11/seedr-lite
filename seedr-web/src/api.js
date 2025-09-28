@@ -80,3 +80,19 @@ export async function getQuotaInfo() {
   const res = await api.get('/torrents/quota');
   return res.data;
 }
+
+// Notification functions
+export async function getNotifications() {
+  const res = await api.get('/torrents/notifications');
+  return res.data;
+}
+
+export async function clearNotification(notificationId) {
+  const res = await api.delete(`/torrents/notifications/${notificationId}`);
+  return res.data;
+}
+
+export async function clearAllNotifications() {
+  const res = await api.delete('/torrents/notifications');
+  return res.data;
+}

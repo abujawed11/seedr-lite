@@ -8,6 +8,9 @@ router.use(authenticateToken);
 
 router.get('/quota', asyncH(c.quota));                          // get quota information
 router.delete('/reservations/cleanup', asyncH(c.cleanupReservations)); // cleanup stale reservations
+router.get('/notifications', asyncH(c.getNotifications));               // get quota exceeded notifications
+router.delete('/notifications/:id', asyncH(c.clearNotification));       // clear specific notification
+router.delete('/notifications', asyncH(c.clearAllNotifications));       // clear all notifications
 router.post('/', asyncH(c.create));                                     // add magnet link
 router.get('/', asyncH(c.index));                                       // list torrents
 router.get('/:id', asyncH(c.show));                                     // files + URLs for one torrent

@@ -6,6 +6,9 @@ const database = require('../models/database');
 
 const ROOT = process.env.ROOT || './src/storage/library';
 
+// Store quota exceeded notifications for frontend
+const quotaExceededNotifications = new Map(); // userId -> [notifications]
+
 let WebTorrentMod;   // ESM default export
 let client;          // singleton
 
@@ -118,6 +121,15 @@ async function addMagnet(magnet, userId) {
 
               // Log quota exceeded message that frontend can pick up
               console.error(`🚫 QUOTA_EXCEEDED: ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
+
+              // Store notification for frontend
+              addQuotaExceededNotification(userId, {
+                torrentName: torrent.name,
+                torrentSize: humanBytes(torrentSize),
+                availableSpace: humanBytes(availableSpace),
+                timestamp: new Date().toISOString()
+              });
+
               return;
             }
 
@@ -156,12 +168,24 @@ async function addMagnet(magnet, userId) {
           console.log(`🔗 Connected to peer: ${addr}`);
         });
 
+        // Track cumulative data transfer (less noisy than per-chunk logging)
+        let totalDownloaded = 0;
+        let totalUploaded = 0;
+        let lastLogTime = Date.now();
+
         torrent.on('upload', (bytes) => {
-          console.log(`⬆️ Uploading data: ${humanBytes(bytes)}`);
+          totalUploaded += bytes;
+          const now = Date.now();
+          // Only log every 10 seconds to reduce noise
+          if (now - lastLogTime > 10000) {
+            console.log(`📊 Data transfer: ⬇️ ${humanBytes(totalDownloaded)} ⬆️ ${humanBytes(totalUploaded)}`);
+            lastLogTime = now;
+          }
         });
 
         torrent.on('download', (bytes) => {
-          console.log(`⬇️ Downloading data: ${humanBytes(bytes)}`);
+          totalDownloaded += bytes;
+          // Upload event will handle the logging to avoid duplicate logs
         });
 
         // Log torrent state periodically
@@ -216,6 +240,15 @@ async function addMagnet(magnet, userId) {
 
                 // Log quota exceeded message that frontend can pick up
                 console.error(`🚫 QUOTA_EXCEEDED (MANUAL): ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
+
+                // Store notification for frontend
+                addQuotaExceededNotification(userId, {
+                  torrentName: torrent.name,
+                  torrentSize: humanBytes(torrentSize),
+                  availableSpace: humanBytes(availableSpace),
+                  timestamp: new Date().toISOString()
+                });
+
                 return;
               }
 
@@ -325,11 +358,57 @@ async function removeTorrent(infoHash) {
   });
 }
 
+// Notification management functions
+function addQuotaExceededNotification(userId, notification) {
+  if (!quotaExceededNotifications.has(userId)) {
+    quotaExceededNotifications.set(userId, []);
+  }
+
+  const userNotifications = quotaExceededNotifications.get(userId);
+  userNotifications.push({
+    id: Date.now().toString(),
+    type: 'quota_exceeded',
+    ...notification
+  });
+
+  // Keep only last 10 notifications per user
+  if (userNotifications.length > 10) {
+    userNotifications.splice(0, userNotifications.length - 10);
+  }
+
+  console.log(`📢 Added quota exceeded notification for user ${userId}: ${notification.torrentName}`);
+}
+
+function getQuotaExceededNotifications(userId) {
+  return quotaExceededNotifications.get(userId) || [];
+}
+
+function clearQuotaExceededNotification(userId, notificationId) {
+  const userNotifications = quotaExceededNotifications.get(userId);
+  if (userNotifications) {
+    const index = userNotifications.findIndex(n => n.id === notificationId);
+    if (index !== -1) {
+      userNotifications.splice(index, 1);
+      console.log(`🗑️ Cleared notification ${notificationId} for user ${userId}`);
+      return true;
+    }
+  }
+  return false;
+}
+
+function clearAllQuotaExceededNotifications(userId) {
+  quotaExceededNotifications.set(userId, []);
+  console.log(`🗑️ Cleared all notifications for user ${userId}`);
+}
+
 module.exports = {
   addMagnet,
   getTorrent,
   listTorrents,
   stopTorrent,
   removeTorrent,
-  getClient
+  getClient,
+  getQuotaExceededNotifications,
+  clearQuotaExceededNotification,
+  clearAllQuotaExceededNotifications
 };

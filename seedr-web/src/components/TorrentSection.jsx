@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   addTorrent,
   stopTorrent,
   deleteTorrent,
+  getNotifications,
+  clearNotification,
+  clearAllNotifications,
 } from "../api";
 
 function humanBytes(bytes) {
@@ -22,6 +25,43 @@ function humanBytes(bytes) {
 export default function TorrentSection({ torrents, onTorrentAdded }) {
   const [magnets, setMagnets] = useState([{ id: 1, value: "", state: 'idle', error: null }]);
   const [nextId, setNextId] = useState(2);
+  const [notifications, setNotifications] = useState([]);
+
+  // Fetch notifications on component mount and periodically
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const response = await getNotifications();
+        setNotifications(response.notifications || []);
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      }
+    };
+
+    fetchNotifications();
+
+    // Check for new notifications every 10 seconds
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleClearNotification = async (notificationId) => {
+    try {
+      await clearNotification(notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    } catch (error) {
+      console.error('Failed to clear notification:', error);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      await clearAllNotifications();
+      setNotifications([]);
+    } catch (error) {
+      console.error('Failed to clear all notifications:', error);
+    }
+  };
 
   const updateMagnetState = (magnetId, updates) => {
     setMagnets(prev => prev.map(m =>
@@ -105,6 +145,56 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
 
   return (
     <div className="space-y-6">
+      {/* Notifications Section */}
+      {notifications.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-red-400 flex items-center">
+              <span className="mr-2">🚨</span>
+              Quota Exceeded Alerts ({notifications.length})
+            </h2>
+            {notifications.length > 1 && (
+              <button
+                onClick={handleClearAllNotifications}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          {notifications.map((notification) => (
+            <div
+              key={notification.id}
+              className="bg-red-900/20 border border-red-700/50 rounded-lg p-4 flex items-start justify-between"
+            >
+              <div className="flex-1">
+                <div className="flex items-center mb-2">
+                  <span className="text-red-400 text-lg mr-2">⚠️</span>
+                  <h3 className="text-red-300 font-medium">Torrent Removed - Quota Exceeded</h3>
+                </div>
+                <div className="text-sm text-red-200/80 space-y-1">
+                  <p><strong>Torrent:</strong> {notification.torrentName}</p>
+                  <p><strong>Size:</strong> {notification.torrentSize}</p>
+                  <p><strong>Available Space:</strong> {notification.availableSpace}</p>
+                  <p className="text-xs text-red-300/60">
+                    {new Date(notification.timestamp).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleClearNotification(notification.id)}
+                className="ml-4 p-1.5 text-red-400 hover:text-red-300 hover:bg-red-800/30 rounded-lg transition-colors"
+                title="Dismiss notification"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Add Torrents Section */}
       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
         <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center">
