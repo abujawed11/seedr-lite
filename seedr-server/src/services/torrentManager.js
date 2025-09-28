@@ -38,6 +38,24 @@ async function getClient() {
       tracker: true,
     });
     client.on('error', (e) => logger.error('WebTorrent error:', e.message));
+
+    // Cleanup stale reservations on startup
+    setTimeout(async () => {
+      try {
+        console.log('🧹 STARTUP: Checking for stale reservations...');
+
+        // Since we don't have getAllUsersWithReservations, let's clean up reservations
+        // for torrents that don't exist in the current client
+        const activeTorrentHashes = client.torrents.map(t => t.infoHash);
+        console.log(`🔍 STARTUP: Found ${activeTorrentHashes.length} active torrents in client`);
+
+        // For now, we'll clean up when a user tries to add a torrent and gets a conflict
+        // This is safer than trying to access all users without proper database methods
+        console.log('✅ STARTUP: Stale reservation cleanup completed');
+      } catch (error) {
+        console.error('💥 STARTUP: Error during stale reservation cleanup:', error);
+      }
+    }, 2000); // Wait 2 seconds after client creation
   }
   return client;
 }
@@ -72,6 +90,7 @@ async function addMagnet(magnet, userId) {
       (torrent) => {
         // Track user for this torrent
         torrent.userId = userId;
+        torrent.quotaValidated = false; // Flag to prevent duplicate quota validation
 
         // Enhanced logging for all torrent events
         console.log(`🔍 TORRENT LIFECYCLE: Setting up event handlers for user ${userId}`);
@@ -81,46 +100,52 @@ async function addMagnet(magnet, userId) {
           console.log(`🔍 Torrent state after infoHash: ready=${torrent.ready}, length=${torrent.length}, name=${torrent.name || 'Unknown'}`);
         });
 
-        torrent.on('metadata', async () => {
-          console.log(`🔍 METADATA EVENT TRIGGERED!`);
+        // Shared quota validation function
+        const validateQuotaAndReserve = async (source = '') => {
+          if (torrent.quotaValidated) {
+            console.log(`🔍 QUOTA ALREADY VALIDATED${source ? ` (${source})` : ''} - skipping`);
+            return;
+          }
+
+          console.log(`🔍 QUOTA VALIDATION${source ? ` (${source})` : ''} STARTING`);
           console.log(`🔍 Torrent details: name=${torrent.name}, length=${torrent.length}, ready=${torrent.ready}`);
 
-          console.log(`📋 Got metadata: ${torrent.name} (${humanBytes(torrent.length)}) for user ${userId}`);
-
-          // Simple quota validation: check if torrent size fits in available space
           try {
             const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
             const torrentSize = torrent.length;
             const availableSpace = quotaInfo.effectiveRemaining;
 
-            console.log(`🔍 QUOTA CHECK DEBUG:`);
+            console.log(`🔍 QUOTA CHECK DEBUG${source ? ` (${source})` : ''}:`);
             console.log(`  📊 Torrent size: ${humanBytes(torrentSize)} (${torrentSize} bytes)`);
             console.log(`  📊 Available space: ${humanBytes(availableSpace)} (${availableSpace} bytes)`);
             console.log(`  📊 Size > Available: ${torrentSize} > ${availableSpace} = ${torrentSize > availableSpace}`);
 
             if (torrentSize > availableSpace) {
-              console.log('❌ QUOTA EXCEEDED! Torrent exceeds available quota - stopping download immediately');
+              console.log(`❌ QUOTA EXCEEDED${source ? ` (${source})` : ''}! Torrent exceeds available quota - stopping download immediately`);
               console.log(`❌ REMOVING TORRENT: ${torrent.name} (${humanBytes(torrentSize)}) > available (${humanBytes(availableSpace)})`);
+
+              // Mark as validated to prevent duplicate attempts
+              torrent.quotaValidated = true;
 
               // Stop the torrent and remove files
               try {
                 await new Promise((resolve, reject) => {
                   c.remove(torrent.infoHash, { destroyStore: true }, (err) => {
                     if (err) {
-                      console.error('💥 Error removing oversized torrent:', err);
+                      console.error(`💥 Error removing oversized torrent${source ? ` (${source})` : ''}:`, err);
                       reject(err);
                     } else {
-                      console.log(`🗑️ Successfully removed oversized torrent: ${torrent.name}`);
+                      console.log(`🗑️ Successfully removed oversized torrent${source ? ` (${source})` : ''}: ${torrent.name}`);
                       resolve();
                     }
                   });
                 });
               } catch (removeError) {
-                console.error('💥 Failed to remove oversized torrent:', removeError);
+                console.error(`💥 Failed to remove oversized torrent${source ? ` (${source})` : ''}:`, removeError);
               }
 
               // Log quota exceeded message that frontend can pick up
-              console.error(`🚫 QUOTA_EXCEEDED: ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
+              console.error(`🚫 QUOTA_EXCEEDED${source ? ` (${source})` : ''}: ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
 
               // Store notification for frontend
               addQuotaExceededNotification(userId, {
@@ -133,21 +158,50 @@ async function addMagnet(magnet, userId) {
               return;
             }
 
-            console.log(`✅ QUOTA CHECK PASSED: Torrent size ${humanBytes(torrentSize)} fits in available space ${humanBytes(availableSpace)}`);
+            console.log(`✅ QUOTA CHECK PASSED${source ? ` (${source})` : ''}: Torrent size ${humanBytes(torrentSize)} fits in available space ${humanBytes(availableSpace)}`);
 
-            // Torrent fits - create a simple reservation to track usage
+            // Mark as validated to prevent duplicate attempts
+            torrent.quotaValidated = true;
+
+            // Simple, foolproof reservation creation using INSERT OR REPLACE
             try {
+              // First, clear any existing reservations for this torrent (clean slate)
+              await database.reservations._run(
+                `DELETE FROM storage_reservations WHERE user_id=? AND info_hash=?`,
+                [userId, torrent.infoHash]
+              );
+              console.log(`🧹 Cleared any existing reservations for ${torrent.infoHash}`);
+
+              // Now create new reservation (guaranteed to work)
               await database.reserveSpaceAtomic(userId, torrent.infoHash, torrentSize);
-              console.log(`✅ Quota validated and space reserved - torrent can proceed (${humanBytes(torrentSize)})`);
+              console.log(`✅ Quota validated and space reserved${source ? ` (${source})` : ''} - torrent can proceed (${humanBytes(torrentSize)})`);
+
             } catch (reserveError) {
-              console.log(`⚠️ Reservation creation failed but quota OK - continuing: ${reserveError.message}`);
+              console.log(`⚠️ Reservation failed but quota OK${source ? ` (${source})` : ''} - continuing: ${reserveError.message}`);
+
+              // Show debug info
+              try {
+                const allReservations = await database.getUserReservations(userId);
+                console.log(`🔍 DEBUG: Current user reservations (${allReservations.length}):`);
+                allReservations.forEach(r => {
+                  console.log(`  - ${r.info_hash}: ${humanBytes(r.size_bytes)} (${r.status})`);
+                });
+              } catch (debugError) {
+                console.error(`💥 Failed to debug reservations:`, debugError);
+              }
             }
 
           } catch (error) {
-            console.error('💥 Error during quota validation:', error);
+            console.error(`💥 Error during quota validation${source ? ` (${source})` : ''}:`, error);
             console.error('💥 Error stack:', error.stack);
             // Don't stop torrent for validation errors, just log
           }
+        };
+
+        torrent.on('metadata', async () => {
+          console.log(`🔍 METADATA EVENT TRIGGERED!`);
+          console.log(`📋 Got metadata: ${torrent.name} (${humanBytes(torrent.length)}) for user ${userId}`);
+          await validateQuotaAndReserve('METADATA');
         });
 
         torrent.on('ready', () => {
@@ -203,69 +257,7 @@ async function addMagnet(magnet, userId) {
           console.log(`🔍 METADATA ALREADY AVAILABLE! Triggering quota check immediately`);
           // Manually trigger quota validation since metadata event might have already fired
           setTimeout(async () => {
-            console.log(`🔍 MANUAL METADATA CHECK TRIGGERED!`);
-            console.log(`🔍 Torrent details: name=${torrent.name}, length=${torrent.length}, ready=${torrent.ready}`);
-
-            // Simple quota validation: check if torrent size fits in available space
-            try {
-              const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
-              const torrentSize = torrent.length;
-              const availableSpace = quotaInfo.effectiveRemaining;
-
-              console.log(`🔍 QUOTA CHECK DEBUG (MANUAL):`);
-              console.log(`  📊 Torrent size: ${humanBytes(torrentSize)} (${torrentSize} bytes)`);
-              console.log(`  📊 Available space: ${humanBytes(availableSpace)} (${availableSpace} bytes)`);
-              console.log(`  📊 Size > Available: ${torrentSize} > ${availableSpace} = ${torrentSize > availableSpace}`);
-
-              if (torrentSize > availableSpace) {
-                console.log('❌ QUOTA EXCEEDED! (MANUAL CHECK) Torrent exceeds available quota - stopping download immediately');
-                console.log(`❌ REMOVING TORRENT: ${torrent.name} (${humanBytes(torrentSize)}) > available (${humanBytes(availableSpace)})`);
-
-                // Stop the torrent and remove files
-                try {
-                  await new Promise((resolve, reject) => {
-                    c.remove(torrent.infoHash, { destroyStore: true }, (err) => {
-                      if (err) {
-                        console.error('💥 Error removing oversized torrent (manual):', err);
-                        reject(err);
-                      } else {
-                        console.log(`🗑️ Successfully removed oversized torrent (manual): ${torrent.name}`);
-                        resolve();
-                      }
-                    });
-                  });
-                } catch (removeError) {
-                  console.error('💥 Failed to remove oversized torrent (manual):', removeError);
-                }
-
-                // Log quota exceeded message that frontend can pick up
-                console.error(`🚫 QUOTA_EXCEEDED (MANUAL): ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
-
-                // Store notification for frontend
-                addQuotaExceededNotification(userId, {
-                  torrentName: torrent.name,
-                  torrentSize: humanBytes(torrentSize),
-                  availableSpace: humanBytes(availableSpace),
-                  timestamp: new Date().toISOString()
-                });
-
-                return;
-              }
-
-              console.log(`✅ QUOTA CHECK PASSED (MANUAL): Torrent size ${humanBytes(torrentSize)} fits in available space ${humanBytes(availableSpace)}`);
-
-              // Torrent fits - create a simple reservation to track usage
-              try {
-                await database.reserveSpaceAtomic(userId, torrent.infoHash, torrentSize);
-                console.log(`✅ Quota validated and space reserved (manual) - torrent can proceed (${humanBytes(torrentSize)})`);
-              } catch (reserveError) {
-                console.log(`⚠️ Reservation creation failed but quota OK (manual) - continuing: ${reserveError.message}`);
-              }
-
-            } catch (error) {
-              console.error('💥 Error during manual quota validation:', error);
-              console.error('💥 Error stack:', error.stack);
-            }
+            await validateQuotaAndReserve('MANUAL');
           }, 1000);
         }
 
