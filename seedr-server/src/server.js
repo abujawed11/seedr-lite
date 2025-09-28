@@ -44,6 +44,31 @@ app.listen(PORT, async () => {
         const client = await getClient();
         await startGlobalQuotaMonitoring(client);
         console.log('🌍 Global quota monitoring initialized');
+
+        // Reconcile storage reservations with active torrents
+        try {
+          console.log('🔄 Starting storage reservation reconciliation...');
+          const database = require('./models/database');
+
+          // Get all active torrents from WebTorrent client
+          const activeTorrents = client.torrents.map(torrent => ({
+            infoHash: torrent.infoHash,
+            userId: torrent.userId || null, // torrent.userId is set when torrent is added
+            sizeBytes: torrent.length || 0
+          })).filter(t => t.userId); // Only process torrents with valid userId
+
+          console.log(`📊 Found ${activeTorrents.length} active torrents for reconciliation`);
+
+          // Reconcile reservations (cleanup stale + create missing)
+          const reconcileStats = await database.reconcileReservations(activeTorrents);
+
+          console.log(`✅ Reservation reconciliation completed:`);
+          console.log(`   - Cleaned up ${reconcileStats.cleanedCount} stale reservations`);
+          console.log(`   - Created ${reconcileStats.createdCount} missing reservations`);
+
+        } catch (error) {
+          console.error('💥 Error during reservation reconciliation:', error);
+        }
       } catch (error) {
         console.error('💥 Error starting global quota monitoring:', error);
       }

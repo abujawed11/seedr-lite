@@ -300,6 +300,8 @@ const { logger } = require("../utils/logger");
 const { getTrackers } = require("../utils/trackers");
 const { getUserStorageDir, ensureUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
 const { startQuotaMonitoring, stopQuotaMonitoring } = require("../utils/quotaMonitor");
+const database = require("../models/database");
+const { fastAddTorrent, enhanceMagnetWithTrackers } = require("./torrentMetadata");
 
 const ROOT = process.env.ROOT || "./src/storage/library";
 
@@ -330,10 +332,50 @@ async function getClient() {
   }
   if (!client) {
     client = new WebTorrentMod({
-      dht: true,
-      tracker: true,
+      // qBittorrent-style aggressive settings for faster torrent fetching
+      dht: {
+        bootstrap: [
+          // Bootstrap with popular DHT nodes for faster peer discovery
+          'router.bittorrent.com:6881',
+          'dht.transmissionbt.com:6881',
+          'router.utorrent.com:6881',
+          'dht.libtorrent.org:25401'
+        ],
+        concurrency: 16,
+        // Announce every 15 minutes as per DHT spec
+        announce: 15 * 60 * 1000
+      },
+      tracker: {
+        // qBittorrent-style tracker settings
+        getAnnounceOpts: () => ({
+          numwant: 200,     // Request more peers per announce
+          compact: 1        // Use compact peer format
+        })
+      },
+      // Optimize connection limits for faster downloads
+      maxConns: 200,        // Increased from default 55 (qBittorrent default: 200)
+      downloadLimit: -1,    // No download limit
+      uploadLimit: 1024,    // Limit upload to 1KB/s to prioritize downloads
+
+      // Enable all peer discovery methods
+      webSeeds: true,
+      dhtEnabled: true,
+      trackerEnabled: true,
+      lsdEnabled: true,
+
+      // More aggressive peer selection
+      strategy: 'rarest'
     });
+
     client.on("error", (e) => logger.error("WebTorrent error:", e?.message || e));
+
+    // Log client optimization info
+    console.log("🚀 WebTorrent client initialized with qBittorrent-style optimizations:");
+    console.log("  📊 Max connections: 200");
+    console.log("  🌐 DHT concurrency: 16");
+    console.log("  📡 Peers per announce: 200");
+    console.log("  ⬇️ Download limit: unlimited");
+    console.log("  ⬆️ Upload limit: 1KB/s");
   }
   return client;
 }
@@ -401,11 +443,16 @@ async function addMagnet(magnet, userId) {
   }
   console.log('🆕 No existing torrent found, creating new one...');
 
+  // Enhance magnet with all available trackers for faster peer discovery
+  console.log('🔧 Enhancing magnet with all available trackers...');
+  const enhancedMagnet = enhanceMagnetWithTrackers(magnet);
+  console.log(`📡 Enhanced magnet with ${getTrackers().length} trackers`);
+
   return new Promise((resolve, reject) => {
     console.log('⚡ Adding torrent to WebTorrent client...');
 
     const t = c.add(
-      magnet,
+      enhancedMagnet,  // Use enhanced magnet for faster peer discovery
       { path: path.resolve(userStorageDir), announce },
       (torrent) => {
         console.log('🎯 Torrent added to client successfully!');
@@ -479,6 +526,11 @@ async function addMagnet(magnet, userId) {
             console.log("📊 Updating user storage usage...");
             await updateUserStorageUsage(userId);
             console.log("✅ Storage usage updated");
+
+            // Finalize the storage reservation
+            console.log("📝 Finalizing storage reservation...");
+            await database.finalizeReservation(userId, torrent.infoHash);
+            console.log("✅ Storage reservation finalized");
           } catch (error) {
             console.error("💥 Error updating storage usage:", error);
           }
@@ -606,6 +658,15 @@ async function stopTorrent(infoHash, userId = null) {
       // Clean up stored magnet URI
       originalMagnets.delete(infoHash);
       console.log("Torrent stopped (removed, files kept):", infoHash);
+
+      // Release storage reservation
+      if (torrentUserId) {
+        database.releaseReservation(torrentUserId, infoHash).then(() => {
+          console.log(`✅ Storage reservation released for torrent ${infoHash}`);
+        }).catch((err) => {
+          console.error(`💥 Error releasing reservation for torrent ${infoHash}:`, err);
+        });
+      }
 
       // Note: Global monitoring will automatically clean up monitoring for users with no active torrents
       if (torrentUserId) {

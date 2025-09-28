@@ -14,7 +14,12 @@
       "Read(//d/Abu/screenShots/**)",
       "Bash(npm install:*)",
       "Bash(pkill:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(awk:*)",
+      "Bash(timeout 10s npm run dev)",
+      "Bash(timeout 15s npm run dev)",
+      "WebFetch(domain:newtrackon.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []
