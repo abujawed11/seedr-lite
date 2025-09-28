@@ -28,10 +28,7 @@ api.interceptors.response.use(
   }
 );
 
-export async function inspectTorrent(magnet) {
-  const res = await api.post("/torrents/inspect", { magnet });
-  return res.data;
-}
+// Removed inspect functionality - using direct torrent adding for simplicity and speed
 export async function addTorrent(magnet) {
   return api.post("/torrents", { magnet });
 }
@@ -76,5 +73,10 @@ export async function register(username, email, password) {
 
 export async function getUserProfile() {
   const res = await api.get('/auth/profile');
+  return res.data;
+}
+
+export async function getQuotaInfo() {
+  const res = await api.get('/torrents/quota');
   return res.data;
 }

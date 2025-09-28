@@ -1,6 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import {
-  inspectTorrent,
   addTorrent,
   stopTorrent,
   deleteTorrent,
@@ -21,70 +20,8 @@ function humanBytes(bytes) {
 }
 
 export default function TorrentSection({ torrents, onTorrentAdded }) {
-  const [magnets, setMagnets] = useState([{ id: 1, value: "", metadata: null, state: 'idle', error: null }]);
+  const [magnets, setMagnets] = useState([{ id: 1, value: "", state: 'idle', error: null }]);
   const [nextId, setNextId] = useState(2);
-  const inspectTimeouts = useRef(new Map());
-  const inspectControllers = useRef(new Map());
-
-  // Debounced inspect function
-  const debouncedInspect = useCallback((magnetId, magnetValue) => {
-    // Clear existing timeout
-    if (inspectTimeouts.current.has(magnetId)) {
-      clearTimeout(inspectTimeouts.current.get(magnetId));
-    }
-
-    // Cancel existing request
-    if (inspectControllers.current.has(magnetId)) {
-      inspectControllers.current.get(magnetId).abort();
-      inspectControllers.current.delete(magnetId);
-    }
-
-    if (!magnetValue.trim() || !magnetValue.startsWith('magnet:')) {
-      updateMagnetState(magnetId, { state: 'idle', metadata: null, error: null });
-      return;
-    }
-
-    // Set timeout for debounced inspection
-    const timeoutId = setTimeout(async () => {
-      updateMagnetState(magnetId, { state: 'inspecting', metadata: null, error: null });
-
-      try {
-        const controller = new AbortController();
-        inspectControllers.current.set(magnetId, controller);
-
-        console.log(`[INSPECT] Starting for magnet ${magnetId}`);
-        const metadata = await inspectTorrent(magnetValue);
-
-        // Check if this request was cancelled
-        if (controller.signal.aborted) return;
-
-        console.log(`[INSPECT OK] ${metadata.name}, size=${humanBytes(metadata.sizeBytes)}`);
-        updateMagnetState(magnetId, {
-          state: 'ready',
-          metadata: {
-            ...metadata,
-            sizeFormatted: humanBytes(metadata.sizeBytes)
-          },
-          error: null
-        });
-      } catch (error) {
-        // Check if this request was cancelled
-        if (inspectControllers.current.get(magnetId)?.signal.aborted) return;
-
-        console.log(`[INSPECT FAILED] ${error.message}`);
-        updateMagnetState(magnetId, {
-          state: 'error',
-          metadata: null,
-          error: error.message
-        });
-      } finally {
-        inspectControllers.current.delete(magnetId);
-        inspectTimeouts.current.delete(magnetId);
-      }
-    }, 500); // 500ms debounce
-
-    inspectTimeouts.current.set(magnetId, timeoutId);
-  }, []);
 
   const updateMagnetState = (magnetId, updates) => {
     setMagnets(prev => prev.map(m =>
@@ -93,15 +30,13 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   };
 
   const handleMagnetChange = (magnetId, value) => {
-    updateMagnetState(magnetId, { value });
-    debouncedInspect(magnetId, value);
+    updateMagnetState(magnetId, { value, error: null });
   };
 
   const addNewMagnetField = () => {
     setMagnets(prev => [...prev, {
       id: nextId,
       value: "",
-      metadata: null,
       state: 'idle',
       error: null
     }]);
@@ -109,16 +44,6 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   };
 
   const removeMagnetField = (magnetId) => {
-    // Cancel any pending operations
-    if (inspectTimeouts.current.has(magnetId)) {
-      clearTimeout(inspectTimeouts.current.get(magnetId));
-      inspectTimeouts.current.delete(magnetId);
-    }
-    if (inspectControllers.current.has(magnetId)) {
-      inspectControllers.current.get(magnetId).abort();
-      inspectControllers.current.delete(magnetId);
-    }
-
     setMagnets(prev => prev.filter(m => m.id !== magnetId));
   };
 
@@ -126,10 +51,19 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
     const magnet = magnets.find(m => m.id === magnetId);
     if (!magnet || !magnet.value.trim()) return;
 
-    updateMagnetState(magnetId, { state: 'adding' });
+    // Simple validation
+    if (!magnet.value.trim().startsWith('magnet:')) {
+      updateMagnetState(magnetId, {
+        state: 'error',
+        error: 'Please enter a valid magnet link'
+      });
+      return;
+    }
+
+    updateMagnetState(magnetId, { state: 'adding', error: null });
 
     try {
-      console.log('[ADD] Starting torrent addition for:', magnet.metadata?.name || 'Unknown');
+      console.log('[ADD] Starting torrent addition');
       const response = await addTorrent(magnet.value.trim());
       console.log('[ADD] Success:', response);
 
@@ -140,7 +74,6 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
         updateMagnetState(magnetId, {
           value: "",
           state: 'idle',
-          metadata: null,
           error: null
         });
       }, 2000);
@@ -165,7 +98,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
 
       // Reset state after showing error
       setTimeout(() => {
-        updateMagnetState(magnetId, { state: 'ready' });
+        updateMagnetState(magnetId, { state: 'idle' });
       }, 3000);
     }
   };
@@ -227,10 +160,10 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
 }
 
 function MagnetField({ magnet, index, onChange, onAdd, onRemove, canRemove }) {
-  const { value, metadata, state, error } = magnet;
+  const { value, state, error } = magnet;
 
-  const canAdd = state === 'ready' && metadata && !error;
-  const isLoading = state === 'inspecting' || state === 'adding';
+  const canAdd = value.trim() && value.trim().startsWith('magnet:') && state !== 'adding';
+  const isLoading = state === 'adding';
 
   return (
     <div className="space-y-3">
@@ -256,10 +189,10 @@ function MagnetField({ magnet, index, onChange, onAdd, onRemove, canRemove }) {
               : 'bg-gray-600 cursor-not-allowed text-gray-300'
           }`}
         >
-          {state === 'adding' && (
+          {isLoading && (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-300 mr-2"></div>
           )}
-          {state === 'added' ? '✓ Added' : canAdd ? 'Add' : 'Add'}
+          {state === 'added' ? '✓ Added' : 'Add'}
         </button>
 
         {canRemove && (
@@ -274,24 +207,10 @@ function MagnetField({ magnet, index, onChange, onAdd, onRemove, canRemove }) {
       </div>
 
       {/* Status indicators */}
-      {state === 'inspecting' && (
+      {state === 'adding' && (
         <div className="flex items-center space-x-2 text-sm text-blue-400">
           <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-400"></div>
-          <span>Fetching torrent info...</span>
-        </div>
-      )}
-
-      {state === 'ready' && metadata && (
-        <div className="bg-green-900/30 border border-green-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-green-300 font-medium">{metadata.name}</h4>
-              <p className="text-green-400/70 text-sm">
-                Size: {metadata.sizeFormatted} • Files: {metadata.files.length}
-              </p>
-            </div>
-            <div className="text-green-400">✓</div>
-          </div>
+          <span>Adding torrent...</span>
         </div>
       )}
 

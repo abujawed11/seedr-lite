@@ -19,7 +19,8 @@
       "Bash(timeout 10s npm run dev)",
       "Bash(timeout 15s npm run dev)",
       "WebFetch(domain:newtrackon.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

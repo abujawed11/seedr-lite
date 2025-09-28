@@ -379,125 +379,173 @@ const {
   getTorrent,
   stopTorrent,
   removeTorrent,
+  getClient,
 } = require('../services/torrentManager');
 
-const { getTorrentMetadata } = require('../services/torrentMetadata');
 const { signLink, makeDirectLinkPayload } = require('../services/linkSigner');
-const { humanBytes } = require('../utils/storage');
 const database = require('../models/database');
 
 const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
+
+// Helper function to format bytes
+function humanBytes(bytes) {
+  const thresh = 1024;
+  if (typeof bytes !== 'number' || isNaN(bytes)) return '0 B';
+  if (Math.abs(bytes) < thresh) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+  let u = -1;
+  do {
+    bytes /= thresh;
+    ++u;
+  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  const fixed = u < 2 ? 0 : 2;
+  return `${bytes.toFixed(fixed)} ${units[u]}`;
+}
 
 /**
  * POST /api/torrents
  * Body: { magnet: "magnet:?xt=urn:btih:..." }
  *
- * Strict quota-first torrent add flow:
- * 1. Fetch metadata without downloading pieces
- * 2. Atomically check quota + reserve space
- * 3. Only then start downloading
+ * Fast torrent adding with post-metadata quota validation.
+ * Adds torrent immediately, validates quota when metadata arrives.
  */
 exports.create = async (req, res) => {
   const { magnet } = req.body || {};
-  const torrentFile = req.file;
-  const userId = req.user.id;
-
-  if (!magnet && !torrentFile) {
-    return res.status(400).json({
-      error: 'Either magnet link or torrent file is required',
-      code: 'INVALID_INPUT',
-    });
+  if (!magnet) {
+    console.log('❌ Torrent add failed: No magnet link provided');
+    return res.status(400).json({ error: 'magnet is required' });
   }
 
+  const userId = req.user.id;
+  console.log('🚀 Starting fast torrent add...');
+  console.log(`📋 User ID: ${userId}`);
+  console.log(`🔗 Magnet link: ${magnet.substring(0, 50)}...`);
+
   try {
-    let magnetToUse = magnet;
-    let metadata;
+    // Basic quota check - user must have some space available
+    const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
 
-    if (torrentFile) {
-      // Torrent file path
-      const parseTorrent = (await import('parse-torrent')).default;
-      const parsed = parseTorrent(torrentFile.buffer);
-      magnetToUse = parseTorrent.toMagnetURI(parsed);
-      metadata = {
-        infoHash: parsed.infoHash,
-        name: parsed.name || 'Unknown',
-        sizeBytes: parsed.length || 0,
-        files: (parsed.files || []).map((file, index) => ({
-          index,
-          name: file.name,
-          path: file.path,
-          length: file.length,
-        })),
-      };
-    } else {
-      // Magnet path
-      metadata = await getTorrentMetadata(magnetToUse, {
-        timeoutMs: 30000, // 30s safer than 10s for cold swarms
+    // Debug quota calculation
+    console.log('🔍 DEBUG: Quota calculation details:');
+    console.log(`  Total quota: ${humanBytes(quotaInfo.storageQuota)}`);
+    console.log(`  Currently used: ${humanBytes(quotaInfo.storageUsed)}`);
+    console.log(`  Total reserved: ${humanBytes(quotaInfo.totalReserved)}`);
+    console.log(`  Effective remaining: ${humanBytes(quotaInfo.effectiveRemaining)}`);
+    console.log(`  Calculation: ${humanBytes(quotaInfo.storageQuota)} - ${humanBytes(quotaInfo.storageUsed)} - ${humanBytes(quotaInfo.totalReserved)} = ${humanBytes(quotaInfo.effectiveRemaining)}`);
+
+    if (quotaInfo.effectiveRemaining <= 0) {
+      console.log('❌ No space available - checking if reservations are the issue');
+
+      // Get detailed reservation info
+      const reservations = await database.getUserReservations(userId);
+      console.log(`🔍 Active reservations (${reservations.length}):`);
+      reservations.forEach(r => {
+        console.log(`  - ${r.info_hash}: ${humanBytes(r.size_bytes)} (${new Date(r.created_at).toISOString()})`);
       });
-    }
 
-    // Validate size
-    if (!metadata.sizeBytes || metadata.sizeBytes <= 0) {
-      return res.status(422).json({
-        error: 'Torrent size could not be determined',
-        code: 'INVALID_SIZE',
-      });
-    }
+      // Auto-cleanup stale reservations if no active torrents
+      if (reservations.length > 0) {
+        console.log('🧹 Attempting automatic cleanup of stale reservations...');
 
-    // Atomically reserve quota
-    const reservation = await database.reserveSpaceAtomic(
-      userId,
-      metadata.infoHash,
-      metadata.sizeBytes
-    );
+        const client = await getClient();
+        const activeTorrentHashes = client.torrents
+          .filter(t => t.userId === userId)
+          .map(t => t.infoHash);
 
-    if (!reservation.success) {
-      return res.status(403).json({
-        error: 'Quota exceeded',
-        code: 'QUOTA_EXCEEDED',
-        details: {
-          torrentName: metadata.name,
-          required: humanBytes(metadata.sizeBytes),
-          remaining: humanBytes(reservation.quotaInfo.effectiveRemaining),
-          currentUsage: humanBytes(reservation.quotaInfo.storageUsed),
-          quota: humanBytes(reservation.quotaInfo.storageQuota),
-        },
-      });
-    }
+        console.log(`📊 Found ${activeTorrentHashes.length} active torrents for user`);
 
-    // Start torrent download in background
-    addMagnet(magnetToUse, userId, { reservationId: reservation.id }).catch(
-      async (e) => {
-        console.error('addMagnet failed after reservation:', e);
-        try {
-          await database.releaseReservation(userId, metadata.infoHash);
-        } catch (err) {
-          console.error('Failed to rollback reservation:', err);
+        const staleReservations = reservations.filter(r =>
+          !activeTorrentHashes.includes(r.info_hash)
+        );
+
+        if (staleReservations.length > 0) {
+          console.log(`🗑️ Auto-cleaning ${staleReservations.length} stale reservations...`);
+
+          let cleanedCount = 0;
+          for (const reservation of staleReservations) {
+            try {
+              await database.releaseReservation(userId, reservation.info_hash);
+              cleanedCount++;
+              console.log(`✅ Auto-released: ${reservation.info_hash} (${humanBytes(reservation.size_bytes)})`);
+            } catch (error) {
+              console.error(`❌ Failed to auto-release ${reservation.info_hash}:`, error);
+            }
+          }
+
+          if (cleanedCount > 0) {
+            // Recalculate quota after cleanup
+            const updatedQuotaInfo = await database.getUserStorageInfoWithReservations(userId);
+            console.log(`🔄 After cleanup - Available: ${humanBytes(updatedQuotaInfo.effectiveRemaining)}`);
+
+            if (updatedQuotaInfo.effectiveRemaining > 0) {
+              console.log('✅ Auto-cleanup successful - retrying torrent add');
+
+              // Continue with torrent add since we now have space
+              console.log('⚡ Starting torrent immediately (quota will be validated on metadata)...');
+              addMagnet(magnet, userId).catch((e) => {
+                console.error('💥 CRITICAL: addMagnet failed:', e);
+              });
+
+              return res.status(202).json({
+                status: 'accepted',
+                message: 'Stale reservations cleaned up. Torrent add started.',
+                quota: {
+                  available: humanBytes(updatedQuotaInfo.effectiveRemaining),
+                  currentUsage: humanBytes(updatedQuotaInfo.storageUsed),
+                  total: humanBytes(updatedQuotaInfo.storageQuota),
+                  cleanedReservations: cleanedCount
+                }
+              });
+            }
+          }
         }
       }
-    );
 
+      return res.status(403).json({
+        error: 'No storage space available',
+        code: 'QUOTA_EXCEEDED',
+        details: {
+          remaining: humanBytes(quotaInfo.effectiveRemaining),
+          currentUsage: humanBytes(quotaInfo.storageUsed),
+          quota: humanBytes(quotaInfo.storageQuota),
+          totalReserved: humanBytes(quotaInfo.totalReserved),
+          activeReservations: reservations.length
+        }
+      });
+    }
+
+    // Fire-and-forget: kick off torrent add in background immediately
+    // Quota validation will happen when metadata is received
+    console.log('⚡ Starting torrent immediately (quota will be validated on metadata)...');
+    addMagnet(magnet, userId).catch((e) => {
+      console.error('💥 CRITICAL: addMagnet failed:', e);
+      console.error('📊 Error details:', {
+        userId,
+        magnetPreview: magnet.substring(0, 50),
+        errorMessage: e.message,
+        errorStack: e.stack
+      });
+    });
+
+    console.log('✅ Torrent add started - quota will be validated when metadata arrives');
     return res.status(202).json({
       status: 'accepted',
-      message: 'Torrent quota validated and download started',
-      torrent: {
-        infoHash: metadata.infoHash,
-        name: metadata.name,
-        sizeBytes: metadata.sizeBytes,
-        files: metadata.files.length,
-      },
+      message: 'Torrent add started. Quota will be validated when metadata arrives.',
       quota: {
-        reserved: humanBytes(metadata.sizeBytes),
-        remaining: humanBytes(reservation.quotaInfo.effectiveRemaining),
-        currentUsage: humanBytes(reservation.quotaInfo.storageUsed),
-      },
+        available: humanBytes(quotaInfo.effectiveRemaining),
+        currentUsage: humanBytes(quotaInfo.storageUsed),
+        total: humanBytes(quotaInfo.storageQuota)
+      }
     });
   } catch (error) {
-    console.error('Error in torrent add controller:', error);
-    return res.status(500).json({
-      error: 'Failed to process torrent request',
-      code: 'INTERNAL_ERROR',
+    console.error('💥 Error in torrent controller:', error);
+    console.error('📊 Controller error details:', {
+      userId,
+      magnetPreview: magnet.substring(0, 50),
+      errorMessage: error.message,
+      errorStack: error.stack
     });
+    return res.status(500).json({ error: 'Failed to start torrent' });
   }
 };
 
@@ -576,36 +624,92 @@ exports.destroy = async (req, res) => {
 };
 
 /**
- * POST /api/torrents/inspect
+ * GET /api/torrents/quota
+ * Returns current quota information for the user
  */
-exports.inspect = async (req, res) => {
-  const { magnet } = req.body || {};
-  if (!magnet || typeof magnet !== 'string') {
-    return res.status(400).json({
-      error: 'Magnet URI is required',
-      code: 'INVALID_INPUT',
-    });
-  }
-
+exports.quota = async (req, res) => {
   try {
-    const metadata = await getTorrentMetadata(magnet, { timeoutMs: 30000 });
-    return res.status(200).json({
-      infoHash: metadata.infoHash,
-      name: metadata.name,
-      sizeBytes: metadata.sizeBytes,
-      files: metadata.files,
+    const userId = req.user.id;
+    const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
+
+    res.json({
+      quota: humanBytes(quotaInfo.storageQuota),
+      used: humanBytes(quotaInfo.storageUsed),
+      reserved: humanBytes(quotaInfo.totalReserved),
+      available: humanBytes(quotaInfo.effectiveRemaining),
+      details: {
+        quotaBytes: quotaInfo.storageQuota,
+        usedBytes: quotaInfo.storageUsed,
+        reservedBytes: quotaInfo.totalReserved,
+        availableBytes: quotaInfo.effectiveRemaining
+      }
     });
   } catch (error) {
-    if (error.message.includes('timeout')) {
-      return res.status(422).json({
-        error: 'Could not fetch torrent information within timeout',
-        code: 'METADATA_TIMEOUT',
-      });
-    }
-    return res.status(422).json({
-      error: 'Could not fetch torrent metadata',
-      code: 'METADATA_FETCH_FAILED',
-      details: error.message,
-    });
+    console.error('Error fetching quota info:', error);
+    res.status(500).json({ error: 'Failed to fetch quota information' });
   }
 };
+
+/**
+ * DELETE /api/torrents/reservations/cleanup
+ * Cleans up stale reservations for the user
+ */
+exports.cleanupReservations = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log(`🧹 Manual cleanup requested for user ${userId}`);
+
+    // Get current active torrents
+    const client = await getClient();
+    const activeTorrentHashes = client.torrents
+      .filter(t => t.userId === userId)
+      .map(t => t.infoHash);
+
+    console.log(`📊 Found ${activeTorrentHashes.length} active torrents`);
+
+    // Get user's reservations
+    const userReservations = await database.getUserReservations(userId);
+    console.log(`📊 Found ${userReservations.length} active reservations`);
+
+    // Log all reservations for debugging
+    userReservations.forEach(r => {
+      console.log(`  Reservation: ${r.info_hash} - ${humanBytes(r.size_bytes)}`);
+    });
+
+    const staleReservations = userReservations.filter(r =>
+      !activeTorrentHashes.includes(r.info_hash)
+    );
+
+    console.log(`📊 Found ${staleReservations.length} stale reservations to clean`);
+
+    // Release stale reservations
+    let cleanedCount = 0;
+    for (const reservation of staleReservations) {
+      try {
+        await database.releaseReservation(userId, reservation.info_hash);
+        cleanedCount++;
+        console.log(`🗑️ Released stale reservation: ${reservation.info_hash} (${humanBytes(reservation.size_bytes)})`);
+      } catch (error) {
+        console.error(`❌ Failed to release reservation ${reservation.info_hash}:`, error);
+      }
+    }
+
+    // Get updated quota info after cleanup
+    const updatedQuotaInfo = await database.getUserStorageInfoWithReservations(userId);
+
+    res.json({
+      cleaned: cleanedCount,
+      message: `Cleaned up ${cleanedCount} stale reservations`,
+      quotaAfterCleanup: {
+        total: humanBytes(updatedQuotaInfo.storageQuota),
+        used: humanBytes(updatedQuotaInfo.storageUsed),
+        reserved: humanBytes(updatedQuotaInfo.totalReserved),
+        available: humanBytes(updatedQuotaInfo.effectiveRemaining)
+      }
+    });
+  } catch (error) {
+    console.error('Error cleaning up reservations:', error);
+    res.status(500).json({ error: 'Failed to clean up reservations' });
+  }
+};
+
