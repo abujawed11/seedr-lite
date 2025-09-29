@@ -9,6 +9,17 @@ async function initServer() {
     await database.init();
     logger.info('Database initialized');
 
+    // Add downloaded_bytes column if it doesn't exist (migration)
+    try {
+      await database.reservations._run(`ALTER TABLE storage_reservations ADD COLUMN downloaded_bytes INTEGER DEFAULT 0`);
+      logger.info('Added downloaded_bytes column to storage_reservations table');
+    } catch (error) {
+      // Column already exists, ignore the error
+      if (!error.message.includes('duplicate column')) {
+        logger.error('Error adding downloaded_bytes column:', error);
+      }
+    }
+
     // Ensure storage directories
     ensureDirs();
 

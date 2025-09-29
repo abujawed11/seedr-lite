@@ -151,6 +151,7 @@ const AuthProvider = ({ children }) => {
         quota: detailedQuota.quota,
         used: detailedQuota.used,
         reserved: detailedQuota.reserved,
+        inProgress: detailedQuota.inProgress || '0 B',
         available: detailedQuota.available,
         usedPercentage: Math.round(usedPercentage),
         details: detailedQuota.details
@@ -171,6 +172,7 @@ const AuthProvider = ({ children }) => {
       quota: formatBytes(quota),
       available: formatBytes(available),
       reserved: '0 B',
+      inProgress: '0 B',
       usedPercentage: Math.round(usedPercentage)
     };
   };

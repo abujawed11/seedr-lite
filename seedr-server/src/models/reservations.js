@@ -336,12 +336,24 @@ class ReservationManager {
     if (!u) throw new Error('User not found');
 
     const r = await this._get(
-      `SELECT COALESCE(SUM(size_bytes),0) AS totalReserved
+      `SELECT
+         COALESCE(SUM(size_bytes - COALESCE(downloaded_bytes, 0)), 0) AS totalReserved,
+         COALESCE(SUM(COALESCE(downloaded_bytes, 0)), 0) AS totalInProgress
        FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
     );
 
+    // totalReserved = bytes still reserved (size_bytes - downloaded_bytes)
+    // totalInProgress = bytes downloaded but not yet finalized
+    // effectiveRemaining = quota - used - totalReserved
     const effectiveRemaining = Math.max(0, u.storageQuota - u.storageUsed - r.totalReserved);
-    return { storageQuota: u.storageQuota, storageUsed: u.storageUsed, totalReserved: r.totalReserved, effectiveRemaining };
+
+    return {
+      storageQuota: u.storageQuota,
+      storageUsed: u.storageUsed,
+      totalReserved: r.totalReserved,
+      totalInProgress: r.totalInProgress,
+      effectiveRemaining
+    };
   }
 
   async getUserReservedBytes(userId) {
@@ -366,69 +378,71 @@ class ReservationManager {
     if (!infoHash) throw new Error('infoHash required');
     if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) throw new Error('sizeBytes must be > 0');
 
-    try {
+    return this._retryTransaction(async () => {
       await this._exec('BEGIN IMMEDIATE');
 
-      const u = await this._get(
-        `SELECT storage_quota AS storageQuota, storage_used AS storageUsed
-         FROM users WHERE id=?`, [userId]
-      );
-      if (!u) { await this._exec('ROLLBACK'); throw new Error('User not found'); }
+      try {
+        const u = await this._get(
+          `SELECT storage_quota AS storageQuota, storage_used AS storageUsed
+           FROM users WHERE id=?`, [userId]
+        );
+        if (!u) { await this._exec('ROLLBACK'); throw new Error('User not found'); }
 
-      const r = await this._get(
-        `SELECT COALESCE(SUM(size_bytes),0) AS totalReserved
-         FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
-      );
+        const r = await this._get(
+          `SELECT COALESCE(SUM(size_bytes),0) AS totalReserved
+           FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
+        );
 
-      const effectiveRemaining = u.storageQuota - u.storageUsed - r.totalReserved;
-      if (sizeBytes > effectiveRemaining) {
-        await this._exec('ROLLBACK');
+        const effectiveRemaining = u.storageQuota - u.storageUsed - r.totalReserved;
+        if (sizeBytes > effectiveRemaining) {
+          await this._exec('ROLLBACK');
+          return {
+            success: false,
+            quotaInfo: {
+              storageQuota: u.storageQuota,
+              storageUsed:  u.storageUsed,
+              totalReserved: r.totalReserved,
+              effectiveRemaining: Math.max(0, effectiveRemaining)
+            }
+          };
+        }
+
+        // Idempotent: reuse existing active reservation if any
+        const existing = await this._get(
+          `SELECT id FROM storage_reservations
+           WHERE user_id=? AND info_hash=? AND status='active'`,
+          [userId, infoHash]
+        );
+
+        let id;
+        if (existing) {
+          id = existing.id;
+        } else {
+          id = nanoid();
+          await this._run(
+            `INSERT INTO storage_reservations (id, user_id, info_hash, size_bytes, status)
+             VALUES (?, ?, ?, ?, 'active')`,
+            [id, userId, infoHash, sizeBytes]
+          );
+        }
+
+        await this._exec('COMMIT');
+
         return {
-          success: false,
+          success: true,
+          id,
           quotaInfo: {
             storageQuota: u.storageQuota,
             storageUsed:  u.storageUsed,
-            totalReserved: r.totalReserved,
-            effectiveRemaining: Math.max(0, effectiveRemaining)
+            totalReserved: r.totalReserved + sizeBytes,
+            effectiveRemaining: Math.max(0, effectiveRemaining - sizeBytes)
           }
         };
+      } catch (e) {
+        try { await this._exec('ROLLBACK'); } catch {}
+        throw e;
       }
-
-      // Idempotent: reuse existing active reservation if any
-      const existing = await this._get(
-        `SELECT id FROM storage_reservations
-         WHERE user_id=? AND info_hash=? AND status='active'`,
-        [userId, infoHash]
-      );
-
-      let id;
-      if (existing) {
-        id = existing.id;
-      } else {
-        id = nanoid();
-        await this._run(
-          `INSERT INTO storage_reservations (id, user_id, info_hash, size_bytes, status)
-           VALUES (?, ?, ?, ?, 'active')`,
-          [id, userId, infoHash, sizeBytes]
-        );
-      }
-
-      await this._exec('COMMIT');
-
-      return {
-        success: true,
-        id,
-        quotaInfo: {
-          storageQuota: u.storageQuota,
-          storageUsed:  u.storageUsed,
-          totalReserved: r.totalReserved + sizeBytes,
-          effectiveRemaining: Math.max(0, effectiveRemaining - sizeBytes)
-        }
-      };
-    } catch (e) {
-      try { await this._exec('ROLLBACK'); } catch {}
-      throw e;
-    }
+    });
   }
 
   // Keep createReservation for legacy calls (non-atomic)
@@ -461,30 +475,115 @@ class ReservationManager {
   /**
    * Finalize: move reserved -> used (Model B) and mark FINALIZED (atomic)
    */
+  /**
+   * Retry helper for transaction conflicts
+   */
+  async _retryTransaction(operation, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        // Check if it's a transaction conflict
+        if (error.code === 'SQLITE_ERROR' &&
+            (error.message.includes('transaction') || error.message.includes('locked'))) {
+          if (attempt === maxRetries) {
+            throw error; // Last attempt, throw the error
+          }
+          // Wait with exponential backoff
+          const delay = Math.pow(2, attempt - 1) * 50; // 50ms, 100ms, 200ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        // For non-transaction errors, throw immediately
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Update progressive download tracking
+   * Moves bytes from reserved to used as download progresses
+   */
+  async updateProgressiveStorage(userId, infoHash, downloadedBytes) {
+    return this._retryTransaction(async () => {
+      await this._exec('BEGIN IMMEDIATE');
+
+      try {
+        const reservation = await this._get(
+          `SELECT id, size_bytes, downloaded_bytes
+           FROM storage_reservations
+           WHERE user_id=? AND info_hash=? AND status='active'`,
+          [userId, infoHash]
+        );
+
+        if (!reservation) {
+          await this._exec('COMMIT');
+          return false;
+        }
+
+        // Calculate the increase in downloaded bytes
+        const previousDownloaded = reservation.downloaded_bytes || 0;
+        const newDownloadedBytes = Math.min(downloadedBytes, reservation.size_bytes);
+        const bytesIncrease = newDownloadedBytes - previousDownloaded;
+
+        if (bytesIncrease > 0) {
+          // Update user's storage_used
+          await this._run(
+            `UPDATE users SET storage_used = storage_used + ? WHERE id=?`,
+            [bytesIncrease, userId]
+          );
+
+          // Update reservation's downloaded_bytes
+          await this._run(
+            `UPDATE storage_reservations
+             SET downloaded_bytes = ?
+             WHERE id=?`,
+            [newDownloadedBytes, reservation.id]
+          );
+        }
+
+        await this._exec('COMMIT');
+        return true;
+      } catch (e) {
+        try { await this._exec('ROLLBACK'); } catch {}
+        throw e;
+      }
+    }).catch(e => {
+      console.error('Error updating progressive storage:', e);
+      return false;
+    });
+  }
+
   async finalizeReservation(userId, infoHash, actualBytes = null) {
     try {
       await this._exec('BEGIN IMMEDIATE');
 
       const row = await this._get(
-        `SELECT id, size_bytes
+        `SELECT id, size_bytes, downloaded_bytes
          FROM storage_reservations
          WHERE user_id=? AND info_hash=? AND status='active'`,
         [userId, infoHash]
       );
       if (!row) { await this._exec('COMMIT'); return false; }
 
-      const inc = (Number.isFinite(actualBytes) && actualBytes > 0) ? actualBytes : row.size_bytes;
+      const downloadedBytes = row.downloaded_bytes || 0;
+      const totalBytes = (Number.isFinite(actualBytes) && actualBytes > 0) ? actualBytes : row.size_bytes;
 
-      await this._run(
-        `UPDATE users SET storage_used = storage_used + ? WHERE id=?`,
-        [inc, userId]
-      );
+      // Add any remaining bytes that weren't progressively tracked
+      const remainingBytes = Math.max(0, totalBytes - downloadedBytes);
+
+      if (remainingBytes > 0) {
+        await this._run(
+          `UPDATE users SET storage_used = storage_used + ? WHERE id=?`,
+          [remainingBytes, userId]
+        );
+      }
 
       await this._run(
         `UPDATE storage_reservations
-         SET status='finalized', finalized_at=CURRENT_TIMESTAMP
+         SET status='finalized', finalized_at=CURRENT_TIMESTAMP, downloaded_bytes=?
          WHERE id=?`,
-        [row.id]
+        [totalBytes, row.id]
       );
 
       await this._exec('COMMIT');

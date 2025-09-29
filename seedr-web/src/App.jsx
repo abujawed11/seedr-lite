@@ -174,6 +174,12 @@ export default function App() {
                               <div className="font-medium text-yellow-400">{storageInfo.reserved}</div>
                             </div>
                           )}
+                          {storageInfo.inProgress && storageInfo.inProgress !== '0 B' && (
+                            <div className="text-center">
+                              <div className="text-xs text-gray-400 mb-1">In Progress</div>
+                              <div className="font-medium text-purple-400">{storageInfo.inProgress}</div>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="w-48 h-2 bg-gray-600 rounded-full mt-2">

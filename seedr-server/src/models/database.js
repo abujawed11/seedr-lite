@@ -222,6 +222,10 @@ class Database {
     return this.reservations.releaseReservation(userId, infoHash);
   }
 
+  async updateProgressiveStorage(userId, infoHash, downloadedBytes) {
+    return this.reservations.updateProgressiveStorage(userId, infoHash, downloadedBytes);
+  }
+
   async finalizeReservation(userId, infoHash, actualBytes = null) {
     return this.reservations.finalizeReservation(userId, infoHash, actualBytes);
   }

@@ -641,11 +641,13 @@ exports.quota = async (req, res) => {
       quota: humanBytes(quotaInfo.storageQuota),
       used: humanBytes(quotaInfo.storageUsed),
       reserved: humanBytes(quotaInfo.totalReserved),
+      inProgress: humanBytes(quotaInfo.totalInProgress || 0),
       available: humanBytes(quotaInfo.effectiveRemaining),
       details: {
         quotaBytes: quotaInfo.storageQuota,
         usedBytes: quotaInfo.storageUsed,
         reservedBytes: quotaInfo.totalReserved,
+        inProgressBytes: quotaInfo.totalInProgress || 0,
         availableBytes: quotaInfo.effectiveRemaining
       }
     });

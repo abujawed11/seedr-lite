@@ -45,9 +45,18 @@ async function getClient() {
     });
     client.on('error', (e) => logger.error('WebTorrent error:', e.message));
 
-    // DISABLED: Startup cleanup was incorrectly removing active reservations
-    // because client.torrents is empty on startup before torrents are loaded
-    console.log('🛑 STARTUP: Stale reservation cleanup disabled to prevent incorrect cleanup');
+    // Smart startup cleanup: Run after a delay to allow torrents to load
+    setTimeout(async () => {
+      try {
+        const activeTorrentHashes = client.torrents.map(t => t.infoHash);
+        console.log(`🧹 SMART CLEANUP: Found ${activeTorrentHashes.length} active torrents, cleaning stale reservations...`);
+
+        const cleanedCount = await database.reservations.cleanupStaleReservations(activeTorrentHashes);
+        console.log(`✅ SMART CLEANUP: Released ${cleanedCount} stale reservations`);
+      } catch (error) {
+        console.error('❌ SMART CLEANUP ERROR:', error);
+      }
+    }, 5000); // Wait 5 seconds for torrents to load
   }
   return client;
 }
@@ -231,9 +240,26 @@ async function addMagnet(magnet, userId) {
           }
         });
 
-        torrent.on('download', (bytes) => {
+        // Progressive storage tracking
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 5000; // Update every 5 seconds
+
+        torrent.on('download', async (bytes) => {
           totalDownloaded += bytes;
-          // Upload event will handle the logging to avoid duplicate logs
+
+          // Update storage progressively (throttled to avoid too many DB calls)
+          const now = Date.now();
+          if (now - lastUpdateTime > UPDATE_INTERVAL && torrent.quotaValidated) {
+            lastUpdateTime = now;
+
+            try {
+              const downloadedBytes = torrent.downloaded;
+              await database.updateProgressiveStorage(userId, torrent.infoHash, downloadedBytes);
+              console.log(`📊 Progressive update: ${humanBytes(downloadedBytes)} downloaded for ${torrent.name || 'Unknown'}`);
+            } catch (error) {
+              console.error('Error updating progressive storage:', error);
+            }
+          }
         });
 
         // Log torrent state periodically
