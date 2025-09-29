@@ -5,7 +5,7 @@ import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 
 export default function App() {
-  const { user, logout, getStorageInfo, refreshUserProfile } = useAuth();
+  const { user, logout, getStorageInfo, refreshUserProfile, fetchDetailedQuota } = useAuth();
   const [torrents, setTorrents] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
@@ -62,6 +62,7 @@ export default function App() {
   async function handleTorrentAdded() {
     //console.log('🎯 App: handleTorrentAdded called');
     await fetchTorrents();
+    fetchDetailedQuota(); // Refresh quota when torrent is added
     //console.log('✅ App: handleTorrentAdded completed');
     // No complex logic needed - just fetch torrents once like in working backup
   }
@@ -70,6 +71,7 @@ export default function App() {
   useEffect(() => {
     fetchTorrents();
     fetchBrowse();
+    fetchDetailedQuota(); // Fetch detailed quota information
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
@@ -83,6 +85,7 @@ export default function App() {
 
       // Refresh user profile (quota/storage info)
       refreshUserProfile();
+      fetchDetailedQuota(); // Also refresh detailed quota
 
       // Refresh file browser to show new files
       fetchBrowse();
@@ -148,15 +151,34 @@ export default function App() {
               {(() => {
                 const storageInfo = getStorageInfo();
                 return storageInfo ? (
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-4">
                     <div className="text-sm text-gray-300">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-3">
                         <span>💾</span>
-                        <span>{storageInfo.used} / {storageInfo.quota}</span>
+                        <div className="flex items-center space-x-6">
+                          <div className="text-center">
+                            <div className="text-xs text-gray-400 mb-1">Total Quota</div>
+                            <div className="font-medium text-blue-400">{storageInfo.quota}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-gray-400 mb-1">Used Space</div>
+                            <div className="font-medium text-orange-400">{storageInfo.used}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-gray-400 mb-1">Available Space</div>
+                            <div className="font-medium text-green-400">{storageInfo.available}</div>
+                          </div>
+                          {storageInfo.reserved && storageInfo.reserved !== '0 B' && (
+                            <div className="text-center">
+                              <div className="text-xs text-gray-400 mb-1">Reserved</div>
+                              <div className="font-medium text-yellow-400">{storageInfo.reserved}</div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="w-24 h-1 bg-gray-600 rounded-full mt-1">
+                      <div className="w-48 h-2 bg-gray-600 rounded-full mt-2">
                         <div
-                          className="h-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-300"
+                          className="h-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(storageInfo.usedPercentage, 100)}%` }}
                         ></div>
                       </div>

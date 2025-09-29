@@ -45,50 +45,9 @@ async function getClient() {
     });
     client.on('error', (e) => logger.error('WebTorrent error:', e.message));
 
-    // Cleanup stale reservations on startup
-    setTimeout(async () => {
-      try {
-        console.log('🧹 STARTUP: Checking for stale reservations...');
-
-        // Since we don't have getAllUsersWithReservations, let's clean up reservations
-        // for torrents that don't exist in the current client
-        const activeTorrentHashes = client.torrents.map(t => t.infoHash);
-        console.log(`🔍 STARTUP: Found ${activeTorrentHashes.length} active torrents in client`);
-
-        // Clean up all stale reservations (reservations without active torrents)
-        try {
-          const allReservations = await database.reservations._all(
-            `SELECT user_id, info_hash, size_bytes FROM storage_reservations WHERE status='active'`
-          );
-
-          console.log(`🧹 STARTUP: Found ${allReservations.length} total active reservations to check`);
-
-          let cleanedCount = 0;
-          for (const reservation of allReservations) {
-            // Check if this torrent hash exists in current active torrents
-            const torrentExists = activeTorrentHashes.includes(reservation.info_hash);
-
-            if (!torrentExists) {
-              console.log(`🗑️ STARTUP: Removing stale reservation: ${reservation.user_id} - ${reservation.info_hash}`);
-              try {
-                await database.releaseReservation(reservation.user_id, reservation.info_hash);
-                cleanedCount++;
-              } catch (error) {
-                console.error(`❌ STARTUP: Failed to release reservation:`, error);
-              }
-            }
-          }
-
-          console.log(`✅ STARTUP: Cleaned up ${cleanedCount} stale reservations`);
-        } catch (error) {
-          console.error('💥 STARTUP: Error cleaning stale reservations:', error);
-        }
-
-        console.log('✅ STARTUP: Stale reservation cleanup completed');
-      } catch (error) {
-        console.error('💥 STARTUP: Error during stale reservation cleanup:', error);
-      }
-    }, 2000); // Wait 2 seconds after client creation
+    // DISABLED: Startup cleanup was incorrectly removing active reservations
+    // because client.torrents is empty on startup before torrents are loaded
+    console.log('🛑 STARTUP: Stale reservation cleanup disabled to prevent incorrect cleanup');
   }
   return client;
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { login as apiLogin, register as apiRegister, getUserProfile } from '../api';
+import { login as apiLogin, register as apiRegister, getUserProfile, getQuotaInfo } from '../api';
 
 const AuthContext = createContext();
 
@@ -15,6 +15,7 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('seedr_token'));
+  const [detailedQuota, setDetailedQuota] = useState(null);
 
   // Check if user is authenticated on app start
   useEffect(() => {
@@ -23,6 +24,14 @@ const AuthProvider = ({ children }) => {
         try {
           const userData = await getUserProfile();
           setUser(userData.user);
+
+          // Immediately fetch detailed quota after setting user
+          try {
+            const quotaData = await getQuotaInfo();
+            setDetailedQuota(quotaData);
+          } catch (quotaError) {
+            console.error('Failed to fetch detailed quota on auth:', quotaError);
+          }
         } catch (error) {
           console.error('Auth check failed:', error);
           localStorage.removeItem('seedr_token');
@@ -35,6 +44,17 @@ const AuthProvider = ({ children }) => {
     checkAuth();
   }, [token]);
 
+  // Periodically refresh detailed quota to keep it up to date
+  useEffect(() => {
+    if (!token || !user) return;
+
+    const interval = setInterval(() => {
+      fetchDetailedQuota();
+    }, 10000); // Refresh every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [token, user]);
+
   const login = async (username, password) => {
     try {
       const response = await apiLogin(username, password);
@@ -43,6 +63,14 @@ const AuthProvider = ({ children }) => {
       localStorage.setItem('seedr_token', newToken);
       setToken(newToken);
       setUser(userData);
+
+      // Fetch detailed quota immediately after login
+      try {
+        const quotaData = await getQuotaInfo();
+        setDetailedQuota(quotaData);
+      } catch (quotaError) {
+        console.error('Failed to fetch detailed quota after login:', quotaError);
+      }
 
       return { success: true };
     } catch (error) {
@@ -97,18 +125,52 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  const fetchDetailedQuota = async () => {
+    if (!token) return;
+
+    try {
+      const quotaData = await getQuotaInfo();
+      setDetailedQuota(quotaData);
+      return quotaData;
+    } catch (error) {
+      console.error('❌ Failed to fetch detailed quota:', error);
+      return null;
+    }
+  };
+
   const getStorageInfo = () => {
     if (!user) return null;
 
+    // Use detailed quota info if available, otherwise fallback to user data
+    if (detailedQuota) {
+      const usedPercentage = detailedQuota.details.quotaBytes > 0
+        ? (detailedQuota.details.usedBytes / detailedQuota.details.quotaBytes) * 100
+        : 0;
+
+      return {
+        quota: detailedQuota.quota,
+        used: detailedQuota.used,
+        reserved: detailedQuota.reserved,
+        available: detailedQuota.available,
+        usedPercentage: Math.round(usedPercentage),
+        details: detailedQuota.details
+      };
+    }
+
+    // Fallback to basic user data - try to use remainingQuota if available
     const used = user.storageUsed || 0;
     const quota = user.storageQuota || 0;
-    const available = quota - used;
+
+    // Use remainingQuota if available (this should account for reservations)
+    const available = user.remainingQuota !== undefined ? user.remainingQuota : (quota - used);
     const usedPercentage = quota > 0 ? (used / quota) * 100 : 0;
+
 
     return {
       used: formatBytes(used),
       quota: formatBytes(quota),
       available: formatBytes(available),
+      reserved: '0 B',
       usedPercentage: Math.round(usedPercentage)
     };
   };
@@ -122,7 +184,9 @@ const AuthProvider = ({ children }) => {
     logout,
     isAuthenticated: !!user,
     getStorageInfo,
-    refreshUserProfile
+    refreshUserProfile,
+    fetchDetailedQuota,
+    detailedQuota
   };
 
   return (
