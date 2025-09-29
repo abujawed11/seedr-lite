@@ -61,7 +61,14 @@ exports.browse = async (req, res) => {
     }
 
     const rawPath = req.query.path || "";
-    const decoded = decodeURIComponent(rawPath);
+    let decoded;
+    try {
+      decoded = decodeURIComponent(rawPath);
+    } catch (error) {
+      console.error("URL decode error for path:", rawPath, error.message);
+      // If decoding fails, use the raw path as-is
+      decoded = rawPath;
+    }
     const safePath = validatePath(decoded, userRoot);
     const fullPath = path.resolve(userRoot, safePath);
 
