@@ -125,12 +125,10 @@ async function addMagnet(magnet, userId) {
       magnet,
       { path: userStorageDir, announce },
       (torrent) => {
-        // Track user for this torrent
+        // Track user for this torrent - CRITICAL: Set this immediately
         torrent.userId = userId;
         torrent.quotaValidated = false; // Flag to prevent duplicate quota validation
 
-        // Enhanced logging for all torrent events
-        console.log(`🔍 TORRENT LIFECYCLE: Setting up event handlers for user ${userId}`);
 
         torrent.on('infoHash', () => {
           console.log(`🔑 Got infoHash: ${torrent.infoHash} for user ${userId}`);
@@ -333,6 +331,10 @@ async function addMagnet(magnet, userId) {
       }
     );
 
+    // CRITICAL: Set userId immediately on the torrent object to avoid race conditions
+    t.userId = userId;
+    t.quotaValidated = false;
+
     t.on('error', (err) => {
       console.error(`💥 Critical error adding torrent for user ${userId}:`, err);
       reject(err);
@@ -342,17 +344,29 @@ async function addMagnet(magnet, userId) {
 
 async function getTorrent(infoHash, userId) {
   const c = await getClient();
-  return c.get(infoHash) || null;
+  const torrent = c.get(infoHash);
+
+  // Only return torrent if it belongs to the requesting user
+  if (!torrent || torrent.userId !== userId) {
+    return null;
+  }
+
+  return torrent;
 }
 
 async function listTorrents(userId) {
   const c = await getClient();
-  return c.torrents.map(toSummary);
+  // Filter torrents to only show those belonging to the requesting user
+  const userTorrents = c.torrents.filter(torrent => torrent.userId === userId);
+  return userTorrents.map(toSummary);
 }
 
-async function stopTorrent(infoHash) {
+async function stopTorrent(infoHash, userId = null) {
   const c = await getClient();
   const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+
+  // If userId is provided, check ownership; otherwise allow (for backward compatibility)
+  if (userId && (!t || t.userId !== userId)) return false;
   if (!t) return false;
 
   // Release any active reservation when stopping torrent
@@ -373,9 +387,12 @@ async function stopTorrent(infoHash) {
   });
 }
 
-async function removeTorrent(infoHash) {
+async function removeTorrent(infoHash, userId = null) {
   const c = await getClient();
   const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+
+  // If userId is provided, check ownership; otherwise allow (for backward compatibility)
+  if (userId && (!t || t.userId !== userId)) return false;
   if (!t) return false;
 
   // Release any active reservation when removing torrent

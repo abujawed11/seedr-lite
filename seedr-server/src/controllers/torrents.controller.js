@@ -608,8 +608,9 @@ exports.show = async (req, res) => {
  * PUT /api/torrents/:id/stop
  */
 exports.stop = async (req, res) => {
-  const ok = await stopTorrent(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Torrent not found' });
+  const userId = req.user.id;
+  const ok = await stopTorrent(req.params.id, userId);
+  if (!ok) return res.status(404).json({ error: 'Torrent not found or access denied' });
   res.json({ stopped: true });
 };
 
@@ -618,8 +619,9 @@ exports.stop = async (req, res) => {
  */
 exports.destroy = async (req, res) => {
   try {
-    const ok = await removeTorrent(req.params.id);
-    if (!ok) return res.status(404).json({ error: 'Torrent not found' });
+    const userId = req.user.id;
+    const ok = await removeTorrent(req.params.id, userId);
+    if (!ok) return res.status(404).json({ error: 'Torrent not found or access denied' });
     res.json({ removed: ok });
   } catch (error) {
     res.status(400).json({ error: error.message });
