@@ -342,7 +342,7 @@ class ReservationManager {
        FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
     );
 
-    // totalReserved = bytes still reserved (size_bytes - downloaded_bytes)
+    // totalReserved = bytes still reserved (decreases as downloads progress) - for UI display
     // totalInProgress = bytes downloaded but not yet finalized
     // effectiveRemaining = quota - used - totalReserved
     const effectiveRemaining = Math.max(0, u.storageQuota - u.storageUsed - r.totalReserved);
@@ -350,7 +350,7 @@ class ReservationManager {
     return {
       storageQuota: u.storageQuota,
       storageUsed: u.storageUsed,
-      totalReserved: r.totalReserved,
+      totalReserved: r.totalReserved, // Decreases as downloads progress (correct behavior)
       totalInProgress: r.totalInProgress,
       effectiveRemaining
     };
@@ -389,7 +389,7 @@ class ReservationManager {
         if (!u) { await this._exec('ROLLBACK'); throw new Error('User not found'); }
 
         const r = await this._get(
-          `SELECT COALESCE(SUM(size_bytes),0) AS totalReserved
+          `SELECT COALESCE(SUM(size_bytes - COALESCE(downloaded_bytes, 0)),0) AS totalReserved
            FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
         );
 
