@@ -64,30 +64,83 @@ async function initializeManager() {
   }, 5000); // Wait 5 seconds for torrents to load
 }
 
+// Cleanup idle clients to save resources
+function cleanupIdleClients() {
+  const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+  const now = Date.now();
+
+  for (const [userId, client] of userClients.entries()) {
+    // Skip if client has active torrents
+    if (client.torrents.length > 0) {
+      client._lastActivity = now; // Update activity
+      continue;
+    }
+
+    // Check if client has been idle too long
+    if (now - client._lastActivity > IDLE_TIMEOUT) {
+      console.log(`🧹 Cleaning up idle client for user: ${userId}`);
+      try {
+        client.destroy((err) => {
+          if (err) console.error(`Error destroying client for user ${userId}:`, err);
+        });
+        userClients.delete(userId);
+        console.log(`✅ Idle client cleaned up for user: ${userId}`);
+      } catch (error) {
+        console.error(`Failed to cleanup client for user ${userId}:`, error);
+      }
+    }
+  }
+}
+
+// Run cleanup every 5 minutes
+setInterval(cleanupIdleClients, 5 * 60 * 1000);
+
+// Monitor client performance
+function logClientStats() {
+  console.log(`📊 CLIENT STATS: ${userClients.size} active user clients`);
+  for (const [userId, client] of userClients.entries()) {
+    const torrentsCount = client.torrents.length;
+    const totalPeers = client.torrents.reduce((sum, t) => sum + t.numPeers, 0);
+    const totalSpeed = client.torrents.reduce((sum, t) => sum + t.downloadSpeed, 0);
+    console.log(`  User ${userId}: ${torrentsCount} torrents, ${totalPeers} peers, ${humanBytes(totalSpeed)}/s`);
+  }
+}
+
+// Log stats every 2 minutes
+setInterval(logClientStats, 2 * 60 * 1000);
+
 // Get or create a WebTorrent client for a specific user
 async function getUserClient(userId) {
   if (!WebTorrentMod) {
     WebTorrentMod = (await import('webtorrent')).default;
   }
 
-  // Create user-specific client if it doesn't exist
-  if (!userClients.has(userId)) {
-    console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
-
-    const userClient = new WebTorrentMod({
-      dht: true,
-      tracker: true,
-    });
-
-    userClient.on('error', (e) => {
-      logger.error(`WebTorrent error for user ${userId}:`, e.message);
-    });
-
-    // Store the client for this user
-    userClients.set(userId, userClient);
-
-    console.log(`✅ WebTorrent client created for user: ${userId}`);
+  // Update activity timestamp if client exists
+  if (userClients.has(userId)) {
+    const client = userClients.get(userId);
+    client._lastActivity = Date.now();
+    return client;
   }
+
+  // Create user-specific client if it doesn't exist
+  console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
+
+  const userClient = new WebTorrentMod({
+    dht: true,
+    tracker: true,
+    maxConns: 30        // Limit concurrent connections per user
+  });
+
+  userClient.on('error', (e) => {
+    logger.error(`WebTorrent error for user ${userId}:`, e.message);
+  });
+
+  // Store the client for this user with timestamp
+  userClients.set(userId, userClient);
+  userClient._lastActivity = Date.now();
+  userClient._userId = userId;
+
+  console.log(`✅ WebTorrent client created for user: ${userId} (max ${userClient.maxConns} connections)`);
 
   return userClients.get(userId);
 }
