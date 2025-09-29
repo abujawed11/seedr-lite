@@ -226,11 +226,57 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                      <div className="w-48 h-2 bg-gray-600 rounded-full mt-2">
-                        <div
-                          className="h-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(storageInfo.usedPercentage, 100)}%` }}
-                        ></div>
+                      {/* Multi-segment storage bar */}
+                      <div className="w-48 h-2 bg-gray-600 rounded-full mt-2 relative overflow-hidden">
+                        {(() => {
+                          if (!storageInfo.details) return null;
+
+                          const { usedBytes, reservedBytes, quotaBytes } = storageInfo.details;
+                          const totalUsed = usedBytes || 0;
+                          const totalReserved = reservedBytes || 0; // All reserved space (including in-progress)
+
+                          // Calculate percentages
+                          const usedPercent = quotaBytes > 0 ? (totalUsed / quotaBytes) * 100 : 0;
+                          const reservedPercent = quotaBytes > 0 ? (totalReserved / quotaBytes) * 100 : 0;
+
+                          return (
+                            <div className="flex h-full w-full">
+                              {/* Used Space (completed files) */}
+                              {usedPercent > 0 && (
+                                <div
+                                  className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-300"
+                                  style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                                  title={`Used: ${storageInfo.used}`}
+                                />
+                              )}
+
+                              {/* Reserved Space (all reserved space including downloads) */}
+                              {reservedPercent > 0 && (
+                                <div
+                                  className="h-full bg-gradient-to-r from-yellow-500 to-amber-500 transition-all duration-300"
+                                  style={{ width: `${Math.min(reservedPercent, 100 - usedPercent)}%` }}
+                                  title={`Reserved: ${storageInfo.reserved}`}
+                                />
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Storage bar legend */}
+                      <div className="flex items-center space-x-4 mt-1 text-xs text-gray-400">
+                        <div className="flex items-center">
+                          <div className="w-2 h-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-full mr-1"></div>
+                          <span>Used</span>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="w-2 h-2 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full mr-1"></div>
+                          <span>Reserved</span>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="w-2 h-2 bg-gray-600 rounded-full mr-1"></div>
+                          <span>Free</span>
+                        </div>
                       </div>
                     </div>
                   </div>
