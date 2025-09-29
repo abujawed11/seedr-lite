@@ -10,12 +10,14 @@ const ROOT = process.env.ROOT || './src/storage/library';
 // Store quota exceeded notifications for frontend
 const quotaExceededNotifications = new Map(); // userId -> [notifications]
 
-let WebTorrentMod;   // ESM default export
-let client;          // singleton
+// Store per-user WebTorrent clients for complete isolation
+const userClients = new Map(); // userId -> WebTorrent client
 
-// Initialize client immediately on module import to trigger startup cleanup
-getClient().catch(error => {
-  console.error('❌ TORRENT_MANAGER: Failed to initialize client:', error);
+let WebTorrentMod;   // ESM default export
+
+// Initialize WebTorrent module and perform startup cleanup
+initializeManager().catch(error => {
+  console.error('❌ TORRENT_MANAGER: Failed to initialize manager:', error);
 });
 
 // Simple human-readable bytes formatter (replaces pretty-bytes)
@@ -34,31 +36,67 @@ function humanBytes(bytes) {
   return `${bytes.toFixed(fixed)} ${units[u]}`;
 }
 
-async function getClient() {
+// Initialize the WebTorrent module and perform startup cleanup
+async function initializeManager() {
   if (!WebTorrentMod) {
     WebTorrentMod = (await import('webtorrent')).default;
   }
-  if (!client) {
-    client = new WebTorrentMod({
+
+  // Smart startup cleanup: Collect torrents from all existing user clients after delay
+  setTimeout(async () => {
+    try {
+      const allActiveTorrentHashes = [];
+
+      // Collect all active torrents across all user clients
+      for (const [userId, client] of userClients.entries()) {
+        const userTorrentHashes = client.torrents.map(t => t.infoHash);
+        allActiveTorrentHashes.push(...userTorrentHashes);
+        console.log(`🧹 User ${userId} has ${userTorrentHashes.length} active torrents`);
+      }
+
+      console.log(`🧹 SMART CLEANUP: Found ${allActiveTorrentHashes.length} total active torrents across all users, cleaning stale reservations...`);
+
+      const cleanedCount = await database.reservations.cleanupStaleReservations(allActiveTorrentHashes);
+      console.log(`✅ SMART CLEANUP: Released ${cleanedCount} stale reservations`);
+    } catch (error) {
+      console.error('❌ SMART CLEANUP ERROR:', error);
+    }
+  }, 5000); // Wait 5 seconds for torrents to load
+}
+
+// Get or create a WebTorrent client for a specific user
+async function getUserClient(userId) {
+  if (!WebTorrentMod) {
+    WebTorrentMod = (await import('webtorrent')).default;
+  }
+
+  // Create user-specific client if it doesn't exist
+  if (!userClients.has(userId)) {
+    console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
+
+    const userClient = new WebTorrentMod({
       dht: true,
       tracker: true,
     });
-    client.on('error', (e) => logger.error('WebTorrent error:', e.message));
 
-    // Smart startup cleanup: Run after a delay to allow torrents to load
-    setTimeout(async () => {
-      try {
-        const activeTorrentHashes = client.torrents.map(t => t.infoHash);
-        console.log(`🧹 SMART CLEANUP: Found ${activeTorrentHashes.length} active torrents, cleaning stale reservations...`);
+    userClient.on('error', (e) => {
+      logger.error(`WebTorrent error for user ${userId}:`, e.message);
+    });
 
-        const cleanedCount = await database.reservations.cleanupStaleReservations(activeTorrentHashes);
-        console.log(`✅ SMART CLEANUP: Released ${cleanedCount} stale reservations`);
-      } catch (error) {
-        console.error('❌ SMART CLEANUP ERROR:', error);
-      }
-    }, 5000); // Wait 5 seconds for torrents to load
+    // Store the client for this user
+    userClients.set(userId, userClient);
+
+    console.log(`✅ WebTorrent client created for user: ${userId}`);
   }
-  return client;
+
+  return userClients.get(userId);
+}
+
+// For backward compatibility - this should be replaced with getUserClient
+async function getClient() {
+  console.warn('⚠️ DEPRECATED: getClient() called without userId - this should be replaced with getUserClient(userId)');
+  // Return a default client or throw error
+  throw new Error('getClient() is deprecated - use getUserClient(userId) instead');
 }
 
 function toSummary(t) {
@@ -82,7 +120,7 @@ function toSummary(t) {
 }
 
 async function addMagnet(magnet, userId) {
-  const c = await getClient();
+  const c = await getUserClient(userId);  // Use user-specific client
   const announce = getTrackers();
   return new Promise((resolve, reject) => {
     // Ensure user directory exists and get user-specific path
@@ -336,40 +374,35 @@ async function addMagnet(magnet, userId) {
 }
 
 async function getTorrent(infoHash, userId) {
-  const c = await getClient();
+  const c = await getUserClient(userId);  // Use user-specific client
   const torrent = c.get(infoHash);
 
-  // Only return torrent if it belongs to the requesting user
-  if (!torrent || torrent.userId !== userId) {
-    return null;
-  }
-
+  // With per-user clients, any torrent found in user's client belongs to them
   return torrent;
 }
 
 async function listTorrents(userId) {
-  const c = await getClient();
-  // Filter torrents to only show those belonging to the requesting user
-  const userTorrents = c.torrents.filter(torrent => torrent.userId === userId);
-  return userTorrents.map(toSummary);
+  const c = await getUserClient(userId);  // Use user-specific client
+  // All torrents in user's client belong to them, no filtering needed
+  return c.torrents.map(toSummary);
 }
 
-async function stopTorrent(infoHash, userId = null) {
-  const c = await getClient();
-  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+async function stopTorrent(infoHash, userId) {
+  if (!userId) {
+    throw new Error('userId is required for stopTorrent');
+  }
 
-  // If userId is provided, check ownership; otherwise allow (for backward compatibility)
-  if (userId && (!t || t.userId !== userId)) return false;
+  const c = await getUserClient(userId);  // Use user-specific client
+  const t = c.get(infoHash);  // Get torrent directly by infoHash
+
   if (!t) return false;
 
   // Release any active reservation when stopping torrent
-  if (t.userId) {
-    try {
-      await database.releaseReservation(t.userId, infoHash);
-      console.log(`🔓 Released reservation for stopped torrent: ${infoHash}`);
-    } catch (error) {
-      console.log('⚠️ No reservation to release for stopped torrent (normal)');
-    }
+  try {
+    await database.releaseReservation(userId, infoHash);
+    console.log(`🔓 Released reservation for stopped torrent: ${infoHash}`);
+  } catch (error) {
+    console.log('⚠️ No reservation to release for stopped torrent (normal)');
   }
 
   return new Promise((resolve, reject) => {
@@ -380,22 +413,22 @@ async function stopTorrent(infoHash, userId = null) {
   });
 }
 
-async function removeTorrent(infoHash, userId = null) {
-  const c = await getClient();
-  const t = c.torrents.find(torrent => torrent.infoHash === infoHash);
+async function removeTorrent(infoHash, userId) {
+  if (!userId) {
+    throw new Error('userId is required for removeTorrent');
+  }
 
-  // If userId is provided, check ownership; otherwise allow (for backward compatibility)
-  if (userId && (!t || t.userId !== userId)) return false;
+  const c = await getUserClient(userId);  // Use user-specific client
+  const t = c.get(infoHash);  // Get torrent directly by infoHash
+
   if (!t) return false;
 
   // Release any active reservation when removing torrent
-  if (t.userId) {
-    try {
-      await database.releaseReservation(t.userId, infoHash);
-      console.log(`🔓 Released reservation for removed torrent: ${infoHash}`);
-    } catch (error) {
-      console.log('⚠️ No reservation to release for removed torrent (normal)');
-    }
+  try {
+    await database.releaseReservation(userId, infoHash);
+    console.log(`🔓 Released reservation for removed torrent: ${infoHash}`);
+  } catch (error) {
+    console.log('⚠️ No reservation to release for removed torrent (normal)');
   }
 
   return new Promise((resolve, reject) => {
@@ -475,7 +508,8 @@ module.exports = {
   listTorrents,
   stopTorrent,
   removeTorrent,
-  getClient,
+  getUserClient,
+  getClient,  // Keep for backward compatibility (will throw error)
   getQuotaExceededNotifications,
   clearQuotaExceededNotification,
   clearAllQuotaExceededNotifications
