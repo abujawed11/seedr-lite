@@ -2,10 +2,39 @@ const fs = require("fs");
 const path = require("path");
 const mime = require("mime-types");
 const rangeParser = require("range-parser");
+const archiver = require("archiver");
 const { signLink, verifyLink } = require("../services/linkSigner");
 const { getUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
+
+// Calculate total size of a directory recursively
+function calculateDirectorySize(dirPath) {
+  let totalSize = 0;
+  let fileCount = 0;
+
+  try {
+    const items = fs.readdirSync(dirPath);
+
+    for (const item of items) {
+      const itemPath = path.join(dirPath, item);
+      const stat = fs.statSync(itemPath);
+
+      if (stat.isDirectory()) {
+        const subResult = calculateDirectorySize(itemPath);
+        totalSize += subResult.size;
+        fileCount += subResult.files;
+      } else {
+        totalSize += stat.size;
+        fileCount++;
+      }
+    }
+  } catch (error) {
+    console.error(`Error calculating directory size for ${dirPath}:`, error.message);
+  }
+
+  return { size: totalSize, files: fileCount };
+}
 
 // function validatePath(userPath) {
 //   if (!userPath) return "";
@@ -91,9 +120,19 @@ exports.browse = async (req, res) => {
       const relativePath = path.posix.join(safePath, item).replace(/\\/g, "/");
 
       if (itemStat.isDirectory()) {
+        // Calculate directory size and file count
+        const sizeInfo = calculateDirectorySize(itemPath);
+
+        // Create download token for the folder
+        const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId, isFolder: true });
+        const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
         dirs.push({
           name: item,
-          path: relativePath
+          path: relativePath,
+          size: sizeInfo.size,
+          fileCount: sizeInfo.files,
+          downloadUrl: `${baseUrl}/files/direct/${downloadToken}/${encodeURIComponent(item)}.zip`
         });
       } else {
         const mimeType = mime.lookup(item) || "application/octet-stream";
@@ -244,7 +283,57 @@ exports.direct = async (req, res) => {
       return res.status(400).json({ error: "Invalid token payload" });
     }
 
-    // Use the userId from the token to get the correct user directory
+    // Check if this is a folder download request
+    if (payload.isFolder) {
+      // Handle folder download
+      const userRoot = getUserStorageDir(payload.userId);
+      const safePath = validatePath(payload.path, userRoot);
+      const fullPath = path.resolve(userRoot, safePath);
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: "Folder not found" });
+      }
+
+      const stat = fs.statSync(fullPath);
+      if (!stat.isDirectory()) {
+        return res.status(400).json({ error: "Path is not a directory" });
+      }
+
+      // Get folder name for ZIP filename
+      const folderName = path.basename(fullPath);
+      const zipFilename = `${folderName}.zip`;
+
+      // Set response headers for ZIP download
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+      // Create ZIP archive
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // Maximum compression
+      });
+
+      // Handle archive errors
+      archive.on('error', (err) => {
+        console.error('Archive error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to create archive' });
+        }
+      });
+
+      // Pipe archive to response
+      archive.pipe(res);
+
+      // Add directory contents to archive
+      archive.directory(fullPath, folderName);
+
+      // Finalize the archive
+      await archive.finalize();
+
+      console.log(`📦 Folder download completed: ${folderName} (${zipFilename})`);
+      return;
+    }
+
+    // Use the userId from the token to get the correct user directory for file downloads
     await streamFileFromDisk(req, res, {
       filePath: payload.path,
       asAttachment: payload.asAttachment || false,
@@ -336,5 +425,73 @@ exports.listFiles = (req, res) => {
   } catch (err) {
     console.error("Error listing files:", err);
     res.status(500).json({ error: "failed to list files" });
+  }
+};
+
+// Download folder as ZIP
+exports.downloadFolder = async (req, res) => {
+  try {
+    const token = req.params.token;
+    if (!token) {
+      return res.status(400).json({ error: "Missing download token" });
+    }
+
+    // Verify the signed token
+    const { path: relativePath, userId } = verifyLink(token);
+
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const userRoot = getUserStorageDir(userId);
+    const safePath = validatePath(relativePath, userRoot);
+    const fullPath = path.resolve(userRoot, safePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: "Folder not found" });
+    }
+
+    const stat = fs.statSync(fullPath);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: "Path is not a directory" });
+    }
+
+    // Get folder name for ZIP filename
+    const folderName = path.basename(fullPath);
+    const zipFilename = `${folderName}.zip`;
+
+    // Set response headers for ZIP download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+    // Create ZIP archive
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Maximum compression
+    });
+
+    // Handle archive errors
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to create archive' });
+      }
+    });
+
+    // Pipe archive to response
+    archive.pipe(res);
+
+    // Add directory contents to archive
+    archive.directory(fullPath, folderName);
+
+    // Finalize the archive
+    await archive.finalize();
+
+    console.log(`📦 Folder download completed: ${folderName} (${zipFilename})`);
+
+  } catch (error) {
+    console.error("Error downloading folder:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to download folder" });
+    }
   }
 };

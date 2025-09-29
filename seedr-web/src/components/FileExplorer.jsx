@@ -93,6 +93,7 @@ export default function FileExplorer({ browseData, currentPath, onNavigate, form
                     folder={dir}
                     onNavigate={onNavigate}
                     onDelete={handleDelete}
+                    formatFileSize={formatFileSize}
                   />
                 ))}
               </div>
