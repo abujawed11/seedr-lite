@@ -12,6 +12,9 @@ async function initServer() {
     // Ensure storage directories
     ensureDirs();
 
+    // Initialize torrent manager (triggers startup cleanup)
+    require('./services/torrentManager');
+
     // Start server
     require('./server');
 

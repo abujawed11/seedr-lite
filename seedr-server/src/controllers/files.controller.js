@@ -41,12 +41,21 @@ function getAbsolutePath(relativePath, userRoot) {
 
 exports.browse = async (req, res) => {
   try {
+    // Prevent caching of file browse data
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     const userId = req.user.id;
     const userRoot = getUserStorageDir(userId);
+    console.log(`📁 Browse: User ${userId} browsing directory: ${userRoot}`);
 
     // Update storage usage when browsing (to keep it current)
     try {
-      await updateUserStorageUsage(userId);
+      const calculatedUsage = await updateUserStorageUsage(userId);
+      console.log(`📊 Browse: Calculated storage usage: ${calculatedUsage} bytes`);
     } catch (error) {
       console.error("Error updating storage usage during browse:", error);
     }

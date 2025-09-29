@@ -5,7 +5,7 @@ import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 
 export default function App() {
-  const { user, logout, getStorageInfo } = useAuth();
+  const { user, logout, getStorageInfo, refreshUserProfile } = useAuth();
   const [torrents, setTorrents] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
@@ -72,6 +72,24 @@ export default function App() {
     fetchBrowse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
+
+  // Detect when torrents complete and refresh data
+  useEffect(() => {
+    const currentDone = new Set(torrents.filter(t => t.progress === 100).map(t => t.id));
+    const newlyDone = [...currentDone].filter(id => !prevDoneRef.current.has(id));
+
+    if (newlyDone.length > 0) {
+      console.log(`🎉 ${newlyDone.length} torrent(s) completed - refreshing data`);
+
+      // Refresh user profile (quota/storage info)
+      refreshUserProfile();
+
+      // Refresh file browser to show new files
+      fetchBrowse();
+    }
+
+    prevDoneRef.current = currentDone;
+  }, [torrents, refreshUserProfile]);
 
   // Simple polling — Poll when there are active downloads (like working backup)
   useEffect(() => {

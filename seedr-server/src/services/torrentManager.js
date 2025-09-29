@@ -3,6 +3,7 @@ const path = require('path');
 const { logger } = require('../utils/logger');
 const { getTrackers } = require('../utils/trackers');
 const database = require('../models/database');
+const { getUserStorageDir, ensureUserStorageDir } = require('../utils/storage');
 
 const ROOT = process.env.ROOT || './src/storage/library';
 
@@ -11,6 +12,11 @@ const quotaExceededNotifications = new Map(); // userId -> [notifications]
 
 let WebTorrentMod;   // ESM default export
 let client;          // singleton
+
+// Initialize client immediately on module import to trigger startup cleanup
+getClient().catch(error => {
+  console.error('❌ TORRENT_MANAGER: Failed to initialize client:', error);
+});
 
 // Simple human-readable bytes formatter (replaces pretty-bytes)
 function humanBytes(bytes) {
@@ -49,8 +55,35 @@ async function getClient() {
         const activeTorrentHashes = client.torrents.map(t => t.infoHash);
         console.log(`🔍 STARTUP: Found ${activeTorrentHashes.length} active torrents in client`);
 
-        // For now, we'll clean up when a user tries to add a torrent and gets a conflict
-        // This is safer than trying to access all users without proper database methods
+        // Clean up all stale reservations (reservations without active torrents)
+        try {
+          const allReservations = await database.reservations._all(
+            `SELECT user_id, info_hash, size_bytes FROM storage_reservations WHERE status='active'`
+          );
+
+          console.log(`🧹 STARTUP: Found ${allReservations.length} total active reservations to check`);
+
+          let cleanedCount = 0;
+          for (const reservation of allReservations) {
+            // Check if this torrent hash exists in current active torrents
+            const torrentExists = activeTorrentHashes.includes(reservation.info_hash);
+
+            if (!torrentExists) {
+              console.log(`🗑️ STARTUP: Removing stale reservation: ${reservation.user_id} - ${reservation.info_hash}`);
+              try {
+                await database.releaseReservation(reservation.user_id, reservation.info_hash);
+                cleanedCount++;
+              } catch (error) {
+                console.error(`❌ STARTUP: Failed to release reservation:`, error);
+              }
+            }
+          }
+
+          console.log(`✅ STARTUP: Cleaned up ${cleanedCount} stale reservations`);
+        } catch (error) {
+          console.error('💥 STARTUP: Error cleaning stale reservations:', error);
+        }
+
         console.log('✅ STARTUP: Stale reservation cleanup completed');
       } catch (error) {
         console.error('💥 STARTUP: Error during stale reservation cleanup:', error);
@@ -84,9 +117,13 @@ async function addMagnet(magnet, userId) {
   const c = await getClient();
   const announce = getTrackers();
   return new Promise((resolve, reject) => {
+    // Ensure user directory exists and get user-specific path
+    const userStorageDir = ensureUserStorageDir(userId);
+    console.log(`📁 Using user storage directory: ${userStorageDir}`);
+
     const t = c.add(
       magnet,
-      { path: path.resolve(ROOT), announce },
+      { path: userStorageDir, announce },
       (torrent) => {
         // Track user for this torrent
         torrent.userId = userId;
@@ -269,8 +306,17 @@ async function addMagnet(magnet, userId) {
             // Finalize the reservation (move from reserved to used storage)
             await database.finalizeReservation(userId, torrent.infoHash, torrent.length);
             console.log(`✅ Storage usage updated for completed torrent: ${humanBytes(torrent.length)}`);
+            console.log(`🔄 Reservation finalized for user ${userId}, torrent ${torrent.infoHash}`);
           } catch (error) {
-            console.error('💥 Error updating storage usage:', error);
+            console.error('💥 Error finalizing reservation:', error);
+
+            // Fallback: try to release the reservation if finalization fails
+            try {
+              await database.releaseReservation(userId, torrent.infoHash);
+              console.log(`🔄 Fallback: Released reservation for ${torrent.infoHash}`);
+            } catch (releaseError) {
+              console.error('💥 Fallback release also failed:', releaseError);
+            }
           }
 
           c.remove(torrent.infoHash, { destroyStore: false }, (err) => {

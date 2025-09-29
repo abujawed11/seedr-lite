@@ -88,11 +88,22 @@ router.post('/login', asyncHandler(async (req, res) => {
 
 // Get current user profile
 router.get('/profile', authenticateToken, asyncHandler(async (req, res) => {
+  // Prevent caching of profile data
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+
   // Update storage usage before returning profile
   try {
-    await updateUserStorageUsage(req.user.id);
+    const calculatedUsage = await updateUserStorageUsage(req.user.id);
+    console.log(`📊 Profile: Calculated storage usage for user ${req.user.id}: ${calculatedUsage} bytes`);
+
     // Get fresh user data with updated storage
     const updatedUser = await database.getUserById(req.user.id);
+    console.log(`📊 Profile: Database shows usage: ${updatedUser.storage_used} bytes`);
+
     res.json({
       user: {
         id: updatedUser.id,

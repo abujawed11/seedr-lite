@@ -82,6 +82,21 @@ const AuthProvider = ({ children }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  const refreshUserProfile = async () => {
+    if (!token) return;
+
+    try {
+      console.log('🔄 Refreshing user profile data...');
+      const userData = await getUserProfile();
+      setUser(userData.user);
+      console.log('✅ User profile refreshed');
+      return userData.user;
+    } catch (error) {
+      console.error('❌ Failed to refresh user profile:', error);
+      return null;
+    }
+  };
+
   const getStorageInfo = () => {
     if (!user) return null;
 
@@ -106,7 +121,8 @@ const AuthProvider = ({ children }) => {
     register,
     logout,
     isAuthenticated: !!user,
-    getStorageInfo
+    getStorageInfo,
+    refreshUserProfile
   };
 
   return (
