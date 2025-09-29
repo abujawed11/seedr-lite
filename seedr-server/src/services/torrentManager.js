@@ -302,6 +302,14 @@ async function addMagnet(magnet, userId) {
             }
           }
 
+          // Add completion notification to trigger file explorer refresh
+          addCompletionNotification(userId, {
+            torrentName: torrent.name,
+            torrentSize: humanBytes(torrent.length),
+            infoHash: torrent.infoHash,
+            timestamp: new Date().toISOString()
+          });
+
           c.remove(torrent.infoHash, { destroyStore: false }, (err) => {
             if (err) {
               console.error('error removing completed torrent:', err);
@@ -417,6 +425,26 @@ function addQuotaExceededNotification(userId, notification) {
   }
 
   console.log(`📢 Added quota exceeded notification for user ${userId}: ${notification.torrentName}`);
+}
+
+function addCompletionNotification(userId, notification) {
+  if (!quotaExceededNotifications.has(userId)) {
+    quotaExceededNotifications.set(userId, []);
+  }
+
+  const userNotifications = quotaExceededNotifications.get(userId);
+  userNotifications.push({
+    id: Date.now().toString(),
+    type: 'download_completed',
+    ...notification
+  });
+
+  // Keep only last 10 notifications per user
+  if (userNotifications.length > 10) {
+    userNotifications.splice(0, userNotifications.length - 10);
+  }
+
+  console.log(`🎉 Added completion notification for user ${userId}: ${notification.torrentName}`);
 }
 
 function getQuotaExceededNotifications(userId) {

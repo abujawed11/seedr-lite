@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { listTorrents, browse } from "./api";
+import { listTorrents, browse, getNotifications, clearNotification } from "./api";
 import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
@@ -74,6 +74,50 @@ export default function App() {
     fetchDetailedQuota(); // Fetch detailed quota information
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
+
+  // Monitor notifications for download completions and refresh file explorer
+  useEffect(() => {
+    const checkNotifications = async () => {
+      try {
+        const response = await getNotifications();
+        const notifications = response.notifications || [];
+
+        // Look for completion notifications
+        const completionNotifications = notifications.filter(n => n.type === 'download_completed');
+
+        if (completionNotifications.length > 0) {
+          console.log(`🎉 ${completionNotifications.length} download(s) completed - refreshing file explorer`);
+
+          // Refresh file explorer to show new files
+          fetchBrowse();
+
+          // Also refresh quota/storage info
+          refreshUserProfile();
+          fetchDetailedQuota();
+
+          // Auto-clear completion notifications after processing
+          for (const notification of completionNotifications) {
+            try {
+              await clearNotification(notification.id);
+              console.log(`✅ Cleared completion notification for: ${notification.torrentName}`);
+            } catch (error) {
+              console.error('Failed to clear completion notification:', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check notifications:', error);
+      }
+    };
+
+    // Check notifications every 5 seconds
+    const interval = setInterval(checkNotifications, 5000);
+
+    // Also check immediately
+    checkNotifications();
+
+    return () => clearInterval(interval);
+  }, [refreshUserProfile, fetchDetailedQuota]);
 
   // Detect when torrents complete and refresh data
   useEffect(() => {
