@@ -109,6 +109,7 @@ export async function getCurrentPlan() {
 }
 
 export async function submitUpgradeRequest(planId, userDetails) {
+  // userDetails should include: fullName, email, phone, address, duration
   const res = await api.post('/plans/upgrade-request', {
     planId,
     ...userDetails

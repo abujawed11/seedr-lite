@@ -6,6 +6,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedDuration, setSelectedDuration] = useState('monthly'); // 'monthly' or 'yearly'
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -30,8 +31,9 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     }
   };
 
-  const handleSelectPlan = (planId) => {
+  const handleSelectPlan = (planId, duration) => {
     setSelectedPlan(planId);
+    setSelectedDuration(duration);
     setShowForm(true);
     setError('');
   };
@@ -49,11 +51,16 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     setError('');
 
     try {
-      const response = await submitUpgradeRequest(selectedPlan, formData);
+      const requestData = {
+        ...formData,
+        duration: selectedDuration
+      };
+      const response = await submitUpgradeRequest(selectedPlan, requestData);
       alert('Upgrade request submitted successfully! Admin will review your request soon.');
       onUpgradeSuccess(response);
       setShowForm(false);
       setSelectedPlan(null);
+      setSelectedDuration('monthly');
       setFormData({ fullName: '', email: '', phone: '', address: '' });
       onClose();
     } catch (err) {
@@ -74,6 +81,20 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     return colors[color] || colors.gray;
   };
 
+  const calculatePrice = (monthlyPrice, duration) => {
+    if (duration === 'yearly') {
+      return Math.round(monthlyPrice * 12 * 0.8); // 20% discount for yearly
+    }
+    return monthlyPrice;
+  };
+
+  const getPriceLabel = (monthlyPrice, duration) => {
+    if (duration === 'yearly') {
+      return `$${calculatePrice(monthlyPrice, duration)}/year`;
+    }
+    return `$${monthlyPrice}/month`;
+  };
+
   if (!isOpen) return null;
 
   // If form is shown, render the form modal
@@ -89,6 +110,13 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
               <h2 className="text-2xl font-bold text-white">Upgrade Request Form</h2>
               <p className="text-gray-400 mt-1">
                 Requesting: <span className="text-yellow-400 font-semibold">{selectedPlanDetails?.name} Plan</span>
+                {' '} • <span className="text-blue-400 font-semibold">{selectedDuration === 'yearly' ? 'Yearly' : 'Monthly'} Subscription</span>
+              </p>
+              <p className="text-gray-500 text-sm mt-1">
+                Price: <span className="text-green-400 font-medium">{getPriceLabel(selectedPlanDetails?.price, selectedDuration)}</span>
+                {selectedDuration === 'yearly' && (
+                  <span className="text-yellow-400 ml-2 text-xs">(20% off yearly discount!)</span>
+                )}
               </p>
             </div>
             <button
@@ -213,6 +241,33 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
           <div>
             <h2 className="text-2xl font-bold text-white">Upgrade Your Storage</h2>
             <p className="text-gray-400 mt-1">Choose the plan that fits your needs</p>
+
+            {/* Duration Toggle */}
+            <div className="flex items-center mt-4 p-1 bg-gray-700 rounded-lg w-fit">
+              <button
+                onClick={() => setSelectedDuration('monthly')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  selectedDuration === 'monthly'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setSelectedDuration('yearly')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 relative ${
+                  selectedDuration === 'yearly'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Yearly
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs px-1 rounded-full">
+                  20% OFF
+                </span>
+              </button>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -250,9 +305,14 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                 <div className={`bg-gradient-to-br ${getPlanColor(plan.color)} p-6 text-white`}>
                   <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">${plan.price}</span>
-                    <span className="text-sm ml-2 opacity-80">/month</span>
+                    <span className="text-4xl font-bold">${calculatePrice(plan.price, selectedDuration)}</span>
+                    <span className="text-sm ml-2 opacity-80">/{selectedDuration === 'yearly' ? 'year' : 'month'}</span>
                   </div>
+                  {selectedDuration === 'yearly' && (
+                    <p className="text-xs text-yellow-400 mt-1">
+                      Save ${Math.round(plan.price * 12 * 0.2)}/year vs monthly
+                    </p>
+                  )}
                   <p className="mt-2 text-sm opacity-90">
                     {(plan.storage / (1024 * 1024 * 1024)).toFixed(0)} GB Storage
                   </p>
@@ -290,7 +350,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
 
                   {/* Action Button */}
                   <button
-                    onClick={() => handleSelectPlan(plan.id)}
+                    onClick={() => handleSelectPlan(plan.id, selectedDuration)}
                     disabled={isCurrent || isDowngrade || loading}
                     className={`w-full mt-6 py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
                       isCurrent
@@ -304,7 +364,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                       ? 'Current Plan'
                       : isDowngrade
                       ? 'Downgrades Not Available'
-                      : `Request ${plan.name}`}
+                      : `Request ${plan.name} (${selectedDuration === 'yearly' ? 'Yearly' : 'Monthly'})`}
                   </button>
                 </div>
               </div>

@@ -4,10 +4,12 @@ import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
 import Navbar from './Navbar';
 import HomePage from '../pages/HomePage';
+import MyAccount from './MyAccount';
 
 export default function AuthWrapper({ children }) {
   const { isAuthenticated, loading } = useAuth();
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'login', 'register', 'dashboard', 'features', 'pricing'
+  const [showMyAccount, setShowMyAccount] = useState(false);
 
   const handleNavigate = (page) => {
     setCurrentPage(page);
@@ -43,8 +45,13 @@ export default function AuthWrapper({ children }) {
             const event = new CustomEvent('showAdminPanel');
             window.dispatchEvent(event);
           }}
+          onShowMyAccount={() => setShowMyAccount(true)}
         />
         {children}
+        <MyAccount
+          isOpen={showMyAccount}
+          onClose={() => setShowMyAccount(false)}
+        />
       </>
     );
   }

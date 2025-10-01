@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onShowAdminPanel }) {
+export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onShowAdminPanel, onShowMyAccount }) {
   const { isAuthenticated, user, logout, getStorageInfo } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -217,6 +217,20 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
                         <p className="text-xs text-gray-400">Signed in as</p>
                         <p className="text-sm font-medium text-white truncate">{user?.email}</p>
                       </div>
+                      <button
+                        onClick={() => {
+                          onShowMyAccount && onShowMyAccount();
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-700/50 hover:text-blue-300 transition-all duration-200 transform hover:translate-x-1"
+                      >
+                        <span className="flex items-center">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          My Account
+                        </span>
+                      </button>
                       <button
                         onClick={() => {
                           logout();
