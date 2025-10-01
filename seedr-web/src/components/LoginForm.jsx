@@ -21,9 +21,9 @@ export default function LoginForm({ onSwitchToRegister }) {
 
       if (!result.success) {
         setError(result.error);
+        return;
       }
-      // If login is successful, no need to do anything here -
-      // AuthContext will handle the state update and redirect
+      // If login is successful, AuthContext will handle the state update and redirect
     } catch (error) {
       // Handle network errors or other unexpected errors
       setError('Login failed. Please check your connection and try again.');
@@ -33,15 +33,13 @@ export default function LoginForm({ onSwitchToRegister }) {
   };
 
   const handleChange = (e) => {
-    // Clear error when user starts typing
-    if (error) {
-      setError('');
-    }
-
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
+
+    // Don't clear error immediately on input change
+    // Let the error persist until user tries to submit again
   };
 
   return (

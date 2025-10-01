@@ -20,7 +20,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only handle 401 errors for authenticated requests (not login attempts)
     if (error.response?.status === 401) {
+      const url = error.config?.url;
+
+      // Don't reload page for login attempts - let the login form handle the error
+      if (url && (url.includes('/auth/login') || url.includes('/auth/register'))) {
+        return Promise.reject(error);
+      }
+
+      // For other 401 errors (expired tokens, etc.), clear token and reload
       localStorage.removeItem('seedr_token');
       window.location.reload();
     }
