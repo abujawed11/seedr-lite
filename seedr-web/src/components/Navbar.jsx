@@ -103,12 +103,12 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
                               <div className="font-medium text-yellow-400">{storageInfo.reserved}</div>
                             </div>
                           )}
-                          {storageInfo.inProgress && storageInfo.inProgress !== '0 B' && (
+                          {/* {storageInfo.inProgress && storageInfo.inProgress !== '0 B' && (
                             <div className="text-center">
                               <div className="text-xs text-gray-400 mb-1">In Progress</div>
                               <div className="font-medium text-purple-400">{storageInfo.inProgress}</div>
                             </div>
-                          )}
+                          )} */}
                         </div>
                       </div>
                       {/* Multi-segment storage bar */}

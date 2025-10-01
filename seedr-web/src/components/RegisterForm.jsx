@@ -69,7 +69,7 @@ export default function RegisterForm({ onSwitchToLogin }) {
               Seedr-Lite
             </h1>
             <p className="text-gray-400">Create your account</p>
-            <p className="text-sm text-gray-500 mt-2">Get 30GB free storage</p>
+            {/* <p className="text-sm text-gray-500 mt-2">Get 30GB free storage</p> */}
           </div>
 
           {/* Error Message */}
