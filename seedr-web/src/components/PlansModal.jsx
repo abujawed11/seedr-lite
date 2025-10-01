@@ -240,7 +240,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-xl border-2 overflow-hidden transition-all duration-300 ${
+                className={`relative rounded-xl border-2 overflow-hidden transition-all duration-300 flex flex-col ${
                   isCurrent
                     ? 'border-green-500 shadow-lg shadow-green-500/20'
                     : 'border-gray-700 hover:border-gray-600'
@@ -266,8 +266,8 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                 )}
 
                 {/* Plan Details */}
-                <div className="p-6 bg-gray-800/50">
-                  <ul className="space-y-3">
+                <div className="p-6 bg-gray-800/50 flex-1 flex flex-col">
+                  <ul className="space-y-3 flex-1">
                     {plan.features.map((feature, idx) => (
                       <li key={idx} className="flex items-start text-sm text-gray-300">
                         <svg
