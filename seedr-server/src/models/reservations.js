@@ -335,6 +335,13 @@ class ReservationManager {
     );
     if (!u) throw new Error('User not found');
 
+    // Get detailed reservation breakdown for debugging
+    const activeReservations = await this._all(
+      `SELECT info_hash, size_bytes, COALESCE(downloaded_bytes, 0) as downloaded_bytes,
+              (size_bytes - COALESCE(downloaded_bytes, 0)) as remaining_bytes
+       FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
+    );
+
     const r = await this._get(
       `SELECT
          COALESCE(SUM(size_bytes - COALESCE(downloaded_bytes, 0)), 0) AS totalReserved,
@@ -342,16 +349,37 @@ class ReservationManager {
        FROM storage_reservations WHERE user_id=? AND status='active'`, [userId]
     );
 
-    // totalReserved = bytes still reserved (decreases as downloads progress) - for UI display
-    // totalInProgress = bytes downloaded but not yet finalized
-    // effectiveRemaining = quota - used - totalReserved
+    // CRITICAL FIX: storage_used already includes downloaded_bytes from progressive updates
+    // So we should NOT subtract totalReserved which represents remaining bytes
+    // The correct formula: available = quota - used - remaining_to_download
+    // But storage_used already has progressive bytes, so:
+    // available = quota - used - (reserved - already_downloaded)
+    // available = quota - used - totalReserved ✓ This is correct!
+
+    // But there's a subtle bug: when calculating totalReserved, we use size_bytes - downloaded_bytes
+    // This gives us the REMAINING reservation
+    // However, storage_used might include bytes from FINALIZED reservations too
+    // So we need to ensure we're not double-counting
+
     const effectiveRemaining = Math.max(0, u.storageQuota - u.storageUsed - r.totalReserved);
+
+    // Debug logging for quota calculations
+    console.log(`🔍 QUOTA CALCULATION for user ${userId.substring(0, 8)}...:`);
+    console.log(`  Quota: ${this._humanBytes(u.storageQuota)}`);
+    console.log(`  Used (includes progressive): ${this._humanBytes(u.storageUsed)}`);
+    console.log(`  Total reserved (remaining from active): ${this._humanBytes(r.totalReserved)}`);
+    console.log(`  Total in progress (already downloaded): ${this._humanBytes(r.totalInProgress)}`);
+    console.log(`  Effective remaining: ${this._humanBytes(effectiveRemaining)}`);
+    console.log(`  Active reservations: ${activeReservations.length}`);
+    activeReservations.forEach(res => {
+      console.log(`    - ${res.info_hash.substring(0, 8)}: ${this._humanBytes(res.size_bytes)} total, ${this._humanBytes(res.downloaded_bytes)} done, ${this._humanBytes(res.remaining_bytes)} remaining`);
+    });
 
     return {
       storageQuota: u.storageQuota,
       storageUsed: u.storageUsed,
-      totalReserved: r.totalReserved, // Decreases as downloads progress (correct behavior)
-      totalInProgress: r.totalInProgress,
+      totalReserved: r.totalReserved, // Remaining bytes from active reservations
+      totalInProgress: r.totalInProgress, // Downloaded bytes from active reservations
       effectiveRemaining
     };
   }

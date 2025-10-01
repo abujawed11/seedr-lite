@@ -44,10 +44,26 @@ function calculateDirectorySize(dirPath) {
 
 // Update user's storage usage in database
 async function updateUserStorageUsage(userId) {
+  // CRITICAL FIX: Don't overwrite progressive tracking when active downloads exist
+  // Check if user has active reservations (ongoing downloads)
+  const reservedBytes = await database.reservations.getUserReservedBytes(userId);
+
+  if (reservedBytes > 0) {
+    console.log(`⏭️ Skipping filesystem scan for user ${userId.substring(0, 8)}... - ${humanBytes(reservedBytes)} in active downloads`);
+    console.log(`   Progressive tracking is handling storage updates during downloads`);
+
+    // Return current storage_used from database (maintained by progressive tracking)
+    const user = await database.getUserById(userId);
+    return user.storage_used;
+  }
+
+  // No active downloads - safe to scan filesystem and update
+  console.log(`📂 No active downloads - scanning filesystem for user ${userId.substring(0, 8)}...`);
   const userDir = getUserStorageDir(userId);
   const storageUsed = calculateDirectorySize(userDir);
 
   await database.updateUserStorage(userId, storageUsed);
+  console.log(`✅ Updated storage from filesystem: ${humanBytes(storageUsed)}`);
   return storageUsed;
 }
 
