@@ -57,7 +57,7 @@ router.get('/users/:userId', asyncHandler(async (req, res) => {
 // Update user quota and plan
 router.put('/users/:userId/quota', asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { quota, plan, maxDownloads } = req.body;
+  const { quota, plan, maxDownloads, forceDowngrade } = req.body;
 
   if (!quota || !plan || maxDownloads === undefined) {
     return res.status(400).json({ error: 'Missing required fields: quota, plan, maxDownloads' });
@@ -75,20 +75,50 @@ router.put('/users/:userId/quota', asyncHandler(async (req, res) => {
 
   // Check if user's current usage exceeds new quota
   if (user.storage_used > quota) {
-    return res.status(400).json({
-      error: `User's current storage usage (${user.storage_used} bytes) exceeds the new quota (${quota} bytes)`,
-      current_usage: user.storage_used,
-      requested_quota: quota
-    });
+    // If force downgrade is not enabled, return error with warning
+    if (!forceDowngrade) {
+      return res.status(400).json({
+        error: 'USAGE_EXCEEDS_QUOTA',
+        message: `User's current storage usage exceeds the new quota`,
+        current_usage: user.storage_used,
+        current_usage_formatted: formatBytes(user.storage_used),
+        requested_quota: quota,
+        requested_quota_formatted: formatBytes(quota),
+        overage: user.storage_used - quota,
+        overage_formatted: formatBytes(user.storage_used - quota),
+        warning: 'User will not be able to download new files until they free up space.',
+        suggestion: 'You can force this downgrade, but the user will be in "over-quota" state.'
+      });
+    }
+
+    // Force downgrade allowed - user will be over quota
+    console.log(`⚠️ FORCE DOWNGRADE: User ${user.username} (${userId}) will be ${formatBytes(user.storage_used - quota)} over quota`);
   }
 
   await database.adminUpdateUserQuotaAndPlan(userId, quota, plan, maxDownloads);
 
+  const updatedUser = await database.getUserById(userId);
+  const isOverQuota = updatedUser.storage_used > updatedUser.storage_quota;
+
   res.json({
-    message: 'User quota and plan updated successfully',
-    user: await database.getUserById(userId)
+    message: isOverQuota
+      ? 'User quota updated (WARNING: User is now over quota and cannot download new files)'
+      : 'User quota and plan updated successfully',
+    user: updatedUser,
+    over_quota: isOverQuota,
+    overage: isOverQuota ? updatedUser.storage_used - updatedUser.storage_quota : 0,
+    overage_formatted: isOverQuota ? formatBytes(updatedUser.storage_used - updatedUser.storage_quota) : '0 B'
   });
 }));
+
+// Helper function to format bytes
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 // Update user status (enable/disable)
 router.put('/users/:userId/status', asyncHandler(async (req, res) => {

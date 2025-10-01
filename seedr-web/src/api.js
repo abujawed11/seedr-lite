@@ -148,8 +148,8 @@ export async function rejectUpgradeRequest(requestId, adminNotes) {
   return res.data;
 }
 
-export async function updateUserQuota(userId, quota, plan, maxDownloads) {
-  const res = await api.put(`/admin/users/${userId}/quota`, { quota, plan, maxDownloads });
+export async function updateUserQuota(userId, quota, plan, maxDownloads, forceDowngrade = false) {
+  const res = await api.put(`/admin/users/${userId}/quota`, { quota, plan, maxDownloads, forceDowngrade });
   return res.data;
 }
 

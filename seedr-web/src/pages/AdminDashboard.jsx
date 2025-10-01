@@ -103,11 +103,19 @@ export default function AdminDashboard({ onBackToMain }) {
   };
 
   const formatBytes = (bytes) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
     if (bytes === 0) return '0 B';
+
+    // Handle negative values (over quota)
+    const isNegative = bytes < 0;
+    const absBytes = Math.abs(bytes);
+
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const i = Math.floor(Math.log(absBytes) / Math.log(k));
+    const formatted = parseFloat((absBytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+    return isNegative ? `-${formatted}` : formatted;
   };
 
   const formatDate = (dateString) => {
@@ -337,8 +345,12 @@ export default function AdminDashboard({ onBackToMain }) {
                           <div className="text-sm text-white">
                             {formatBytes(u.storage_used)} / {formatBytes(u.storage_quota)}
                           </div>
-                          <div className="text-xs text-gray-400">
-                            {formatBytes(u.effective_available)} available
+                          <div className={`text-xs ${u.effective_available < 0 ? 'text-red-400 font-semibold' : 'text-gray-400'}`}>
+                            {u.effective_available < 0 ? (
+                              <>⚠️ Quota over-used ({formatBytes(Math.abs(u.effective_available))} over)</>
+                            ) : (
+                              <>{formatBytes(u.effective_available)} available</>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-white">
@@ -560,12 +572,57 @@ function EditUserModal({ user, onClose, onSave }) {
     setLoading(true);
     setError('');
 
+    // Check if this is a downgrade scenario
+    const usageInGB = Math.round(user.storage_used / (1024 * 1024 * 1024));
+    const newQuotaInGB = Math.round(quota / (1024 * 1024 * 1024));
+
+    if (user.storage_used > quota) {
+      const overage = user.storage_used - quota;
+      const overageGB = (overage / (1024 * 1024 * 1024)).toFixed(2);
+
+      const confirmDowngrade = confirm(
+        `⚠️ WARNING: Downgrade with Overage\n\n` +
+        `User's current usage: ${usageInGB} GB\n` +
+        `New quota: ${newQuotaInGB} GB\n` +
+        `Overage: ${overageGB} GB\n\n` +
+        `The user is using MORE than the new quota!\n\n` +
+        `If you proceed:\n` +
+        `✓ User will be in "over-quota" state\n` +
+        `✓ User CANNOT download new files\n` +
+        `✓ User must delete ${overageGB} GB to resume downloads\n\n` +
+        `Do you want to FORCE this downgrade?`
+      );
+
+      if (!confirmDowngrade) {
+        setLoading(false);
+        return;
+      }
+
+      // User confirmed - proceed with force downgrade
+      try {
+        await updateUserQuota(user.id, quota, plan, maxDownloads, true); // Pass forceDowngrade = true
+        alert(
+          `✅ User downgraded successfully!\n\n` +
+          `⚠️ User is now ${overageGB} GB over quota.\n` +
+          `They cannot download new files until they free up space.`
+        );
+        onSave();
+      } catch (err) {
+        setError(err.response?.data?.message || err.response?.data?.error || 'Failed to update user');
+        console.error('Update error:', err);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Normal update (no overage)
     try {
-      await updateUserQuota(user.id, quota, plan, maxDownloads);
+      await updateUserQuota(user.id, quota, plan, maxDownloads, false);
       alert('User updated successfully');
       onSave();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update user');
+      setError(err.response?.data?.message || err.response?.data?.error || 'Failed to update user');
       console.error('Update error:', err);
     } finally {
       setLoading(false);
