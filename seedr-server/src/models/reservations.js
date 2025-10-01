@@ -526,6 +526,12 @@ class ReservationManager {
         const newDownloadedBytes = Math.min(downloadedBytes, reservation.size_bytes);
         const bytesIncrease = newDownloadedBytes - previousDownloaded;
 
+        // Detailed logging for progressive tracking
+        console.log(`📊 PROGRESSIVE UPDATE for ${infoHash.substring(0, 8)}...:`);
+        console.log(`  Previous: ${this._humanBytes(previousDownloaded)} / ${this._humanBytes(reservation.size_bytes)}`);
+        console.log(`  New: ${this._humanBytes(newDownloadedBytes)} / ${this._humanBytes(reservation.size_bytes)}`);
+        console.log(`  Increase: ${this._humanBytes(bytesIncrease)}`);
+
         if (bytesIncrease > 0) {
           // Update user's storage_used
           await this._run(
@@ -540,6 +546,10 @@ class ReservationManager {
              WHERE id=?`,
             [newDownloadedBytes, reservation.id]
           );
+
+          console.log(`✅ Progressive update: Added ${this._humanBytes(bytesIncrease)} to storage_used`);
+        } else {
+          console.log(`⏭️ No increase this cycle (already at ${this._humanBytes(newDownloadedBytes)})`);
         }
 
         await this._exec('COMMIT');
@@ -564,34 +574,74 @@ class ReservationManager {
          WHERE user_id=? AND info_hash=? AND status='active'`,
         [userId, infoHash]
       );
-      if (!row) { await this._exec('COMMIT'); return false; }
+      if (!row) {
+        await this._exec('COMMIT');
+        console.log(`⚠️ No active reservation found for ${infoHash} - already finalized or released`);
+        return false;
+      }
 
       const downloadedBytes = row.downloaded_bytes || 0;
       const totalBytes = (Number.isFinite(actualBytes) && actualBytes > 0) ? actualBytes : row.size_bytes;
 
+      // DEFENSIVE: Ensure totalBytes doesn't exceed original reservation
+      const cappedTotalBytes = Math.min(totalBytes, row.size_bytes);
+
       // Add any remaining bytes that weren't progressively tracked
-      const remainingBytes = Math.max(0, totalBytes - downloadedBytes);
+      const remainingBytes = Math.max(0, cappedTotalBytes - downloadedBytes);
+
+      // Detailed logging for debugging quota issues
+      console.log(`📊 FINALIZATION DETAILS for ${infoHash}:`);
+      console.log(`  Reserved size: ${this._humanBytes(row.size_bytes)}`);
+      console.log(`  Already tracked (progressive): ${this._humanBytes(downloadedBytes)}`);
+      console.log(`  Actual total bytes: ${this._humanBytes(totalBytes)}`);
+      console.log(`  Capped total bytes: ${this._humanBytes(cappedTotalBytes)}`);
+      console.log(`  Remaining to add: ${this._humanBytes(remainingBytes)}`);
+
+      // DEFENSIVE: Warn if remainingBytes seems suspiciously large (>10% of total)
+      if (remainingBytes > cappedTotalBytes * 0.1) {
+        console.warn(`⚠️ WARNING: Large remaining bytes detected (${this._humanBytes(remainingBytes)} / ${this._humanBytes(cappedTotalBytes)})`);
+        console.warn(`⚠️ This may indicate a progressive tracking gap. Progressive updates: ${this._humanBytes(downloadedBytes)}`);
+      }
 
       if (remainingBytes > 0) {
         await this._run(
           `UPDATE users SET storage_used = storage_used + ? WHERE id=?`,
           [remainingBytes, userId]
         );
+        console.log(`✅ Added ${this._humanBytes(remainingBytes)} to storage_used`);
+      } else {
+        console.log(`✅ No additional bytes to add (progressive tracking was complete)`);
       }
 
       await this._run(
         `UPDATE storage_reservations
          SET status='finalized', finalized_at=CURRENT_TIMESTAMP, downloaded_bytes=?
          WHERE id=?`,
-        [totalBytes, row.id]
+        [cappedTotalBytes, row.id]
       );
 
       await this._exec('COMMIT');
+      console.log(`✅ Reservation finalized successfully for ${infoHash}`);
       return true;
     } catch (e) {
       try { await this._exec('ROLLBACK'); } catch {}
+      console.error(`💥 Finalization failed for ${infoHash}:`, e);
       throw e;
     }
+  }
+
+  // Helper for logging
+  _humanBytes(bytes) {
+    const thresh = 1024;
+    if (typeof bytes !== 'number' || isNaN(bytes)) return '0 B';
+    if (Math.abs(bytes) < thresh) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let u = -1;
+    do {
+      bytes /= thresh;
+      ++u;
+    } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+    return `${bytes.toFixed(2)} ${units[u]}`;
   }
 
   async getUserReservations(userId) {

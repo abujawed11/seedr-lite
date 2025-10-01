@@ -377,12 +377,28 @@ async function addMagnet(magnet, userId) {
           console.log(`🎉 Download complete: ${torrent.name} for user ${userId}`);
 
           try {
-            // Finalize the reservation (move from reserved to used storage)
-            await database.finalizeReservation(userId, torrent.infoHash, torrent.length);
-            console.log(`✅ Storage usage updated for completed torrent: ${humanBytes(torrent.length)}`);
+            // CRITICAL: Final progressive update to sync all downloaded bytes before finalization
+            // This prevents race conditions where the last 5-second interval hasn't triggered yet
+            const finalDownloadedBytes = torrent.downloaded;
+            console.log(`🔄 Final sync: ${humanBytes(finalDownloadedBytes)} downloaded for ${torrent.name}`);
+
+            await database.updateProgressiveStorage(userId, torrent.infoHash, finalDownloadedBytes);
+            console.log(`✅ Progressive storage synced before finalization`);
+
+            // Now finalize with the exact downloaded amount
+            // This should result in minimal or zero remainingBytes since we just synced
+            await database.finalizeReservation(userId, torrent.infoHash, finalDownloadedBytes);
+            console.log(`✅ Storage usage finalized for completed torrent: ${humanBytes(finalDownloadedBytes)}`);
             console.log(`🔄 Reservation finalized for user ${userId}, torrent ${torrent.infoHash}`);
           } catch (error) {
             console.error('💥 Error finalizing reservation:', error);
+            console.error('💥 Error details:', {
+              userId,
+              infoHash: torrent.infoHash,
+              downloaded: torrent.downloaded,
+              length: torrent.length,
+              error: error.message
+            });
 
             // Fallback: try to release the reservation if finalization fails
             try {
