@@ -143,17 +143,20 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
     }
   };
 
+  // CRITICAL FIX: Filter notifications by type to prevent showing completion notifications as quota exceeded
+  const quotaExceededNotifications = notifications.filter(n => n.type === 'quota_exceeded');
+
   return (
     <div className="space-y-6">
-      {/* Notifications Section */}
-      {notifications.length > 0 && (
+      {/* Notifications Section - ONLY show quota_exceeded notifications */}
+      {quotaExceededNotifications.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-red-400 flex items-center">
               <span className="mr-2">🚨</span>
-              Quota Exceeded Alerts ({notifications.length})
+              Quota Exceeded Alerts ({quotaExceededNotifications.length})
             </h2>
-            {notifications.length > 1 && (
+            {quotaExceededNotifications.length > 1 && (
               <button
                 onClick={handleClearAllNotifications}
                 className="text-sm text-gray-400 hover:text-white transition-colors"
@@ -162,7 +165,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
               </button>
             )}
           </div>
-          {notifications.map((notification) => (
+          {quotaExceededNotifications.map((notification) => (
             <div
               key={notification.id}
               className="bg-red-900/20 border border-red-700/50 rounded-lg p-4 flex items-start justify-between"

@@ -71,6 +71,18 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = generateToken(user.id);
 
+  // CRITICAL FIX: Clear any stale quota notifications from previous sessions
+  // These notifications might have been created with outdated quota information
+  // and can confuse users with incorrect "quota exceeded" messages on login
+  try {
+    const { clearAllQuotaExceededNotifications } = require('../services/torrentManager');
+    clearAllQuotaExceededNotifications(user.id);
+    console.log(`🧹 Cleared stale notifications for user ${user.id.substring(0, 8)}... on login`);
+  } catch (error) {
+    // Non-critical - just log the error and continue
+    console.error('⚠️ Failed to clear notifications on login:', error);
+  }
+
   res.json({
     message: 'Login successful',
     user: {

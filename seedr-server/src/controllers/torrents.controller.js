@@ -728,6 +728,23 @@ exports.getNotifications = async (req, res) => {
   try {
     const userId = req.user.id;
     const notifications = getQuotaExceededNotifications(userId);
+
+    // DEBUG: Log notification details to track the source of quota exceeded alerts
+    if (notifications.length > 0) {
+      console.log(`📋 Returning ${notifications.length} notifications for user ${userId.substring(0, 8)}...`);
+      notifications.forEach(n => {
+        console.log(`  - Type: ${n.type}, Torrent: ${n.torrentName?.substring(0, 30)}..., Size: ${n.torrentSize}, Available: ${n.availableSpace}, ID: ${n.id}`);
+      });
+    }
+
+    // CRITICAL FIX: Prevent caching of notifications to avoid showing stale quota exceeded alerts
+    // After login, old cached notifications with incorrect quota info can confuse users
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     res.json({ notifications });
   } catch (error) {
     console.error('Error fetching notifications:', error);

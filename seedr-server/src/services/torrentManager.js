@@ -10,6 +10,11 @@ const ROOT = process.env.ROOT || './src/storage/library';
 // Store quota exceeded notifications for frontend
 const quotaExceededNotifications = new Map(); // userId -> [notifications]
 
+// CRITICAL FIX: Clear all notifications on server start to prevent stale alerts
+// Notifications are in-memory only and should not persist across server restarts
+console.log('🧹 STARTUP: Clearing all in-memory notifications from previous session');
+quotaExceededNotifications.clear();
+
 // Store per-user WebTorrent clients for complete isolation
 const userClients = new Map(); // userId -> WebTorrent client
 
@@ -242,10 +247,15 @@ async function addMagnet(magnet, userId) {
               console.error(`🚫 QUOTA_EXCEEDED${source ? ` (${source})` : ''}: ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
 
               // Store notification for frontend
+              // DEFENSIVE: Ensure availableSpace is valid before creating notification
+              const safeAvailableSpace = (typeof availableSpace === 'number' && !isNaN(availableSpace))
+                ? humanBytes(availableSpace)
+                : '0 B';
+
               addQuotaExceededNotification(userId, {
-                torrentName: torrent.name,
-                torrentSize: humanBytes(torrentSize),
-                availableSpace: humanBytes(availableSpace),
+                torrentName: torrent.name || 'Unknown',
+                torrentSize: humanBytes(torrentSize) || '0 B',
+                availableSpace: safeAvailableSpace,
                 timestamp: new Date().toISOString()
               });
 
@@ -567,8 +577,19 @@ function clearQuotaExceededNotification(userId, notificationId) {
 }
 
 function clearAllQuotaExceededNotifications(userId) {
+  const existingNotifications = quotaExceededNotifications.get(userId) || [];
+
+  // DEBUG: Log what we're clearing
+  if (existingNotifications.length > 0) {
+    console.log(`🗑️ Clearing ${existingNotifications.length} notifications for user ${userId.substring(0, 8)}...:`);
+    existingNotifications.forEach(n => {
+      console.log(`  - Type: ${n.type}, Torrent: ${n.torrentName?.substring(0, 30)}..., Size: ${n.torrentSize}, Available: ${n.availableSpace}, ID: ${n.id}`);
+    });
+  } else {
+    console.log(`🗑️ No notifications to clear for user ${userId.substring(0, 8)}...`);
+  }
+
   quotaExceededNotifications.set(userId, []);
-  console.log(`🗑️ Cleared all notifications for user ${userId}`);
 }
 
 module.exports = {
