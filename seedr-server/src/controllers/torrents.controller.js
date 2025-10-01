@@ -517,6 +517,35 @@ exports.create = async (req, res) => {
       });
     }
 
+    // Check max concurrent downloads limit
+    const user = await database.getUserById(userId);
+    const maxConcurrentDownloads = user.max_concurrent_downloads || 2;
+
+    // Get active torrents for this user
+    const userTorrents = await listTorrents(userId);
+    const activeTorrentCount = userTorrents.length;
+
+    console.log(`📊 Concurrent downloads check: ${activeTorrentCount}/${maxConcurrentDownloads}`);
+
+    if (activeTorrentCount >= maxConcurrentDownloads) {
+      console.log(`❌ Max concurrent downloads limit reached (${maxConcurrentDownloads})`);
+      return res.status(403).json({
+        error: `Maximum concurrent downloads limit reached`,
+        code: 'MAX_DOWNLOADS_EXCEEDED',
+        details: {
+          currentDownloads: activeTorrentCount,
+          maxAllowed: maxConcurrentDownloads,
+          activeTorrents: userTorrents.map(t => ({
+            name: t.name,
+            progress: `${(t.progress * 100).toFixed(1)}%`,
+            downloaded: humanBytes(t.downloaded),
+            size: humanBytes(t.length)
+          }))
+        },
+        suggestion: `Please wait for some downloads to complete. You can have up to ${maxConcurrentDownloads} active downloads at once.`
+      });
+    }
+
     // Fire-and-forget: kick off torrent add in background immediately
     // Quota validation will happen when metadata is received
     console.log('⚡ Starting torrent immediately (quota will be validated on metadata)...');
