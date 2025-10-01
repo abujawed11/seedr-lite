@@ -217,6 +217,20 @@ export default function App() {
     }
   }, [user?.role, currentView]);
 
+  // Listen for navbar events
+  useEffect(() => {
+    const handleShowPlansModal = () => setShowPlansModal(true);
+    const handleShowAdminPanel = () => setCurrentView('admin');
+
+    window.addEventListener('showPlansModal', handleShowPlansModal);
+    window.addEventListener('showAdminPanel', handleShowAdminPanel);
+
+    return () => {
+      window.removeEventListener('showPlansModal', handleShowPlansModal);
+      window.removeEventListener('showAdminPanel', handleShowAdminPanel);
+    };
+  }, []);
+
   // If admin view is active, show admin dashboard
   if (currentView === 'admin') {
     return <AdminDashboard onBackToMain={() => setCurrentView('main')} />;
@@ -224,167 +238,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800">
-      {/* Header */}
-      <header className="bg-gray-800/80 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
-                Seedr-Lite
-              </h1>
-              <div className="ml-4 text-sm text-gray-400">Modern torrent client</div>
-            </div>
-
-            {/* User info and storage */}
-            <div className="flex items-center space-x-6">
-              {/* Storage Usage */}
-              {(() => {
-                const storageInfo = getStorageInfo();
-                return storageInfo ? (
-                  <div className="flex items-center space-x-4">
-                    <div className="text-sm text-gray-300">
-                      <div className="flex items-center space-x-3">
-                        <span>💾</span>
-                        <div className="flex items-center space-x-6">
-                          <div className="text-center">
-                            <div className="text-xs text-gray-400 mb-1">Total Quota</div>
-                            <div className="font-medium text-blue-400">{storageInfo.quota}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-xs text-gray-400 mb-1">Used Space</div>
-                            <div className="font-medium text-orange-400">{storageInfo.used}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-xs text-gray-400 mb-1">Available Space</div>
-                            <div className="font-medium text-green-400">{storageInfo.available}</div>
-                          </div>
-                          {storageInfo.reserved && storageInfo.reserved !== '0 B' && (
-                            <div className="text-center">
-                              <div className="text-xs text-gray-400 mb-1">Reserved</div>
-                              <div className="font-medium text-yellow-400">{storageInfo.reserved}</div>
-                            </div>
-                          )}
-                          {storageInfo.inProgress && storageInfo.inProgress !== '0 B' && (
-                            <div className="text-center">
-                              <div className="text-xs text-gray-400 mb-1">In Progress</div>
-                              <div className="font-medium text-purple-400">{storageInfo.inProgress}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {/* Multi-segment storage bar */}
-                      <div className="w-48 h-2 bg-gray-600 rounded-full mt-2 relative overflow-hidden">
-                        {(() => {
-                          if (!storageInfo.details) return null;
-
-                          const { usedBytes, reservedBytes, quotaBytes } = storageInfo.details;
-                          const totalUsed = usedBytes || 0;
-                          const totalReserved = reservedBytes || 0; // All reserved space (including in-progress)
-
-                          // Calculate percentages
-                          const usedPercent = quotaBytes > 0 ? (totalUsed / quotaBytes) * 100 : 0;
-                          const reservedPercent = quotaBytes > 0 ? (totalReserved / quotaBytes) * 100 : 0;
-
-                          return (
-                            <div className="flex h-full w-full">
-                              {/* Used Space (completed files) */}
-                              {usedPercent > 0 && (
-                                <div
-                                  className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-300"
-                                  style={{ width: `${Math.min(usedPercent, 100)}%` }}
-                                  title={`Used: ${storageInfo.used}`}
-                                />
-                              )}
-
-                              {/* Reserved Space (all reserved space including downloads) */}
-                              {reservedPercent > 0 && (
-                                <div
-                                  className="h-full bg-gradient-to-r from-yellow-500 to-amber-500 transition-all duration-300"
-                                  style={{ width: `${Math.min(reservedPercent, 100 - usedPercent)}%` }}
-                                  title={`Reserved: ${storageInfo.reserved}`}
-                                />
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Storage bar legend */}
-                      <div className="flex items-center space-x-4 mt-1 text-xs text-gray-400">
-                        <div className="flex items-center">
-                          <div className="w-2 h-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-full mr-1"></div>
-                          <span>Used</span>
-                        </div>
-                        <div className="flex items-center">
-                          <div className="w-2 h-2 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full mr-1"></div>
-                          <span>Reserved</span>
-                        </div>
-                        <div className="flex items-center">
-                          <div className="w-2 h-2 bg-gray-600 rounded-full mr-1"></div>
-                          <span>Free</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : null;
-              })()}
-
-              {/* Status indicators */}
-              <div className="flex items-center space-x-4">
-                {/* {loading.torrents && (
-                  <div className="flex items-center text-sm text-yellow-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
-                    Syncing torrents...
-                  </div>
-                )}
-                {loading.files && (
-                  <div className="flex items-center text-sm text-blue-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
-                    Loading files...
-                  </div>
-                )} */}
-                <div className="flex items-center text-sm text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-                  Online
-                </div>
-              </div>
-
-              {/* User menu */}
-              <div className="flex items-center space-x-3">
-                <div className="text-sm text-gray-300">
-                  Welcome, <span className="text-yellow-400 font-medium">{user?.username}</span>
-                  {user?.role === 'admin' && (
-                    <span className="ml-2 px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-bold">
-                      ADMIN
-                    </span>
-                  )}
-                </div>
-                {user?.role === 'admin' && (
-                  <button
-                    onClick={() => setCurrentView('admin')}
-                    className="px-4 py-1.5 text-sm bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-md transition-all font-semibold shadow-lg hover:shadow-xl"
-                  >
-                    🛡️ Admin Panel
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowPlansModal(true)}
-                  className="px-4 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-md transition-all font-semibold shadow-lg hover:shadow-xl"
-                >
-                  ⬆️ Upgrade
-                </button>
-                <button
-                  onClick={logout}
-                  className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
-                >
-                  Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Torrents Section */}
