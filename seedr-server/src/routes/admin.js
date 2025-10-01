@@ -6,6 +6,7 @@ const { requireAdmin } = require('../middlewares/adminAuth');
 const asyncHandler = require('../middlewares/asyncHandler');
 const database = require('../models/database');
 const { getAllPlans, getPlan } = require('../config/plans');
+const subscriptionMonitor = require('../utils/subscriptionMonitor');
 
 // All admin routes require authentication + admin role
 router.use(authenticateToken);
@@ -247,6 +248,14 @@ router.post('/upgrade-requests/:requestId/approve', asyncHandler(async (req, res
     targetPlan.maxConcurrentDownloads
   );
 
+  // Create subscription with expiry tracking
+  const subscription = await database.activateUserSubscription(
+    request.user_id,
+    request.target_plan,
+    request.duration || 'monthly',
+    req.user.id
+  );
+
   // Mark request as approved
   await database.updateUpgradeRequestStatus(requestId, 'approved', req.user.id, adminNotes);
 
@@ -304,6 +313,153 @@ router.get('/stats', asyncHandler(async (req, res) => {
   };
 
   res.json({ stats });
+}));
+
+// ==================== Subscription Management ====================
+
+// Get user's subscription details
+router.get('/subscriptions/:userId', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const activeSubscription = await database.getUserActiveSubscription(userId);
+  const subscriptionHistory = await database.getUserSubscriptionHistory(userId);
+  const historyLog = await database.getUserSubscriptionHistoryLog(userId);
+
+  res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      plan: user.plan
+    },
+    activeSubscription,
+    subscriptionHistory,
+    historyLog
+  });
+}));
+
+// Manual subscription activation (for direct admin control)
+router.post('/subscriptions/activate', asyncHandler(async (req, res) => {
+  const { userId, plan, duration } = req.body;
+
+  if (!userId || !plan || !duration) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      required: ['userId', 'plan', 'duration']
+    });
+  }
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const targetPlan = getPlan(plan);
+  if (!targetPlan) {
+    return res.status(400).json({ error: 'Invalid plan' });
+  }
+
+  // Update user's quota and plan
+  await database.adminUpdateUserQuotaAndPlan(
+    userId,
+    targetPlan.storage,
+    plan,
+    targetPlan.maxConcurrentDownloads
+  );
+
+  // Create subscription
+  const subscription = await database.activateUserSubscription(
+    userId,
+    plan,
+    duration,
+    req.user.id
+  );
+
+  console.log(`👑 Admin ${req.user.username} manually activated ${plan} (${duration}) for ${user.username}`);
+
+  res.json({
+    message: 'Subscription activated successfully',
+    subscription,
+    user: await database.getUserById(userId)
+  });
+}));
+
+// Cancel active subscription
+router.post('/subscriptions/:subscriptionId/cancel', asyncHandler(async (req, res) => {
+  const { subscriptionId } = req.params;
+  const { reason } = req.body;
+
+  const subscription = await database.getUserActiveSubscription();
+  if (!subscription || subscription.id !== subscriptionId) {
+    return res.status(404).json({ error: 'Active subscription not found' });
+  }
+
+  await database.cancelSubscription(subscriptionId, req.user.id, reason);
+
+  // Log the cancellation
+  await database.createSubscriptionHistory({
+    userId: subscription.user_id,
+    subscriptionId,
+    action: 'cancelled',
+    planFrom: subscription.plan,
+    planTo: 'free',
+    duration: subscription.duration,
+    reason: reason || 'Admin cancellation',
+    performedBy: req.user.id
+  });
+
+  // Downgrade user to free plan
+  await database.updateUserPlan(subscription.user_id, 'free');
+
+  res.json({
+    message: 'Subscription cancelled successfully',
+    subscriptionId
+  });
+}));
+
+// Get expired subscriptions that need attention
+router.get('/subscriptions/expired', asyncHandler(async (req, res) => {
+  const expiredSubscriptions = await database.getExpiredSubscriptions();
+
+  res.json({
+    expired: expiredSubscriptions,
+    count: expiredSubscriptions.length
+  });
+}));
+
+// Process expired subscriptions (manual trigger)
+router.post('/subscriptions/process-expired', asyncHandler(async (req, res) => {
+  const results = await database.downgradeExpiredUsers();
+
+  const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+
+  res.json({
+    message: 'Expired subscriptions processing completed',
+    results: {
+      total: results.length,
+      successful: successful.length,
+      failed: failed.length,
+      details: results
+    }
+  });
+}));
+
+// Get subscription monitor status
+router.get('/subscriptions/monitor/status', asyncHandler(async (req, res) => {
+  const status = subscriptionMonitor.getStatus();
+  res.json({ monitor: status });
+}));
+
+// Manually trigger subscription expiry check
+router.post('/subscriptions/monitor/trigger', asyncHandler(async (req, res) => {
+  await subscriptionMonitor.triggerCheck();
+  res.json({ message: 'Manual subscription expiry check completed' });
 }));
 
 module.exports = router;

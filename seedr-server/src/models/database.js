@@ -63,6 +63,7 @@ class Database {
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         target_plan TEXT NOT NULL,
+        duration TEXT DEFAULT 'monthly',  -- 'monthly' or 'yearly'
         full_name TEXT NOT NULL,
         email TEXT NOT NULL,
         phone TEXT NOT NULL,
@@ -82,6 +83,57 @@ class Database {
 
     console.log('Upgrade requests table created or verified');
 
+    // Create subscriptions table for tracking active subscriptions
+    const createSubscriptionsTable = `
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        plan TEXT NOT NULL,
+        duration TEXT NOT NULL,  -- 'monthly' or 'yearly'
+        status TEXT DEFAULT 'active',  -- 'active', 'expired', 'cancelled'
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        auto_renew INTEGER DEFAULT 0,  -- 1 = auto-renew, 0 = manual
+        created_by TEXT,  -- admin who activated it
+        cancelled_at DATETIME,
+        cancelled_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createSubscriptionsTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Subscriptions table created or verified');
+
+    // Create subscription history table for audit trail
+    const createSubscriptionHistoryTable = `
+      CREATE TABLE IF NOT EXISTS subscription_history (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        subscription_id TEXT,
+        action TEXT NOT NULL,  -- 'created', 'renewed', 'expired', 'cancelled', 'downgraded'
+        plan_from TEXT,
+        plan_to TEXT,
+        duration TEXT,
+        reason TEXT,
+        performed_by TEXT,
+        performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        details TEXT,  -- JSON string for additional data
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createSubscriptionHistoryTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Subscription history table created or verified');
+
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
@@ -90,6 +142,9 @@ class Database {
 
     // Add new columns to existing users table
     await this.addUserManagementColumnsSafely();
+
+    // Add duration column to existing upgrade_requests table
+    await this.addUpgradeRequestDurationColumnSafely();
   }
 
   // ---- Legacy column support (do not use it for enforcement decisions) ----
@@ -174,6 +229,31 @@ class Database {
       );
       console.log('is_active column added successfully');
     }
+  }
+
+  // Add duration column to existing upgrade_requests table
+  async addUpgradeRequestDurationColumnSafely() {
+    const getCols = () =>
+      new Promise((resolve, reject) =>
+        this.db.all('PRAGMA table_info(upgrade_requests);', [], (err, rows) =>
+          err ? reject(err) : resolve(rows || [])
+        )
+      );
+
+    const cols = await getCols();
+    const hasDuration = cols.some((c) => c.name === 'duration');
+    if (hasDuration) {
+      console.log('duration column already exists in upgrade_requests');
+      return;
+    }
+
+    await new Promise((resolve, reject) =>
+      this.db.run(
+        "ALTER TABLE upgrade_requests ADD COLUMN duration TEXT DEFAULT 'monthly'",
+        (err) => (err ? reject(err) : resolve())
+      )
+    );
+    console.log('duration column added to upgrade_requests table successfully');
   }
 
   // Create default admin user if it doesn't exist
@@ -402,16 +482,16 @@ class Database {
   }
 
   // ---------------------- Upgrade Requests ----------------------
-  async createUpgradeRequest({ userId, targetPlan, fullName, email, phone, address }) {
+  async createUpgradeRequest({ userId, targetPlan, duration, fullName, email, phone, address }) {
     const id = nanoid();
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT INTO upgrade_requests (id, user_id, target_plan, full_name, email, phone, address)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO upgrade_requests (id, user_id, target_plan, duration, full_name, email, phone, address)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      this.db.run(sql, [id, userId, targetPlan, fullName, email, phone, address], function (err) {
+      this.db.run(sql, [id, userId, targetPlan, duration || 'monthly', fullName, email, phone, address], function (err) {
         if (err) return reject(err);
-        resolve({ id, userId, targetPlan, fullName, email, phone, address, status: 'pending' });
+        resolve({ id, userId, targetPlan, duration: duration || 'monthly', fullName, email, phone, address, status: 'pending' });
       });
     });
   }
@@ -547,6 +627,239 @@ class Database {
         resolve(this.changes > 0);
       });
     });
+  }
+
+  // ---------------------- Subscription Management ----------------------
+  async createSubscription({ userId, plan, duration, expiresAt, createdBy }) {
+    const id = nanoid();
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO subscriptions (id, user_id, plan, duration, expires_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      this.db.run(sql, [id, userId, plan, duration, expiresAt, createdBy], function (err) {
+        if (err) return reject(err);
+        resolve({
+          id,
+          userId,
+          plan,
+          duration,
+          status: 'active',
+          expiresAt,
+          createdBy
+        });
+      });
+    });
+  }
+
+  async getUserActiveSubscription(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM subscriptions
+        WHERE user_id = ? AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      this.db.get(sql, [userId], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
+  async getUserSubscriptionHistory(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM subscriptions
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+      `;
+      this.db.all(sql, [userId], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async getExpiredSubscriptions() {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT s.*, u.username, u.email
+        FROM subscriptions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.status = 'active' AND s.expires_at <= datetime('now')
+      `;
+      this.db.all(sql, [], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async expireSubscription(subscriptionId, performedBy = null) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE subscriptions
+        SET status = 'expired', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      this.db.run(sql, [subscriptionId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async cancelSubscription(subscriptionId, cancelledBy, reason = null) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE subscriptions
+        SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, cancelled_by = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      this.db.run(sql, [cancelledBy, subscriptionId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  // ---------------------- Subscription History ----------------------
+  async createSubscriptionHistory({ userId, subscriptionId, action, planFrom, planTo, duration, reason, performedBy, details }) {
+    const id = nanoid();
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO subscription_history (id, user_id, subscription_id, action, plan_from, plan_to, duration, reason, performed_by, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      const detailsJson = details ? JSON.stringify(details) : null;
+      this.db.run(sql, [id, userId, subscriptionId, action, planFrom, planTo, duration, reason, performedBy, detailsJson], function (err) {
+        if (err) return reject(err);
+        resolve({ id, userId, subscriptionId, action, planFrom, planTo, duration, reason, performedBy, details });
+      });
+    });
+  }
+
+  async getUserSubscriptionHistoryLog(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM subscription_history
+        WHERE user_id = ?
+        ORDER BY performed_at DESC
+      `;
+      this.db.all(sql, [userId], (err, rows) => {
+        if (err) return reject(err);
+        // Parse JSON details
+        const parsed = rows.map(row => ({
+          ...row,
+          details: row.details ? JSON.parse(row.details) : null
+        }));
+        resolve(parsed);
+      });
+    });
+  }
+
+  // ---------------------- Subscription Utilities ----------------------
+  async activateUserSubscription(userId, plan, duration, adminId) {
+    // First, expire any existing active subscription
+    const existing = await this.getUserActiveSubscription(userId);
+    if (existing) {
+      await this.expireSubscription(existing.id, adminId);
+      await this.createSubscriptionHistory({
+        userId,
+        subscriptionId: existing.id,
+        action: 'expired',
+        planFrom: existing.plan,
+        planTo: null,
+        duration: existing.duration,
+        reason: 'New subscription activated',
+        performedBy: adminId
+      });
+    }
+
+    // Calculate expiry date
+    const now = new Date();
+    const expiresAt = new Date(now);
+    if (duration === 'yearly') {
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    } else {
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+    }
+
+    // Create new subscription
+    const subscription = await this.createSubscription({
+      userId,
+      plan,
+      duration,
+      expiresAt: expiresAt.toISOString(),
+      createdBy: adminId
+    });
+
+    // Update user's plan
+    await this.updateUserPlan(userId, plan);
+
+    // Log the activation
+    await this.createSubscriptionHistory({
+      userId,
+      subscriptionId: subscription.id,
+      action: 'created',
+      planFrom: existing ? existing.plan : 'free',
+      planTo: plan,
+      duration,
+      reason: 'Admin activation',
+      performedBy: adminId,
+      details: { expiresAt: expiresAt.toISOString() }
+    });
+
+    return subscription;
+  }
+
+  async downgradeExpiredUsers() {
+    const expiredSubscriptions = await this.getExpiredSubscriptions();
+    const results = [];
+
+    for (const subscription of expiredSubscriptions) {
+      try {
+        // Expire the subscription
+        await this.expireSubscription(subscription.id, 'system');
+
+        // Downgrade user to free plan
+        await this.updateUserPlan(subscription.user_id, 'free');
+
+        // Log the downgrade
+        await this.createSubscriptionHistory({
+          userId: subscription.user_id,
+          subscriptionId: subscription.id,
+          action: 'downgraded',
+          planFrom: subscription.plan,
+          planTo: 'free',
+          duration: subscription.duration,
+          reason: 'Subscription expired',
+          performedBy: 'system',
+          details: {
+            expiredAt: new Date().toISOString(),
+            originalExpiry: subscription.expires_at
+          }
+        });
+
+        results.push({
+          userId: subscription.user_id,
+          username: subscription.username,
+          plan: subscription.plan,
+          success: true
+        });
+
+        console.log(`🔻 User ${subscription.username} downgraded from ${subscription.plan} to free (subscription expired)`);
+      } catch (error) {
+        console.error(`❌ Failed to downgrade user ${subscription.username}:`, error);
+        results.push({
+          userId: subscription.user_id,
+          username: subscription.username,
+          plan: subscription.plan,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    return results;
   }
 
   close() {

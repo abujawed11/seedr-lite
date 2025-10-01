@@ -449,6 +449,12 @@ export default function AdminDashboard({ onBackToMain }) {
                       <div className="text-sm text-yellow-400 font-medium">{request.target_plan}</div>
                     </div>
                     <div>
+                      <div className="text-xs text-gray-400 mb-1">Duration</div>
+                      <div className={`text-sm font-medium ${request.duration === 'yearly' ? 'text-green-400' : 'text-blue-400'}`}>
+                        {request.duration === 'yearly' ? 'Yearly (20% off)' : 'Monthly'}
+                      </div>
+                    </div>
+                    <div>
                       <div className="text-xs text-gray-400 mb-1">Full Name</div>
                       <div className="text-sm text-white">{request.full_name}</div>
                     </div>
@@ -519,7 +525,7 @@ export default function AdminDashboard({ onBackToMain }) {
                         </span>
                       </div>
                       <div className="text-sm text-gray-400">
-                        {request.current_plan} → {request.target_plan}
+                        {request.current_plan} → {request.target_plan} ({request.duration || 'monthly'})
                       </div>
                       <div className="text-xs text-gray-500 mt-2">
                         Processed: {formatDate(request.processed_at)}

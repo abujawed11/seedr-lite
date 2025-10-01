@@ -26,13 +26,24 @@ router.get('/plans/current', authenticateToken, asyncHandler(async (req, res) =>
 
 // Submit upgrade request (requires admin approval)
 router.post('/plans/upgrade-request', authenticateToken, asyncHandler(async (req, res) => {
-  const { planId, fullName, email, phone, address } = req.body;
+  const { planId, duration, fullName, email, phone, address } = req.body;
 
   // Validate required fields
   if (!planId || !fullName || !email || !phone || !address) {
     return res.status(400).json({
       error: 'Missing required fields',
       required: ['planId', 'fullName', 'email', 'phone', 'address']
+    });
+  }
+
+  // Validate duration
+  const validDurations = ['monthly', 'yearly'];
+  const requestDuration = duration || 'monthly';
+  if (!validDurations.includes(requestDuration)) {
+    return res.status(400).json({
+      error: 'Invalid duration',
+      validOptions: validDurations,
+      provided: requestDuration
     });
   }
 
@@ -78,19 +89,21 @@ router.post('/plans/upgrade-request', authenticateToken, asyncHandler(async (req
   const request = await database.createUpgradeRequest({
     userId: user.id,
     targetPlan: planId,
+    duration: requestDuration,
     fullName,
     email,
     phone,
     address
   });
 
-  console.log(`📝 Upgrade request created: ${user.username} → ${targetPlan.name}`);
+  console.log(`📝 Upgrade request created: ${user.username} → ${targetPlan.name} (${requestDuration})`);
 
   res.json({
     message: 'Upgrade request submitted successfully',
     request: {
       id: request.id,
       targetPlan: targetPlan,
+      duration: requestDuration,
       status: 'pending',
       requestedAt: new Date()
     },

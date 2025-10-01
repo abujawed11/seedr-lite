@@ -26,6 +26,10 @@ async function initServer() {
     // Initialize torrent manager (triggers startup cleanup)
     require('./services/torrentManager');
 
+    // Start subscription monitor
+    const subscriptionMonitor = require('./utils/subscriptionMonitor');
+    subscriptionMonitor.start();
+
     // Start server
     require('./server');
 

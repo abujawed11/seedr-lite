@@ -16,7 +16,7 @@ export default function MyAccount({ isOpen, onClose }) {
     setLoading(true);
     try {
       // For now, we'll use the existing user data and storage info
-      // In a real app, you'd fetch detailed account info from the API
+      // TODO: Add API endpoint to fetch subscription details from backend
       const storageInfo = getStorageInfo();
       setAccountDetails({
         user,
@@ -25,7 +25,7 @@ export default function MyAccount({ isOpen, onClose }) {
           plan: user?.plan || 'free',
           duration: user?.subscriptionDuration || 'monthly',
           startDate: user?.subscriptionStartDate || new Date().toISOString(),
-          status: user?.subscriptionStatus || 'active',
+          status: user?.subscriptionStatus || (user?.plan !== 'free' ? 'active' : 'none'),
           nextBilling: user?.nextBillingDate || null
         }
       });
