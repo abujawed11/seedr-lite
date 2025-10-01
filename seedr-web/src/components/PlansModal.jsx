@@ -134,7 +134,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
           </div>
 
           {/* Scrollable Form Content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
             {/* Error Message */}
             {error && (
               <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
@@ -283,7 +283,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           {/* Error Message */}
           {error && (
             <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
