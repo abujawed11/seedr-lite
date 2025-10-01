@@ -372,9 +372,9 @@ exports.deleteFile = async (req, res) => {
       fs.unlinkSync(fullPath);
     }
 
-    // Update user's storage usage after deletion
+    // Update user's storage usage after deletion (force update to recalculate from filesystem)
     try {
-      await updateUserStorageUsage(userId);
+      await updateUserStorageUsage(userId, true);
     } catch (error) {
       console.error("Error updating storage usage after deletion:", error);
     }
