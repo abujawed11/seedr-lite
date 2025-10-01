@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Hide scrollbar utility class */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
 /* Custom scrollbar styling for file lists */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

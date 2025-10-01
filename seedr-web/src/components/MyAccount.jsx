@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getUserSubscription } from '../api';
 
 export default function MyAccount({ isOpen, onClose }) {
   const { user, getStorageInfo } = useAuth();
@@ -15,22 +16,28 @@ export default function MyAccount({ isOpen, onClose }) {
   const fetchAccountDetails = async () => {
     setLoading(true);
     try {
-      // For now, we'll use the existing user data and storage info
-      // TODO: Add API endpoint to fetch subscription details from backend
+      // Fetch real subscription data from backend
+      const subscriptionData = await getUserSubscription();
+      const storageInfo = getStorageInfo();
+
+      setAccountDetails({
+        user: subscriptionData.user,
+        storage: storageInfo,
+        subscription: subscriptionData.activeSubscription,
+        subscriptionHistory: subscriptionData.subscriptionHistory || [],
+        historyLog: subscriptionData.historyLog || []
+      });
+    } catch (error) {
+      console.error('Failed to fetch account details:', error);
+      // Fallback to basic user data
       const storageInfo = getStorageInfo();
       setAccountDetails({
         user,
         storage: storageInfo,
-        subscription: {
-          plan: user?.plan || 'free',
-          duration: user?.subscriptionDuration || 'monthly',
-          startDate: user?.subscriptionStartDate || new Date().toISOString(),
-          status: user?.subscriptionStatus || (user?.plan !== 'free' ? 'active' : 'none'),
-          nextBilling: user?.nextBillingDate || null
-        }
+        subscription: null,
+        subscriptionHistory: [],
+        historyLog: []
       });
-    } catch (error) {
-      console.error('Failed to fetch account details:', error);
     } finally {
       setLoading(false);
     }
@@ -69,9 +76,9 @@ export default function MyAccount({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+      <div className="bg-gray-800 rounded-2xl max-w-5xl w-full max-h-[95vh] border border-gray-700 shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
+        <div className="bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center rounded-t-2xl flex-shrink-0">
           <div>
             <h2 className="text-2xl font-bold text-white">My Account</h2>
             <p className="text-gray-400 mt-1">Account and subscription details</p>
@@ -86,13 +93,15 @@ export default function MyAccount({ isOpen, onClose }) {
           </button>
         </div>
 
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading account details...</p>
-          </div>
-        ) : accountDetails ? (
-          <div className="p-6 space-y-6">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
+          {loading ? (
+            <div className="p-8 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading account details...</p>
+            </div>
+          ) : accountDetails ? (
+            <div className="p-6 space-y-6">
             {/* Profile Information */}
             <div className="bg-gray-700/30 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
@@ -136,32 +145,93 @@ export default function MyAccount({ isOpen, onClose }) {
                 </svg>
                 Subscription Details
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Current Plan</label>
-                  <p className="text-white font-medium text-lg">{getPlanDisplayName(accountDetails.subscription.plan)} Plan</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Billing Cycle</label>
-                  <p className="text-white font-medium capitalize">{accountDetails.subscription.duration}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
-                  <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${getStatusColor(accountDetails.subscription.status)}`}>
-                    {accountDetails.subscription.status.charAt(0).toUpperCase() + accountDetails.subscription.status.slice(1)}
-                  </span>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Started On</label>
-                  <p className="text-white font-medium">{formatDate(accountDetails.subscription.startDate)}</p>
-                </div>
-                {accountDetails.subscription.nextBilling && (
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Next Billing Date</label>
-                    <p className="text-white font-medium">{formatDate(accountDetails.subscription.nextBilling)}</p>
+              {accountDetails.subscription ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Current Plan</label>
+                      <p className="text-white font-medium text-lg">{getPlanDisplayName(accountDetails.subscription.plan)} Plan</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Billing Cycle</label>
+                      <p className="text-white font-medium capitalize">
+                        {accountDetails.subscription.duration}
+                        {accountDetails.subscription.duration === 'yearly' && (
+                          <span className="text-green-400 text-sm ml-2">(20% off)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
+                      <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${getStatusColor(accountDetails.subscription.status)}`}>
+                        {accountDetails.subscription.status.charAt(0).toUpperCase() + accountDetails.subscription.status.slice(1)}
+                        {accountDetails.subscription.isExpired && ' (Expired)'}
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Started On</label>
+                      <p className="text-white font-medium">{formatDate(accountDetails.subscription.started_at)}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Expires On</label>
+                      <p className={`font-medium ${accountDetails.subscription.isExpired ? 'text-red-400' : 'text-white'}`}>
+                        {formatDate(accountDetails.subscription.expires_at)}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Days Remaining</label>
+                      <p className={`font-medium ${
+                        accountDetails.subscription.daysUntilExpiry <= 0 ? 'text-red-400' :
+                        accountDetails.subscription.daysUntilExpiry <= 7 ? 'text-yellow-400' :
+                        'text-green-400'
+                      }`}>
+                        {accountDetails.subscription.daysUntilExpiry <= 0 ?
+                          'Expired' :
+                          `${accountDetails.subscription.daysUntilExpiry} days`
+                        }
+                      </p>
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Subscription progress bar */}
+                  {accountDetails.subscription.started_at && accountDetails.subscription.expires_at && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-2">Subscription Progress</label>
+                      <div className="w-full bg-gray-600 rounded-full h-2">
+                        {(() => {
+                          const startDate = new Date(accountDetails.subscription.started_at);
+                          const endDate = new Date(accountDetails.subscription.expires_at);
+                          const now = new Date();
+                          const total = endDate.getTime() - startDate.getTime();
+                          const elapsed = now.getTime() - startDate.getTime();
+                          const progress = Math.min(Math.max((elapsed / total) * 100, 0), 100);
+
+                          return (
+                            <div
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                progress >= 100 ? 'bg-red-500' :
+                                progress >= 80 ? 'bg-yellow-500' :
+                                'bg-green-500'
+                              }`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="text-gray-400 mb-2">
+                    <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-400">No active subscription</p>
+                  <p className="text-sm text-gray-500 mt-1">You are currently on the Free plan</p>
+                </div>
+              )}
             </div>
 
             {/* Storage Information */}
@@ -235,12 +305,63 @@ export default function MyAccount({ isOpen, onClose }) {
                 )}
               </div>
             )}
-          </div>
-        ) : (
-          <div className="p-8 text-center">
-            <p className="text-gray-400">Unable to load account details.</p>
-          </div>
-        )}
+
+            {/* Subscription History */}
+            {accountDetails.historyLog && accountDetails.historyLog.length > 0 && (
+              <div className="bg-gray-700/30 rounded-lg p-6">
+                <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Subscription History
+                </h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-hide">
+                  {accountDetails.historyLog.slice(0, 10).map((entry, index) => (
+                    <div key={entry.id || index} className="flex items-center justify-between p-3 bg-gray-600/30 rounded-lg">
+                      <div className="flex items-center">
+                        <div className={`w-3 h-3 rounded-full mr-3 ${
+                          entry.action === 'created' ? 'bg-green-500' :
+                          entry.action === 'renewed' ? 'bg-blue-500' :
+                          entry.action === 'expired' ? 'bg-red-500' :
+                          entry.action === 'cancelled' ? 'bg-gray-500' :
+                          'bg-yellow-500'
+                        }`}></div>
+                        <div>
+                          <p className="text-sm text-white font-medium">
+                            {entry.action === 'created' ? 'Subscription Activated' :
+                             entry.action === 'renewed' ? 'Subscription Renewed' :
+                             entry.action === 'expired' ? 'Subscription Expired' :
+                             entry.action === 'cancelled' ? 'Subscription Cancelled' :
+                             entry.action === 'downgraded' ? 'Downgraded to Free' :
+                             entry.action}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {entry.plan_from && entry.plan_to ?
+                              `${entry.plan_from} → ${entry.plan_to}` :
+                              entry.plan_to || entry.plan_from || ''
+                            }
+                            {entry.duration && ` (${entry.duration})`}
+                          </p>
+                          {entry.reason && (
+                            <p className="text-xs text-gray-500">{entry.reason}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {formatDate(entry.performed_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            </div>
+          ) : (
+            <div className="p-8 text-center">
+              <p className="text-gray-400">Unable to load account details.</p>
+            </div>
+          )}
+        </div>
 
         {/* Footer */}
         <div className="border-t border-gray-700 p-6 bg-gray-800/30">

@@ -90,6 +90,12 @@ export async function getQuotaInfo() {
   return res.data;
 }
 
+// Get user subscription details
+export async function getUserSubscription() {
+  const res = await api.get('/auth/subscription');
+  return res.data;
+}
+
 // Notification functions
 export async function getNotifications() {
   const res = await api.get('/torrents/notifications');

@@ -163,4 +163,56 @@ router.put('/quota', authenticateToken, asyncHandler(async (req, res) => {
   });
 }));
 
+// Get current user's subscription details
+router.get('/subscription', authenticateToken, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  // Get user basic info
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Get active subscription
+  const activeSubscription = await database.getUserActiveSubscription(userId);
+
+  // Get subscription history
+  const subscriptionHistory = await database.getUserSubscriptionHistory(userId);
+
+  // Get subscription history log (actions)
+  const historyLog = await database.getUserSubscriptionHistoryLog(userId);
+
+  // Calculate days until expiry
+  let daysUntilExpiry = null;
+  let isExpired = false;
+
+  if (activeSubscription && activeSubscription.expires_at) {
+    const expiryDate = new Date(activeSubscription.expires_at);
+    const now = new Date();
+    const timeDiff = expiryDate.getTime() - now.getTime();
+    daysUntilExpiry = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    isExpired = daysUntilExpiry <= 0;
+  }
+
+  res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      plan: user.plan,
+      role: user.role,
+      createdAt: user.created_at,
+      storageQuota: user.storage_quota,
+      storageUsed: user.storage_used
+    },
+    activeSubscription: activeSubscription ? {
+      ...activeSubscription,
+      daysUntilExpiry,
+      isExpired
+    } : null,
+    subscriptionHistory,
+    historyLog
+  });
+}));
+
 module.exports = router;

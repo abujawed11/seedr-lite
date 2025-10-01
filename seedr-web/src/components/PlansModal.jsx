@@ -103,9 +103,9 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
 
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+        <div className="bg-gray-800 rounded-2xl max-w-2xl w-full max-h-[95vh] border border-gray-700 shadow-2xl flex flex-col">
           {/* Form Header */}
-          <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
+          <div className="bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center rounded-t-2xl flex-shrink-0">
             <div>
               <h2 className="text-2xl font-bold text-white">Upgrade Request Form</h2>
               <p className="text-gray-400 mt-1">
@@ -133,15 +133,17 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
             </button>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
-              <p className="text-red-300">{error}</p>
-            </div>
-          )}
+          {/* Scrollable Form Content */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Error Message */}
+            {error && (
+              <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+                <p className="text-red-300">{error}</p>
+              </div>
+            )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmitRequest} className="p-6 space-y-6">
+            {/* Form */}
+            <form onSubmit={handleSubmitRequest} className="p-6 space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Full Name *
@@ -227,7 +229,8 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
             <p className="text-sm text-gray-400 text-center pt-2">
               Your request will be reviewed by an administrator. You'll be notified once processed.
             </p>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -235,9 +238,9 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+      <div className="bg-gray-800 rounded-2xl max-w-6xl w-full max-h-[95vh] border border-gray-700 shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
+        <div className="bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center rounded-t-2xl flex-shrink-0">
           <div>
             <h2 className="text-2xl font-bold text-white">Upgrade Your Storage</h2>
             <p className="text-gray-400 mt-1">Choose the plan that fits your needs</p>
@@ -279,15 +282,17 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
           </button>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
-            <p className="text-red-300">{error}</p>
-          </div>
-        )}
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Error Message */}
+          {error && (
+            <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+              <p className="text-red-300">{error}</p>
+            </div>
+          )}
 
-        {/* Plans Grid */}
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Plans Grid */}
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {plans.map((plan) => {
             const isCurrent = currentPlan === plan.id;
             const isDowngrade = plans.findIndex(p => p.id === currentPlan) > plans.findIndex(p => p.id === plan.id);
@@ -370,13 +375,14 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
               </div>
             );
           })}
-        </div>
+          </div>
 
-        {/* Footer Note */}
-        <div className="border-t border-gray-700 p-6 bg-gray-800/30">
-          <p className="text-sm text-gray-400 text-center">
-            📝 Submit an upgrade request with your details. Admin will review and approve your request.
-          </p>
+          {/* Footer Note */}
+          <div className="border-t border-gray-700 p-6 bg-gray-800/30">
+            <p className="text-sm text-gray-400 text-center">
+              📝 Submit an upgrade request with your details. Admin will review and approve your request.
+            </p>
+          </div>
         </div>
       </div>
     </div>
