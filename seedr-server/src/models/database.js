@@ -187,6 +187,16 @@ class Database {
     });
   }
 
+  async updateUserPlan(userId, plan) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET plan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      this.db.run(sql, [plan, userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
   // ---------------------- Quota (with reservations) ----------------------
   async getUserStorageInfoWithReservations(userId) {
     return this.reservations.getUserQuotaWithReservations(userId);

@@ -96,3 +96,19 @@ export async function clearAllNotifications() {
   const res = await api.delete('/torrents/notifications');
   return res.data;
 }
+
+// Plans and upgrade functions
+export async function getPlans() {
+  const res = await api.get('/plans');
+  return res.data;
+}
+
+export async function getCurrentPlan() {
+  const res = await api.get('/plans/current');
+  return res.data;
+}
+
+export async function upgradePlan(planId) {
+  const res = await api.post('/plans/upgrade', { planId });
+  return res.data;
+}

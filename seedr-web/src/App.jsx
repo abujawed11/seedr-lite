@@ -3,6 +3,7 @@ import { listTorrents, browse, getNotifications, clearNotification } from "./api
 import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
+import PlansModal from "./components/PlansModal";
 
 export default function App() {
   const { user, logout, getStorageInfo, refreshUserProfile, fetchDetailedQuota } = useAuth();
@@ -10,6 +11,7 @@ export default function App() {
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
+  const [showPlansModal, setShowPlansModal] = useState(false);
 
   // Track previous torrent state for detecting changes
   const prevDoneRef = useRef(new Set());
@@ -309,6 +311,12 @@ export default function App() {
                   Welcome, <span className="text-yellow-400 font-medium">{user?.username}</span>
                 </div>
                 <button
+                  onClick={() => setShowPlansModal(true)}
+                  className="px-4 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-md transition-all font-semibold shadow-lg hover:shadow-xl"
+                >
+                  ⬆️ Upgrade
+                </button>
+                <button
                   onClick={logout}
                   className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
                 >
@@ -362,6 +370,20 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Plans Modal */}
+      <PlansModal
+        isOpen={showPlansModal}
+        onClose={() => setShowPlansModal(false)}
+        currentPlan={user?.plan || 'free'}
+        onUpgradeSuccess={async (response) => {
+          console.log('Upgrade successful:', response);
+          // Refresh user profile to get updated quota
+          await refreshUserProfile();
+          // Refresh detailed quota info
+          await fetchDetailedQuota();
+        }}
+      />
     </div>
   );
 }

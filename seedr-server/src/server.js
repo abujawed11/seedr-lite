@@ -7,6 +7,7 @@ const { errorHandler } = require('./middlewares/errorHandler');
 const torrentsRoutes = require('./routes/torrents.routes');
 const streamRoutes = require('./routes/stream.routes');
 const authRoutes = require('./routes/auth');
+const plansRoutes = require('./routes/plans');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 
 // Protected routes
+app.use('/api', plansRoutes); // Plan management routes
 app.use('/api/torrents', torrentsRoutes);
 app.use('/', streamRoutes); // /stream /download /direct
 app.use("/api/files", require("./routes/files.routes"));
