@@ -24,12 +24,16 @@ router.get('/plans/current', authenticateToken, asyncHandler(async (req, res) =>
   });
 }));
 
-// Request plan upgrade (can be set to require approval)
-router.post('/plans/upgrade', authenticateToken, asyncHandler(async (req, res) => {
-  const { planId } = req.body;
+// Submit upgrade request (requires admin approval)
+router.post('/plans/upgrade-request', authenticateToken, asyncHandler(async (req, res) => {
+  const { planId, fullName, email, phone, address } = req.body;
 
-  if (!planId) {
-    return res.status(400).json({ error: 'Plan ID is required' });
+  // Validate required fields
+  if (!planId || !fullName || !email || !phone || !address) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      required: ['planId', 'fullName', 'email', 'phone', 'address']
+    });
   }
 
   const targetPlan = getPlan(planId);
@@ -49,43 +53,62 @@ router.post('/plans/upgrade', authenticateToken, asyncHandler(async (req, res) =
     });
   }
 
+  // Check if user already has a pending request
+  const existingRequests = await database.getUserUpgradeRequests(user.id);
+  const hasPendingRequest = existingRequests.some(r => r.status === 'pending');
+
+  if (hasPendingRequest) {
+    return res.status(400).json({
+      error: 'You already have a pending upgrade request',
+      message: 'Please wait for admin approval or cancellation of your existing request'
+    });
+  }
+
   // Check if user's current usage exceeds new plan quota
   if (user.storage_used > targetPlan.storage) {
     return res.status(400).json({
       error: 'Your current storage usage exceeds the target plan quota',
       currentUsage: user.storage_used,
       planQuota: targetPlan.storage,
-      message: 'Please delete some files before upgrading to this plan'
+      message: 'Please delete some files before requesting this plan upgrade'
     });
   }
 
-  // OPTION 1: Instant upgrade (no payment integration)
-  // TODO: Add payment integration here if needed
-  console.log(`💳 User ${user.id} upgrading from ${currentPlan} to ${planId}`);
+  // Create upgrade request
+  const request = await database.createUpgradeRequest({
+    userId: user.id,
+    targetPlan: planId,
+    fullName,
+    email,
+    phone,
+    address
+  });
 
-  // Update user's plan and quota
-  await database.updateUserQuota(user.id, targetPlan.storage);
-  await database.updateUserPlan(user.id, planId);
-
-  console.log(`✅ User ${user.username} upgraded to ${targetPlan.name} (${targetPlan.storage / (1024*1024*1024)} GB)`);
-
-  // Get updated user data
-  const updatedUser = await database.getUserById(user.id);
+  console.log(`📝 Upgrade request created: ${user.username} → ${targetPlan.name}`);
 
   res.json({
-    message: `Successfully upgraded to ${targetPlan.name} plan`,
-    plan: targetPlan,
-    newQuota: targetPlan.storage,
-    user: {
-      id: updatedUser.id,
-      username: updatedUser.username,
-      email: updatedUser.email,
-      storageQuota: updatedUser.storage_quota,
-      storageUsed: updatedUser.storage_used,
-      remainingQuota: updatedUser.remaining_quota,
-      plan: updatedUser.plan
-    }
+    message: 'Upgrade request submitted successfully',
+    request: {
+      id: request.id,
+      targetPlan: targetPlan,
+      status: 'pending',
+      requestedAt: new Date()
+    },
+    info: 'Your request will be reviewed by an administrator. You will be notified once it is processed.'
   });
+}));
+
+// Get user's own upgrade requests
+router.get('/plans/my-requests', authenticateToken, asyncHandler(async (req, res) => {
+  const requests = await database.getUserUpgradeRequests(req.user.id);
+
+  // Enrich with plan details
+  const enrichedRequests = requests.map(r => ({
+    ...r,
+    plan_details: getPlan(r.target_plan)
+  }));
+
+  res.json({ requests: enrichedRequests });
 }));
 
 // Admin: Update any user's quota (requires admin auth)

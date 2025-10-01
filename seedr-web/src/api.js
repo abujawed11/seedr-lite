@@ -108,7 +108,62 @@ export async function getCurrentPlan() {
   return res.data;
 }
 
-export async function upgradePlan(planId) {
-  const res = await api.post('/plans/upgrade', { planId });
+export async function submitUpgradeRequest(planId, userDetails) {
+  const res = await api.post('/plans/upgrade-request', {
+    planId,
+    ...userDetails
+  });
+  return res.data;
+}
+
+export async function getMyUpgradeRequests() {
+  const res = await api.get('/plans/my-requests');
+  return res.data;
+}
+
+// Admin functions
+export async function getAllUsers() {
+  const res = await api.get('/admin/users');
+  return res.data;
+}
+
+export async function getAdminStats() {
+  const res = await api.get('/admin/stats');
+  return res.data;
+}
+
+export async function getAllUpgradeRequests(status = null) {
+  const params = status ? { status } : {};
+  const res = await api.get('/admin/upgrade-requests', { params });
+  return res.data;
+}
+
+export async function approveUpgradeRequest(requestId, adminNotes) {
+  const res = await api.post(`/admin/upgrade-requests/${requestId}/approve`, { adminNotes });
+  return res.data;
+}
+
+export async function rejectUpgradeRequest(requestId, adminNotes) {
+  const res = await api.post(`/admin/upgrade-requests/${requestId}/reject`, { adminNotes });
+  return res.data;
+}
+
+export async function updateUserQuota(userId, quota, plan, maxDownloads) {
+  const res = await api.put(`/admin/users/${userId}/quota`, { quota, plan, maxDownloads });
+  return res.data;
+}
+
+export async function updateUserStatus(userId, isActive) {
+  const res = await api.put(`/admin/users/${userId}/status`, { isActive });
+  return res.data;
+}
+
+export async function updateUserMaxDownloads(userId, maxDownloads) {
+  const res = await api.put(`/admin/users/${userId}/max-downloads`, { maxDownloads });
+  return res.data;
+}
+
+export async function deleteUser(userId) {
+  const res = await api.delete(`/admin/users/${userId}`);
   return res.data;
 }

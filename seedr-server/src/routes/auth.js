@@ -19,6 +19,11 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters long' });
   }
 
+  // Prevent registration with reserved admin username
+  if (username.toLowerCase() === 'admin') {
+    return res.status(400).json({ error: 'This username is reserved. Please choose a different username.' });
+  }
+
   // Check if user already exists
   const existingUser = await database.getUserByEmail(email);
   if (existingUser) {
@@ -92,7 +97,10 @@ router.post('/login', asyncHandler(async (req, res) => {
       storageQuota: user.storage_quota,
       storageUsed: user.storage_used,
       remainingQuota: user.remaining_quota,
-      plan: user.plan
+      plan: user.plan,
+      role: user.role || 'user',
+      maxConcurrentDownloads: user.max_concurrent_downloads || 2,
+      isActive: user.is_active || 1
     },
     token
   });
@@ -124,7 +132,10 @@ router.get('/profile', authenticateToken, asyncHandler(async (req, res) => {
         storageQuota: updatedUser.storage_quota,
         storageUsed: updatedUser.storage_used,
         remainingQuota: updatedUser.remaining_quota,
-        plan: updatedUser.plan
+        plan: updatedUser.plan,
+        role: updatedUser.role || 'user',
+        maxConcurrentDownloads: updatedUser.max_concurrent_downloads || 2,
+        isActive: updatedUser.is_active || 1
       }
     });
   } catch (error) {

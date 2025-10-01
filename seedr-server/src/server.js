@@ -8,6 +8,7 @@ const torrentsRoutes = require('./routes/torrents.routes');
 const streamRoutes = require('./routes/stream.routes');
 const authRoutes = require('./routes/auth');
 const plansRoutes = require('./routes/plans');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/auth', authRoutes);
 
 // Protected routes
 app.use('/api', plansRoutes); // Plan management routes
+app.use('/api/admin', adminRoutes); // Admin control panel routes
 app.use('/api/torrents', torrentsRoutes);
 app.use('/', streamRoutes); // /stream /download /direct
 app.use("/api/files", require("./routes/files.routes"));

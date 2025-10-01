@@ -23,7 +23,10 @@ class Database {
         if (err) return reject(err);
         console.log('Connected to SQLite database');
         this.reservations = new ReservationManager(this.db);
-        this.createTables().then(resolve).catch(reject);
+        this.createTables()
+          .then(() => this.createDefaultAdminIfNeeded())
+          .then(resolve)
+          .catch(reject);
       });
     });
   }
@@ -40,6 +43,9 @@ class Database {
         storage_used  INTEGER NOT NULL DEFAULT 0,
         remaining_quota INTEGER DEFAULT 5368709120,       -- legacy/display only
         plan TEXT DEFAULT 'free',
+        role TEXT DEFAULT 'user',                          -- 'user' or 'admin'
+        max_concurrent_downloads INTEGER DEFAULT 2,        -- Admin controllable
+        is_active INTEGER DEFAULT 1,                       -- 1 = active, 0 = disabled
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -51,11 +57,39 @@ class Database {
 
     console.log('Users table created or verified');
 
+    // Create upgrade requests table
+    const createUpgradeRequestsTable = `
+      CREATE TABLE IF NOT EXISTS upgrade_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        target_plan TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        address TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',  -- pending, approved, rejected
+        admin_notes TEXT,
+        requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        processed_at DATETIME,
+        processed_by TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createUpgradeRequestsTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Upgrade requests table created or verified');
+
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
     // Optional legacy column (safe no-op if already exists)
     await this.addRemainingQuotaColumnSafely();
+
+    // Add new columns to existing users table
+    await this.addUserManagementColumnsSafely();
   }
 
   // ---- Legacy column support (do not use it for enforcement decisions) ----
@@ -94,6 +128,117 @@ class Database {
         }
       )
     );
+  }
+
+  // Add new user management columns to existing database
+  async addUserManagementColumnsSafely() {
+    const getCols = () =>
+      new Promise((resolve, reject) =>
+        this.db.all('PRAGMA table_info(users);', [], (err, rows) =>
+          err ? reject(err) : resolve(rows || [])
+        )
+      );
+
+    const cols = await getCols();
+    const colNames = cols.map(c => c.name);
+
+    // Add role column
+    if (!colNames.includes('role')) {
+      await new Promise((resolve, reject) =>
+        this.db.run(
+          "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+          (err) => (err ? reject(err) : resolve())
+        )
+      );
+      console.log('role column added successfully');
+    }
+
+    // Add max_concurrent_downloads column
+    if (!colNames.includes('max_concurrent_downloads')) {
+      await new Promise((resolve, reject) =>
+        this.db.run(
+          'ALTER TABLE users ADD COLUMN max_concurrent_downloads INTEGER DEFAULT 2',
+          (err) => (err ? reject(err) : resolve())
+        )
+      );
+      console.log('max_concurrent_downloads column added successfully');
+    }
+
+    // Add is_active column
+    if (!colNames.includes('is_active')) {
+      await new Promise((resolve, reject) =>
+        this.db.run(
+          'ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1',
+          (err) => (err ? reject(err) : resolve())
+        )
+      );
+      console.log('is_active column added successfully');
+    }
+  }
+
+  // Create default admin user if it doesn't exist
+  async createDefaultAdminIfNeeded() {
+    const adminUsername = 'admin';
+    const adminPassword = 'admin123';
+    const adminEmail = 'admin@seedr-lite.local';
+
+    return new Promise((resolve, reject) => {
+      // Check if admin user exists
+      this.db.get('SELECT * FROM users WHERE username = ?', [adminUsername], async (err, row) => {
+        if (err) {
+          console.error('Error checking for admin user:', err);
+          return reject(err);
+        }
+
+        if (row) {
+          // Admin user exists, ensure it has admin role
+          if (row.role !== 'admin') {
+            this.db.run('UPDATE users SET role = ? WHERE username = ?', ['admin', adminUsername], (err) => {
+              if (err) {
+                console.error('Error updating admin role:', err);
+                return reject(err);
+              }
+              console.log('✅ Updated existing user "admin" to admin role');
+              resolve();
+            });
+          } else {
+            console.log('✅ Default admin user already exists');
+            resolve();
+          }
+          return;
+        }
+
+        // Admin user doesn't exist, create it
+        const id = nanoid();
+        const hashedPassword = bcrypt.hashSync(adminPassword, 10);
+        const storageQuota = 5368709120; // 5GB
+
+        this.db.run(
+          `INSERT INTO users (id, username, email, password, storage_quota, storage_used, remaining_quota, plan, role, max_concurrent_downloads, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, adminUsername, adminEmail, hashedPassword, storageQuota, 0, storageQuota, 'free', 'admin', 10, 1],
+          (err) => {
+            if (err) {
+              console.error('Error creating default admin:', err);
+              return reject(err);
+            }
+
+            console.log('');
+            console.log('🛡️  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('   DEFAULT ADMIN USER CREATED');
+            console.log('   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('   Username: admin');
+            console.log('   Password: admin123');
+            console.log('   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('   ⚠️  CHANGE PASSWORD AFTER FIRST LOGIN!');
+            console.log('   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('');
+
+            resolve();
+          }
+        );
+      });
+    });
   }
 
   // ---------------------- Users CRUD / helpers ----------------------
@@ -254,6 +399,154 @@ class Database {
   // ---------------------- Auth utils ----------------------
   async verifyPassword(plainPassword, hashedPassword) {
     return bcrypt.compare(plainPassword, hashedPassword);
+  }
+
+  // ---------------------- Upgrade Requests ----------------------
+  async createUpgradeRequest({ userId, targetPlan, fullName, email, phone, address }) {
+    const id = nanoid();
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO upgrade_requests (id, user_id, target_plan, full_name, email, phone, address)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+      this.db.run(sql, [id, userId, targetPlan, fullName, email, phone, address], function (err) {
+        if (err) return reject(err);
+        resolve({ id, userId, targetPlan, fullName, email, phone, address, status: 'pending' });
+      });
+    });
+  }
+
+  async getUpgradeRequestById(requestId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT r.*, u.username, u.email as user_email, u.plan as current_plan
+        FROM upgrade_requests r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.id = ?
+      `;
+      this.db.get(sql, [requestId], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
+  async getAllUpgradeRequests(status = null) {
+    return new Promise((resolve, reject) => {
+      let sql = `
+        SELECT r.*, u.username, u.email as user_email, u.plan as current_plan
+        FROM upgrade_requests r
+        JOIN users u ON r.user_id = u.id
+      `;
+      const params = [];
+
+      if (status) {
+        sql += ' WHERE r.status = ?';
+        params.push(status);
+      }
+
+      sql += ' ORDER BY r.requested_at DESC';
+
+      this.db.all(sql, params, (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async getUserUpgradeRequests(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM upgrade_requests
+        WHERE user_id = ?
+        ORDER BY requested_at DESC
+      `;
+      this.db.all(sql, [userId], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async updateUpgradeRequestStatus(requestId, status, adminId, adminNotes = null) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE upgrade_requests
+        SET status = ?, processed_at = CURRENT_TIMESTAMP, processed_by = ?, admin_notes = ?
+        WHERE id = ?
+      `;
+      this.db.run(sql, [status, adminId, adminNotes, requestId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  // ---------------------- Admin User Management ----------------------
+  async getAllUsers() {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT id, username, email, storage_quota, storage_used, plan, role,
+               max_concurrent_downloads, is_active, created_at, updated_at
+        FROM users
+        ORDER BY created_at DESC
+      `;
+      this.db.all(sql, [], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async updateUserStatus(userId, isActive) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      this.db.run(sql, [isActive ? 1 : 0, userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async updateUserMaxDownloads(userId, maxDownloads) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET max_concurrent_downloads = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      this.db.run(sql, [maxDownloads, userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async updateUserRole(userId, role) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      this.db.run(sql, [role, userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async deleteUser(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM users WHERE id = ?`;
+      this.db.run(sql, [userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async adminUpdateUserQuotaAndPlan(userId, quota, plan, maxDownloads) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE users
+        SET storage_quota = ?, plan = ?, max_concurrent_downloads = ?,
+            remaining_quota = ? - storage_used, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      this.db.run(sql, [quota, plan, maxDownloads, quota, userId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
   }
 
   close() {

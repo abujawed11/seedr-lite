@@ -4,9 +4,11 @@ import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 import PlansModal from "./components/PlansModal";
+import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
   const { user, logout, getStorageInfo, refreshUserProfile, fetchDetailedQuota } = useAuth();
+  const [currentView, setCurrentView] = useState('main'); // 'main' or 'admin'
   const [torrents, setTorrents] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
@@ -71,14 +73,26 @@ export default function App() {
 
   // Initial load and refresh when path changes
   useEffect(() => {
+    // Skip fetching if user is admin (they'll see admin panel)
+    if (user?.role === 'admin') return;
+
+    // Skip fetching if admin view is active
+    if (currentView === 'admin') return;
+
     fetchTorrents();
     fetchBrowse();
     fetchDetailedQuota(); // Fetch detailed quota information
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPath]);
+  }, [currentPath, currentView, user?.role]);
 
   // Monitor notifications for download completions and refresh file explorer
   useEffect(() => {
+    // Skip if user is admin
+    if (user?.role === 'admin') return;
+
+    // Skip if admin view is active
+    if (currentView === 'admin') return;
+
     const checkNotifications = async () => {
       try {
         const response = await getNotifications();
@@ -119,10 +133,16 @@ export default function App() {
     checkNotifications();
 
     return () => clearInterval(interval);
-  }, [refreshUserProfile, fetchDetailedQuota]);
+  }, [refreshUserProfile, fetchDetailedQuota, currentView]);
 
   // Detect when torrents complete and refresh data
   useEffect(() => {
+    // Skip if user is admin
+    if (user?.role === 'admin') return;
+
+    // Skip if admin view is active
+    if (currentView === 'admin') return;
+
     const currentDone = new Set(torrents.filter(t => t.progress === 100).map(t => t.id));
     const newlyDone = [...currentDone].filter(id => !prevDoneRef.current.has(id));
 
@@ -138,10 +158,16 @@ export default function App() {
     }
 
     prevDoneRef.current = currentDone;
-  }, [torrents, refreshUserProfile]);
+  }, [torrents, refreshUserProfile, currentView]);
 
   // Simple polling — Poll when there are active downloads (like working backup)
   useEffect(() => {
+    // Skip if user is admin
+    if (user?.role === 'admin') return;
+
+    // Skip if admin view is active
+    if (currentView === 'admin') return;
+
     const hasActiveDownloads = torrents.some((t) => t.progress < 100);
 
     if (hasActiveDownloads) {
@@ -152,10 +178,16 @@ export default function App() {
       return () => clearInterval(interval);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [torrents]);
+  }, [torrents, currentView]);
 
   // Refresh files when torrent count decreases (indicates completion and removal)
   useEffect(() => {
+    // Skip if user is admin
+    if (user?.role === 'admin') return;
+
+    // Skip if admin view is active
+    if (currentView === 'admin') return;
+
     const currentCount = torrents.length;
     const prevCount = prevDoneRef.current.size || 0;
 
@@ -176,7 +208,19 @@ export default function App() {
     // Store current torrent IDs for next comparison
     prevDoneRef.current = new Set(torrents.map(t => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [torrents]);
+  }, [torrents, currentView]);
+
+  // Auto-redirect admin users to admin panel on first load
+  useEffect(() => {
+    if (user?.role === 'admin' && currentView === 'main') {
+      setCurrentView('admin');
+    }
+  }, [user?.role, currentView]);
+
+  // If admin view is active, show admin dashboard
+  if (currentView === 'admin') {
+    return <AdminDashboard onBackToMain={() => setCurrentView('main')} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800">
@@ -309,7 +353,20 @@ export default function App() {
               <div className="flex items-center space-x-3">
                 <div className="text-sm text-gray-300">
                   Welcome, <span className="text-yellow-400 font-medium">{user?.username}</span>
+                  {user?.role === 'admin' && (
+                    <span className="ml-2 px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-bold">
+                      ADMIN
+                    </span>
+                  )}
                 </div>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => setCurrentView('admin')}
+                    className="px-4 py-1.5 text-sm bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-md transition-all font-semibold shadow-lg hover:shadow-xl"
+                  >
+                    🛡️ Admin Panel
+                  </button>
+                )}
                 <button
                   onClick={() => setShowPlansModal(true)}
                   className="px-4 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-md transition-all font-semibold shadow-lg hover:shadow-xl"

@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
-import { getPlans, upgradePlan } from '../api';
+import { getPlans, submitUpgradeRequest } from '../api';
 
 export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSuccess }) {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -23,17 +30,35 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     }
   };
 
-  const handleUpgrade = async (planId) => {
+  const handleSelectPlan = (planId) => {
+    setSelectedPlan(planId);
+    setShowForm(true);
+    setError('');
+  };
+
+  const handleFormChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmitRequest = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const response = await upgradePlan(planId);
+      const response = await submitUpgradeRequest(selectedPlan, formData);
+      alert('Upgrade request submitted successfully! Admin will review your request soon.');
       onUpgradeSuccess(response);
+      setShowForm(false);
+      setSelectedPlan(null);
+      setFormData({ fullName: '', email: '', phone: '', address: '' });
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Upgrade failed');
-      console.error('Upgrade error:', err);
+      setError(err.response?.data?.error || err.response?.data?.message || 'Request submission failed');
+      console.error('Upgrade request error:', err);
     } finally {
       setLoading(false);
     }
@@ -50,6 +75,135 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   };
 
   if (!isOpen) return null;
+
+  // If form is shown, render the form modal
+  if (showForm) {
+    const selectedPlanDetails = plans.find(p => p.id === selectedPlan);
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl">
+          {/* Form Header */}
+          <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold text-white">Upgrade Request Form</h2>
+              <p className="text-gray-400 mt-1">
+                Requesting: <span className="text-yellow-400 font-semibold">{selectedPlanDetails?.name} Plan</span>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowForm(false);
+                setSelectedPlan(null);
+                setError('');
+              }}
+              className="text-gray-400 hover:text-white transition-colors p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+              <p className="text-red-300">{error}</p>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmitRequest} className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Full Name *
+              </label>
+              <input
+                type="text"
+                name="fullName"
+                value={formData.fullName}
+                onChange={handleFormChange}
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                placeholder="Enter your full name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Email Address *
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleFormChange}
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                placeholder="Enter your email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Phone Number *
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleFormChange}
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                placeholder="Enter your phone number"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Address *
+              </label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleFormChange}
+                required
+                rows={3}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
+                placeholder="Enter your complete address"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex space-x-4 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setSelectedPlan(null);
+                  setError('');
+                }}
+                className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-400 text-center pt-2">
+              Your request will be reviewed by an administrator. You'll be notified once processed.
+            </p>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -136,7 +290,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
 
                   {/* Action Button */}
                   <button
-                    onClick={() => handleUpgrade(plan.id)}
+                    onClick={() => handleSelectPlan(plan.id)}
                     disabled={isCurrent || isDowngrade || loading}
                     className={`w-full mt-6 py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
                       isCurrent
@@ -146,13 +300,11 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                         : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl'
                     }`}
                   >
-                    {loading
-                      ? 'Upgrading...'
-                      : isCurrent
+                    {isCurrent
                       ? 'Current Plan'
                       : isDowngrade
                       ? 'Downgrades Not Available'
-                      : `Upgrade to ${plan.name}`}
+                      : `Request ${plan.name}`}
                   </button>
                 </div>
               </div>
@@ -163,7 +315,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
         {/* Footer Note */}
         <div className="border-t border-gray-700 p-6 bg-gray-800/30">
           <p className="text-sm text-gray-400 text-center">
-            💡 Upgrades are instant. You'll have more storage immediately after upgrading.
+            📝 Submit an upgrade request with your details. Admin will review and approve your request.
           </p>
         </div>
       </div>
