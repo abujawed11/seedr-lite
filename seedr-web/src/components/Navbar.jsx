@@ -168,11 +168,43 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
                 ) : null;
               })()}
 
-              {/* Status indicators */}
+              {/* Current Plan Display */}
               <div className="flex items-center space-x-4">
-                <div className="flex items-center text-sm text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
-                  Online
+                <div className="flex items-center text-sm">
+                  {(() => {
+                    const plan = user?.plan || 'free';
+                    const planConfig = {
+                      free: {
+                        icon: '🆓',
+                        name: 'Free Plan',
+                        color: 'text-gray-400'
+                      },
+                      basic: {
+                        icon: '🥉',
+                        name: 'Basic Plan',
+                        color: 'text-blue-400'
+                      },
+                      pro: {
+                        icon: '🥈',
+                        name: 'Pro Plan',
+                        color: 'text-purple-400'
+                      },
+                      premium: {
+                        icon: '🥇',
+                        name: 'Premium Plan',
+                        color: 'text-yellow-400'
+                      }
+                    };
+
+                    const currentPlan = planConfig[plan] || planConfig.free;
+
+                    return (
+                      <div className={`flex items-center ${currentPlan.color}`}>
+                        <span className="mr-2 text-base">{currentPlan.icon}</span>
+                        <span className="font-medium">{currentPlan.name}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
