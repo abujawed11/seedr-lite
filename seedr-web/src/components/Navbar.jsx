@@ -15,6 +15,16 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
               onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'home')}
               className="flex items-center cursor-pointer group"
             >
+              {/* App Icon */}
+              <div className="mr-3 transform group-hover:scale-110 transition-all duration-300">
+                <img
+                  src="/seedr-lite.png"
+                  alt="Seedr-Lite Logo"
+                  width="40"
+                  height="40"
+                  className="drop-shadow-lg"
+                />
+              </div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent hover:from-yellow-300 hover:via-orange-400 hover:to-red-400 transition-all duration-300 transform group-hover:scale-105">
                 Seedr-Lite
               </h1>
