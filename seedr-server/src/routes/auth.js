@@ -203,7 +203,9 @@ router.get('/subscription', authenticateToken, asyncHandler(async (req, res) => 
       role: user.role,
       createdAt: user.created_at,
       storageQuota: user.storage_quota,
-      storageUsed: user.storage_used
+      storageUsed: user.storage_used,
+      isActive: user.is_active,
+      is_active: user.is_active
     },
     activeSubscription: activeSubscription ? {
       ...activeSubscription,
