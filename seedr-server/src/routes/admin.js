@@ -7,6 +7,7 @@ const asyncHandler = require('../middlewares/asyncHandler');
 const database = require('../models/database');
 const { getAllPlans, getPlan } = require('../config/plans');
 const subscriptionMonitor = require('../utils/subscriptionMonitor');
+const { clearUserStorage, humanBytes } = require('../utils/storage');
 
 // All admin routes require authentication + admin role
 router.use(authenticateToken);
@@ -182,6 +183,96 @@ router.delete('/users/:userId', asyncHandler(async (req, res) => {
   await database.deleteUser(userId);
 
   res.json({ message: 'User deleted successfully', deletedUserId: userId });
+}));
+
+// Clear/Empty user storage
+router.delete('/users/:userId/storage', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Don't allow clearing storage for admin users
+  if (user.role === 'admin') {
+    return res.status(403).json({ error: 'Cannot clear storage for admin users' });
+  }
+
+  // Get current storage info before clearing
+  const storageInfoBefore = await database.getUserStorageInfo(userId);
+
+  // Import torrentManager to remove active torrents
+  const { getUserClient } = require('../services/torrentManager');
+
+  try {
+    // Get user's WebTorrent client and remove all active torrents
+    const client = await getUserClient(userId);
+    const userTorrents = client ? client.torrents : [];
+
+    console.log(`🗑️ Removing ${userTorrents.length} active torrents for user ${userId}`);
+
+    if (client && userTorrents.length > 0) {
+      for (const torrent of userTorrents) {
+        await new Promise((resolve, reject) => {
+          client.remove(torrent.infoHash, { destroyStore: true }, (err) => {
+            if (err) {
+              console.error(`Failed to remove torrent ${torrent.infoHash}:`, err);
+              reject(err);
+            } else {
+              console.log(`✅ Removed torrent: ${torrent.infoHash}`);
+              resolve();
+            }
+          });
+        });
+      }
+    }
+
+    // Release all reservations for this user
+    const userReservations = await database.getUserReservations(userId);
+    console.log(`🗑️ Releasing ${userReservations.length} reservations for user ${userId}`);
+
+    for (const reservation of userReservations) {
+      await database.releaseReservation(userId, reservation.info_hash);
+    }
+
+    // Clear user's storage directory and reset storage_used
+    const result = await clearUserStorage(userId);
+
+    // Get updated storage info after clearing
+    const storageInfoAfter = await database.getUserStorageInfo(userId);
+
+    console.log(`✅ Admin ${req.user.username} cleared storage for user ${user.username} (${userId})`);
+
+    res.json({
+      message: 'User storage cleared successfully',
+      user: {
+        id: userId,
+        username: user.username,
+        email: user.email
+      },
+      cleared: {
+        bytes: result.clearedBytes,
+        formatted: humanBytes(result.clearedBytes),
+        files: result.clearedFiles,
+        torrentsRemoved: userTorrents.length,
+        reservationsReleased: userReservations.length
+      },
+      storageBefore: {
+        used: humanBytes(storageInfoBefore.storage_used),
+        quota: humanBytes(storageInfoBefore.storage_quota),
+        remaining: humanBytes(storageInfoBefore.remaining_quota)
+      },
+      storageAfter: {
+        used: humanBytes(storageInfoAfter.storage_used),
+        quota: humanBytes(storageInfoAfter.storage_quota),
+        remaining: humanBytes(storageInfoAfter.remaining_quota)
+      }
+    });
+  } catch (error) {
+    console.error('Error clearing user storage:', error);
+    throw error;
+  }
 }));
 
 // ==================== Upgrade Request Management ====================

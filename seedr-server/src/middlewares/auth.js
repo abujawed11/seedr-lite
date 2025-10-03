@@ -19,6 +19,22 @@ const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token - user not found' });
     }
 
+    // Check if user account is disabled
+    if (!user.is_active) {
+      req.user = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        storageQuota: user.storage_quota,
+        storageUsed: user.storage_used,
+        remainingQuota: user.remaining_quota,
+        plan: user.plan,
+        isActive: false
+      };
+      // Allow user to authenticate but they'll be restricted from certain actions
+      return next();
+    }
+
     // Add user info to request
     req.user = {
       id: user.id,
@@ -27,7 +43,8 @@ const authenticateToken = async (req, res, next) => {
       storageQuota: user.storage_quota,
       storageUsed: user.storage_used,
       remainingQuota: user.remaining_quota,
-      plan: user.plan
+      plan: user.plan,
+      isActive: true
     };
 
     next();

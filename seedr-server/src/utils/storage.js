@@ -180,6 +180,53 @@ async function checkQuotaBeforeAddingTorrent(userId, input, options = {}) {
   }
 }
 
+// Clear all files in a user's storage directory
+async function clearUserStorage(userId) {
+  const userDir = getUserStorageDir(userId);
+
+  if (!fs.existsSync(userDir)) {
+    console.log(`📂 User directory doesn't exist: ${userDir}`);
+    return { clearedBytes: 0, clearedFiles: 0 };
+  }
+
+  // Calculate size before deletion
+  const sizeBeforeDeletion = calculateDirectorySize(userDir);
+  let filesDeleted = 0;
+
+  // Recursively delete all files and subdirectories
+  function deleteDirectoryRecursive(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+
+    const items = fs.readdirSync(dirPath);
+
+    for (const item of items) {
+      const itemPath = path.join(dirPath, item);
+      const stats = fs.statSync(itemPath);
+
+      if (stats.isDirectory()) {
+        deleteDirectoryRecursive(itemPath);
+        fs.rmdirSync(itemPath);
+      } else {
+        fs.unlinkSync(itemPath);
+        filesDeleted++;
+      }
+    }
+  }
+
+  // Delete all contents but keep the user directory itself
+  deleteDirectoryRecursive(userDir);
+
+  // Reset user's storage_used to 0 in database
+  await database.updateUserStorage(userId, 0);
+
+  console.log(`🗑️ Cleared ${humanBytes(sizeBeforeDeletion)} from user ${userId} storage (${filesDeleted} files)`);
+
+  return {
+    clearedBytes: sizeBeforeDeletion,
+    clearedFiles: filesDeleted
+  };
+}
+
 module.exports = {
   getUserStorageDir,
   ensureUserStorageDir,
@@ -188,5 +235,6 @@ module.exports = {
   checkStorageAvailable,
   humanBytes,
   cleanupEmptyDirectories,
-  checkQuotaBeforeAddingTorrent
+  checkQuotaBeforeAddingTorrent,
+  clearUserStorage
 };

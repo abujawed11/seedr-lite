@@ -7,7 +7,8 @@ import {
   rejectUpgradeRequest,
   updateUserQuota,
   updateUserStatus,
-  deleteUser
+  deleteUser,
+  clearUserStorage
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -99,6 +100,26 @@ export default function AdminDashboard({ onBackToMain }) {
     } catch (error) {
       console.error('Failed to delete user:', error);
       alert(error.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  const handleClearUserStorage = async (userId, username) => {
+    if (!confirm(`Are you sure you want to clear ALL storage for user "${username}"?\n\nThis will:\n• Remove all active torrents\n• Delete all downloaded files\n• Reset storage usage to 0\n\nThis action cannot be undone.`)) return;
+
+    try {
+      const result = await clearUserStorage(userId);
+
+      const message = `Storage cleared successfully!\n\n` +
+        `Cleared: ${result.cleared.formatted}\n` +
+        `Files deleted: ${result.cleared.files}\n` +
+        `Torrents removed: ${result.cleared.torrentsRemoved}\n` +
+        `Reservations released: ${result.cleared.reservationsReleased}`;
+
+      alert(message);
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Failed to clear user storage:', error);
+      alert(error.response?.data?.error || 'Failed to clear user storage');
     }
   };
 
@@ -385,12 +406,21 @@ export default function AdminDashboard({ onBackToMain }) {
                               {u.is_active ? 'Disable' : 'Enable'}
                             </button>
                             {u.role !== 'admin' && (
-                              <button
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
-                              >
-                                Delete
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleClearUserStorage(u.id, u.username)}
+                                  className="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded transition-colors"
+                                  title="Clear all user storage and files"
+                                >
+                                  Clear Storage
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                >
+                                  Delete
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>

@@ -125,7 +125,11 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
       console.error('[ADD] Failed:', err);
 
       let errorMessage = 'Failed to add torrent';
-      if (err.response?.data?.error) {
+
+      // Check for disabled account error
+      if (err.response?.data?.code === 'ACCOUNT_DISABLED') {
+        errorMessage = err.response.data.message || 'Your account has been disabled by an administrator. Please contact support for assistance.';
+      } else if (err.response?.data?.error) {
         errorMessage = err.response.data.error;
       } else if (err.message) {
         errorMessage = err.message;
@@ -136,10 +140,11 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
         error: errorMessage
       });
 
-      // Reset state after showing error
+      // Reset state after showing error (longer timeout for account disabled)
+      const timeout = err.response?.data?.code === 'ACCOUNT_DISABLED' ? 8000 : 3000;
       setTimeout(() => {
         updateMagnetState(magnetId, { state: 'idle' });
-      }, 3000);
+      }, timeout);
     }
   };
 

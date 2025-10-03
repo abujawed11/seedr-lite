@@ -425,6 +425,15 @@ exports.create = async (req, res) => {
   console.log(`🔗 Magnet link: ${magnet.substring(0, 50)}...`);
 
   try {
+    // Check if user account is disabled
+    if (req.user.isActive === false) {
+      console.log(`❌ Account disabled for user ${userId}`);
+      return res.status(403).json({
+        error: 'Your account has been disabled',
+        code: 'ACCOUNT_DISABLED',
+        message: 'Your account has been disabled by an administrator. Please contact support for assistance.'
+      });
+    }
     // Basic quota check - user must have some space available
     const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
 

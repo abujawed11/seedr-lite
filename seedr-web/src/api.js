@@ -183,3 +183,8 @@ export async function deleteUser(userId) {
   const res = await api.delete(`/admin/users/${userId}`);
   return res.data;
 }
+
+export async function clearUserStorage(userId) {
+  const res = await api.delete(`/admin/users/${userId}/storage`);
+  return res.data;
+}
