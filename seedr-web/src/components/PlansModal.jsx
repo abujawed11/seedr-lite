@@ -7,6 +7,10 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedDuration, setSelectedDuration] = useState('monthly'); // 'monthly' or 'yearly'
+  const [currency, setCurrency] = useState(() => {
+    // Load currency preference from localStorage
+    return localStorage.getItem('preferredCurrency') || 'USD';
+  });
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -14,6 +18,9 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     phone: '',
     address: ''
   });
+
+  // Currency conversion rate (approximate - you can update this)
+  const USD_TO_INR = 83; // 1 USD = 83 INR (update as needed)
 
   useEffect(() => {
     if (isOpen) {
@@ -81,18 +88,37 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     return colors[color] || colors.gray;
   };
 
-  const calculatePrice = (monthlyPrice, duration) => {
-    if (duration === 'yearly') {
-      return Math.round(monthlyPrice * 12 * 0.8); // 20% discount for yearly
+  const handleCurrencyChange = (newCurrency) => {
+    setCurrency(newCurrency);
+    localStorage.setItem('preferredCurrency', newCurrency);
+  };
+
+  const convertPrice = (usdPrice) => {
+    if (currency === 'INR') {
+      return Math.round(usdPrice * USD_TO_INR);
     }
-    return monthlyPrice;
+    return usdPrice;
+  };
+
+  const formatPrice = (price) => {
+    if (currency === 'INR') {
+      return `₹${price.toLocaleString('en-IN')}`;
+    }
+    return `$${price}`;
+  };
+
+  const calculatePrice = (monthlyPrice, duration) => {
+    let price = monthlyPrice;
+    if (duration === 'yearly') {
+      price = Math.round(monthlyPrice * 12 * 0.8); // 20% discount for yearly
+    }
+    return convertPrice(price);
   };
 
   const getPriceLabel = (monthlyPrice, duration) => {
-    if (duration === 'yearly') {
-      return `$${calculatePrice(monthlyPrice, duration)}/year`;
-    }
-    return `$${monthlyPrice}/month`;
+    const price = calculatePrice(monthlyPrice, duration);
+    const period = duration === 'yearly' ? 'year' : 'month';
+    return `${formatPrice(price)}/${period}`;
   };
 
   if (!isOpen) return null;
@@ -245,31 +271,58 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
             <h2 className="text-2xl font-bold text-white">Upgrade Your Storage</h2>
             <p className="text-gray-400 mt-1">Choose the plan that fits your needs</p>
 
-            {/* Duration Toggle */}
-            <div className="flex items-center mt-4 p-1 bg-gray-700 rounded-lg w-fit">
-              <button
-                onClick={() => setSelectedDuration('monthly')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  selectedDuration === 'monthly'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setSelectedDuration('yearly')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 relative ${
-                  selectedDuration === 'yearly'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                Yearly
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs px-1 rounded-full">
-                  20% OFF
-                </span>
-              </button>
+            {/* Duration and Currency Toggle */}
+            <div className="flex items-center gap-4 mt-4">
+              {/* Duration Toggle */}
+              <div className="flex items-center p-1 bg-gray-700 rounded-lg">
+                <button
+                  onClick={() => setSelectedDuration('monthly')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    selectedDuration === 'monthly'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setSelectedDuration('yearly')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 relative ${
+                    selectedDuration === 'yearly'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Yearly
+                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs px-1 rounded-full">
+                    20% OFF
+                  </span>
+                </button>
+              </div>
+
+              {/* Currency Toggle */}
+              <div className="flex items-center p-1 bg-gray-700 rounded-lg">
+                <button
+                  onClick={() => handleCurrencyChange('USD')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    currency === 'USD'
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  $ USD
+                </button>
+                <button
+                  onClick={() => handleCurrencyChange('INR')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    currency === 'INR'
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  ₹ INR
+                </button>
+              </div>
             </div>
           </div>
           <button
@@ -310,12 +363,12 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                 <div className={`bg-gradient-to-br ${getPlanColor(plan.color)} p-6 text-white`}>
                   <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">${calculatePrice(plan.price, selectedDuration)}</span>
+                    <span className="text-4xl font-bold">{formatPrice(calculatePrice(plan.price, selectedDuration))}</span>
                     <span className="text-sm ml-2 opacity-80">/{selectedDuration === 'yearly' ? 'year' : 'month'}</span>
                   </div>
                   {selectedDuration === 'yearly' && (
                     <p className="text-xs text-yellow-400 mt-1">
-                      Save ${Math.round(plan.price * 12 * 0.2)}/year vs monthly
+                      Save {formatPrice(convertPrice(Math.round(plan.price * 12 * 0.2)))}/year vs monthly
                     </p>
                   )}
                   <p className="mt-2 text-sm opacity-90">

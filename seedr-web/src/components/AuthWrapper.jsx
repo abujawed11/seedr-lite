@@ -3,8 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
 import Navbar from './Navbar';
+import Footer from './Footer';
 import HomePage from '../pages/HomePage';
 import MyAccount from './MyAccount';
+import TermsPage from '../pages/TermsPage';
+import PrivacyPage from '../pages/PrivacyPage';
+import RefundPage from '../pages/RefundPage';
+import ContactPage from '../pages/ContactPage';
 
 export default function AuthWrapper({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -93,6 +98,11 @@ export default function AuthWrapper({ children }) {
       )}
       {currentPage === 'login' && <LoginForm onSwitchToRegister={() => handleNavigate('register')} />}
       {currentPage === 'register' && <RegisterForm onSwitchToLogin={() => handleNavigate('login')} />}
+      {currentPage === 'terms' && <TermsPage onNavigate={handleNavigate} />}
+      {currentPage === 'privacy' && <PrivacyPage onNavigate={handleNavigate} />}
+      {currentPage === 'refund' && <RefundPage onNavigate={handleNavigate} />}
+      {currentPage === 'contact' && <ContactPage onNavigate={handleNavigate} />}
+      <Footer onNavigate={handleNavigate} isAuthenticated={isAuthenticated} />
     </>
   );
 }

@@ -1,4 +1,32 @@
+import { useState } from 'react';
+
 export default function HomePage({ onNavigate }) {
+  const [currency, setCurrency] = useState(() => {
+    return localStorage.getItem('preferredCurrency') || 'USD';
+  });
+
+  const USD_TO_INR = 83;
+
+  const handleCurrencyChange = (newCurrency) => {
+    setCurrency(newCurrency);
+    localStorage.setItem('preferredCurrency', newCurrency);
+  };
+
+  const convertPrice = (usdPrice) => {
+    if (currency === 'INR') {
+      return Math.round(usdPrice * USD_TO_INR);
+    }
+    return usdPrice;
+  };
+
+  const formatPrice = (usdPrice) => {
+    const price = convertPrice(usdPrice);
+    if (currency === 'INR') {
+      return `₹${price.toLocaleString('en-IN')}`;
+    }
+    return `$${price}`;
+  };
+
   const features = [
     {
       icon: '🚀',
@@ -35,14 +63,14 @@ export default function HomePage({ onNavigate }) {
   const plans = [
     {
       name: 'Free',
-      price: '$0',
+      priceUSD: 0,
       storage: '5 GB',
       downloads: '2',
       color: 'from-gray-600 to-gray-700'
     },
     {
       name: 'Basic',
-      price: '$4.99',
+      priceUSD: 4.99,
       storage: '25 GB',
       downloads: '5',
       color: 'from-blue-600 to-blue-700',
@@ -50,14 +78,14 @@ export default function HomePage({ onNavigate }) {
     },
     {
       name: 'Pro',
-      price: '$9.99',
+      priceUSD: 9.99,
       storage: '100 GB',
       downloads: '10',
       color: 'from-purple-600 to-purple-700'
     },
     {
       name: 'Premium',
-      price: '$19.99',
+      priceUSD: 19.99,
       storage: '500 GB',
       downloads: 'Unlimited',
       color: 'from-yellow-500 to-orange-500'
@@ -99,7 +127,12 @@ export default function HomePage({ onNavigate }) {
                 Get Started Free
               </button>
               <button
-                onClick={() => onNavigate('features')}
+                onClick={() => {
+                  const element = document.getElementById('features');
+                  if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }}
                 className="px-8 py-4 text-lg font-semibold bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-all border border-gray-700"
               >
                 Learn More
@@ -167,9 +200,35 @@ export default function HomePage({ onNavigate }) {
             <h2 className="text-4xl font-bold text-white mb-4">
               Simple, Transparent Pricing
             </h2>
-            <p className="text-xl text-gray-400">
+            <p className="text-xl text-gray-400 mb-6">
               Choose the plan that fits your needs
             </p>
+
+            {/* Currency Toggle */}
+            <div className="flex items-center justify-center">
+              <div className="inline-flex items-center p-1 bg-gray-800 rounded-lg border border-gray-700">
+                <button
+                  onClick={() => handleCurrencyChange('USD')}
+                  className={`px-6 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    currency === 'USD'
+                      ? 'bg-green-600 text-white shadow-lg'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  💵 USD
+                </button>
+                <button
+                  onClick={() => handleCurrencyChange('INR')}
+                  className={`px-6 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    currency === 'INR'
+                      ? 'bg-green-600 text-white shadow-lg'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  ₹ INR
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -191,8 +250,10 @@ export default function HomePage({ onNavigate }) {
                 <div className={`bg-gradient-to-br ${plan.color} p-6 text-white`}>
                   <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    {plan.price !== '$0' && <span className="text-sm ml-2">/month</span>}
+                    <span className="text-4xl font-bold">
+                      {plan.priceUSD === 0 ? (currency === 'INR' ? '₹0' : '$0') : formatPrice(plan.priceUSD)}
+                    </span>
+                    {plan.priceUSD !== 0 && <span className="text-sm ml-2">/month</span>}
                   </div>
                 </div>
 
@@ -251,15 +312,6 @@ export default function HomePage({ onNavigate }) {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 border-t border-gray-800 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-gray-400">
-            <p>&copy; 2025 Seedr Lite. All rights reserved.</p>
-            <p className="mt-2 text-sm">Fast, Secure, and Reliable Torrent Downloads</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

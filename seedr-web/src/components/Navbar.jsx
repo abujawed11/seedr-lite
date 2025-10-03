@@ -5,6 +5,25 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
   const { isAuthenticated, user, logout, getStorageInfo } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const scrollToSection = (sectionId) => {
+    // First navigate to home if not already there
+    if (currentPage !== 'home') {
+      onNavigate('home');
+      // Wait for navigation to complete before scrolling
+      setTimeout(() => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   return (
     <nav className="bg-gray-800/90 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-xl">
       <div className="max-w-7xl mx-auto px-6 py-4">
@@ -48,22 +67,14 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
                 Home
               </button>
               <button
-                onClick={() => onNavigate('features')}
-                className={`text-sm font-medium transition-colors ${
-                  currentPage === 'features'
-                    ? 'text-yellow-400'
-                    : 'text-gray-300 hover:text-white'
-                }`}
+                onClick={() => scrollToSection('features')}
+                className="text-sm font-medium text-gray-300 hover:text-white transition-colors"
               >
                 Features
               </button>
               <button
-                onClick={() => onNavigate('pricing')}
-                className={`text-sm font-medium transition-colors ${
-                  currentPage === 'pricing'
-                    ? 'text-yellow-400'
-                    : 'text-gray-300 hover:text-white'
-                }`}
+                onClick={() => scrollToSection('pricing')}
+                className="text-sm font-medium text-gray-300 hover:text-white transition-colors"
               >
                 Pricing
               </button>
