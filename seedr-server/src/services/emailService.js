@@ -139,6 +139,127 @@ class EmailService {
     }
   }
 
+  // Send admin login OTP email
+  async sendAdminLoginOTP(email, otp) {
+    if (!this.transporter) {
+      throw new Error('Email service not configured. Please set up SMTP settings.');
+    }
+
+    const mailOptions = {
+      from: `"${this.fromName}" <${this.fromEmail}>`,
+      to: email,
+      subject: '🔐 Admin Login Verification - Seedr-Lite',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .container {
+              background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+              border-radius: 10px;
+              padding: 30px;
+              color: white;
+            }
+            .warning-box {
+              background: #fef2f2;
+              border-left: 4px solid #dc2626;
+              color: #991b1b;
+              padding: 15px;
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+            .otp-box {
+              background: white;
+              color: #333;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+              margin: 20px 0;
+            }
+            .otp-code {
+              font-size: 32px;
+              font-weight: bold;
+              letter-spacing: 8px;
+              color: #dc2626;
+              margin: 10px 0;
+            }
+            .footer {
+              margin-top: 20px;
+              font-size: 12px;
+              opacity: 0.8;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>🔐 Admin Login Attempt</h1>
+            <p>Someone is attempting to login to your admin account.</p>
+
+            <div class="otp-box">
+              <p style="margin: 0; color: #666;">Your admin verification code is:</p>
+              <div class="otp-code">${otp}</div>
+              <p style="margin: 0; color: #666; font-size: 14px;">This code will expire in 5 minutes</p>
+            </div>
+
+            <div class="warning-box">
+              <strong>⚠️ Security Warning:</strong><br>
+              If you did NOT attempt to login, someone may have your admin password.
+              Please change your password immediately and check your account security.
+            </div>
+
+            <p><strong>Login Details:</strong></p>
+            <ul>
+              <li>Time: ${new Date().toLocaleString()}</li>
+              <li>Account: Admin</li>
+            </ul>
+
+            <div class="footer">
+              <p>This is an automated security email. Please do not reply.</p>
+              <p>&copy; ${new Date().getFullYear()} Seedr-Lite. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        Admin Login Verification - Seedr-Lite
+
+        Someone is attempting to login to your admin account.
+
+        Your admin verification code is: ${otp}
+
+        This code will expire in 5 minutes.
+
+        ⚠️ SECURITY WARNING:
+        If you did NOT attempt to login, someone may have your admin password.
+        Please change your password immediately.
+
+        Login Details:
+        - Time: ${new Date().toLocaleString()}
+        - Account: Admin
+
+        This is an automated security email.
+      `
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('✅ Admin OTP email sent successfully to:', email);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error('❌ Failed to send admin OTP email:', error);
+      throw new Error('Failed to send verification email. Please try again later.');
+    }
+  }
+
   // Verify SMTP connection
   async verifyConnection() {
     if (!this.transporter) {

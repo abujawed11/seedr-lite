@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import AdminOTPVerification from './AdminOTPVerification';
 
 export default function LoginForm({ onSwitchToRegister }) {
   const [formData, setFormData] = useState({
@@ -8,29 +9,60 @@ export default function LoginForm({ onSwitchToRegister }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showAdminOTP, setShowAdminOTP] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
 
-  const { login } = useAuth();
+  const { login, setAuthData } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(''); // Clear previous errors
+    setError('');
 
     try {
       const result = await login(formData.username, formData.password);
 
       if (!result.success) {
+        // Check if admin OTP is required
+        if (result.requiresOTP) {
+          setShowAdminOTP(true);
+          setAdminEmail(result.email);
+          return;
+        }
         setError(result.error);
         return;
       }
       // If login is successful, AuthContext will handle the state update and redirect
     } catch (error) {
-      // Handle network errors or other unexpected errors
       setError('Login failed. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleAdminOTPSuccess = async (data) => {
+    // Set auth data after successful OTP verification
+    if (data.token && data.user) {
+      await setAuthData(data.user, data.token);
+    }
+  };
+
+  const handleBackToLogin = () => {
+    setShowAdminOTP(false);
+    setError('');
+  };
+
+  // Show admin OTP screen if needed
+  if (showAdminOTP) {
+    return (
+      <AdminOTPVerification
+        username={formData.username}
+        email={adminEmail}
+        onSuccess={handleAdminOTPSuccess}
+        onBack={handleBackToLogin}
+      />
+    );
+  }
 
   const handleChange = (e) => {
     setFormData({

@@ -58,6 +58,17 @@ const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const response = await apiLogin(username, password);
+
+      // Check if admin OTP is required
+      if (response.requiresOTP) {
+        return {
+          success: false,
+          requiresOTP: true,
+          email: response.email,
+          message: response.message
+        };
+      }
+
       const { token: newToken, user: userData } = response;
 
       localStorage.setItem('seedr_token', newToken);

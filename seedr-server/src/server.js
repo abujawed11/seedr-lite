@@ -12,6 +12,10 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
+// Trust proxy for correct IP detection (needed for Cloudflare, nginx, load balancers)
+// This allows req.ip to show real client IP instead of proxy IP
+app.set('trust proxy', true);
+
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true, credentials: false }));
 app.use(express.json({ limit: '2mb' }));

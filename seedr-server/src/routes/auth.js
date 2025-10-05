@@ -134,6 +134,109 @@ router.post('/verify-otp', asyncHandler(async (req, res) => {
   }
 }));
 
+// Verify admin login OTP
+router.post('/verify-admin-otp', asyncHandler(async (req, res) => {
+  const { username, otp } = req.body;
+
+  if (!username || !otp) {
+    return res.status(400).json({ error: 'Username and OTP are required' });
+  }
+
+  try {
+    // Get user
+    const user = await database.getUserByUsername(username);
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({ error: 'Invalid request' });
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || user.email;
+
+    // Get OTP from database
+    const storedOTP = await database.getOTPByEmail(adminEmail);
+
+    if (!storedOTP) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // Verify OTP
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    // Mark OTP as verified
+    await database.markOTPAsVerified(storedOTP.id);
+
+    // Generate token and complete login
+    const token = generateToken(user.id);
+
+    // Clear quota notifications
+    try {
+      const { clearAllQuotaExceededNotifications } = require('../services/torrentManager');
+      clearAllQuotaExceededNotifications(user.id);
+      console.log(`🧹 Cleared stale notifications for admin ${user.id.substring(0, 8)}...`);
+    } catch (error) {
+      console.error('⚠️ Failed to clear notifications:', error);
+    }
+
+    console.log(`✅ Admin login successful for ${user.username}`);
+
+    res.json({
+      message: 'Admin login successful',
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        storageQuota: user.storage_quota,
+        storageUsed: user.storage_used,
+        remainingQuota: user.remaining_quota,
+        plan: user.plan,
+        role: user.role,
+        maxConcurrentDownloads: user.max_concurrent_downloads || 10,
+        isActive: user.is_active || 1
+      },
+      token
+    });
+  } catch (error) {
+    console.error('Admin OTP verification error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP. Please try again.' });
+  }
+}));
+
+// Resend admin OTP
+router.post('/resend-admin-otp', asyncHandler(async (req, res) => {
+  const { username } = req.body;
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username is required' });
+  }
+
+  try {
+    const user = await database.getUserByUsername(username);
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({ error: 'Invalid request' });
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || user.email;
+
+    // Generate new OTP
+    const otp = generateOTP();
+
+    // Store OTP in database
+    await database.createOTP(adminEmail, otp);
+
+    // Send OTP email
+    await emailService.sendAdminLoginOTP(adminEmail, otp);
+
+    res.status(200).json({
+      message: 'OTP resent successfully',
+      email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+    });
+  } catch (error) {
+    console.error('Resend admin OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP. Please try again.' });
+  }
+}));
+
 // Resend OTP
 router.post('/resend-otp', asyncHandler(async (req, res) => {
   const { email } = req.body;
@@ -174,11 +277,56 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
+  // Check if user is admin and IP whitelist is enabled
+  if (user.role === 'admin' && process.env.ADMIN_IP_WHITELIST) {
+    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0];
+    const allowedIPs = process.env.ADMIN_IP_WHITELIST.split(',').map(ip => ip.trim());
+
+    // Debug: Show detected IP
+    console.log(`🔍 Admin login attempt - Detected IP: ${clientIP}, Allowed IPs: ${allowedIPs.join(', ')}`);
+
+    // Normalize IPv6 localhost to IPv4
+    const normalizedIP = clientIP === '::1' || clientIP === '::ffff:127.0.0.1' ? '127.0.0.1' : clientIP;
+
+    if (!allowedIPs.includes(normalizedIP)) {
+      console.warn(`🚫 Admin login blocked from unauthorized IP: ${normalizedIP}`);
+      return res.status(403).json({ error: 'Access denied. Admin login is restricted to authorized IP addresses.' });
+    }
+    console.log(`✅ Admin login allowed from whitelisted IP: ${normalizedIP}`);
+  }
+
   const isValidPassword = await database.verifyPassword(password, user.password);
   if (!isValidPassword) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
+  // For admin users, send OTP instead of immediate login
+  if (user.role === 'admin') {
+    try {
+      // Generate OTP
+      const otp = generateOTP();
+      const adminEmail = process.env.ADMIN_EMAIL || user.email;
+
+      // Store OTP in database (5 minutes expiry for admin)
+      await database.createOTP(adminEmail, otp);
+
+      // Send OTP email
+      await emailService.sendAdminLoginOTP(adminEmail, otp);
+
+      console.log(`🔐 Admin OTP sent to ${adminEmail}`);
+
+      return res.status(200).json({
+        requiresOTP: true,
+        message: 'Admin verification required. OTP sent to your email.',
+        email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Partially hide email
+      });
+    } catch (error) {
+      console.error('Failed to send admin OTP:', error);
+      return res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+    }
+  }
+
+  // Regular user login (no OTP)
   const token = generateToken(user.id);
 
   // CRITICAL FIX: Clear any stale quota notifications from previous sessions
