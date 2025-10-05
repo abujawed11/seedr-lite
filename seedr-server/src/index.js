@@ -2,12 +2,24 @@ require('dotenv').config();
 const { ensureDirs } = require('./utils/ensureDirs');
 const { logger } = require('./utils/logger');
 const database = require('./models/database');
+const emailService = require('./services/emailService');
 
 async function initServer() {
   try {
     // Initialize database
     await database.init();
     logger.info('Database initialized');
+
+    // Initialize email service
+    emailService.init();
+
+    // Verify email service connection
+    const emailVerification = await emailService.verifyConnection();
+    if (emailVerification.success) {
+      logger.info('Email service ready');
+    } else {
+      logger.warn('Email service verification failed:', emailVerification.error);
+    }
 
     // Add downloaded_bytes column if it doesn't exist (migration)
     try {

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Hide reCAPTCHA v3 badge */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+
 /* Hide scrollbar utility class */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */

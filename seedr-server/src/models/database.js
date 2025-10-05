@@ -46,6 +46,7 @@ class Database {
         role TEXT DEFAULT 'user',                          -- 'user' or 'admin'
         max_concurrent_downloads INTEGER DEFAULT 2,        -- Admin controllable
         is_active INTEGER DEFAULT 1,                       -- 1 = active, 0 = disabled
+        email_verified INTEGER DEFAULT 0,                  -- 0 = not verified, 1 = verified
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -134,6 +135,24 @@ class Database {
 
     console.log('Subscription history table created or verified');
 
+    // Create OTP verification table
+    const createOtpTable = `
+      CREATE TABLE IF NOT EXISTS otp_verifications (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        otp TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        verified INTEGER DEFAULT 0
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createOtpTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('OTP verifications table created or verified');
+
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
@@ -145,6 +164,9 @@ class Database {
 
     // Add duration column to existing upgrade_requests table
     await this.addUpgradeRequestDurationColumnSafely();
+
+    // Add email_verified column to existing users table
+    await this.addEmailVerifiedColumnSafely();
   }
 
   // ---- Legacy column support (do not use it for enforcement decisions) ----
@@ -254,6 +276,31 @@ class Database {
       )
     );
     console.log('duration column added to upgrade_requests table successfully');
+  }
+
+  // Add email_verified column to existing users table
+  async addEmailVerifiedColumnSafely() {
+    const getCols = () =>
+      new Promise((resolve, reject) =>
+        this.db.all('PRAGMA table_info(users);', [], (err, rows) =>
+          err ? reject(err) : resolve(rows || [])
+        )
+      );
+
+    const cols = await getCols();
+    const hasEmailVerified = cols.some((c) => c.name === 'email_verified');
+    if (hasEmailVerified) {
+      console.log('email_verified column already exists in users');
+      return;
+    }
+
+    await new Promise((resolve, reject) =>
+      this.db.run(
+        'ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0',
+        (err) => (err ? reject(err) : resolve())
+      )
+    );
+    console.log('email_verified column added to users table successfully');
   }
 
   // Create default admin user if it doesn't exist
@@ -860,6 +907,58 @@ class Database {
     }
 
     return results;
+  }
+
+  // ---------------------- OTP Verification ----------------------
+  async createOTP(email, otp) {
+    const id = nanoid();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT INTO otp_verifications (id, email, otp, expires_at) VALUES (?, ?, ?, ?)`;
+      this.db.run(sql, [id, email, otp, expiresAt.toISOString()], function (err) {
+        if (err) return reject(err);
+        resolve({ id, email, otp, expiresAt });
+      });
+    });
+  }
+
+  async getOTPByEmail(email) {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM otp_verifications WHERE email = ? AND verified = 0 AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1`;
+      this.db.get(sql, [email], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
+  async markOTPAsVerified(otpId) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE otp_verifications SET verified = 1 WHERE id = ?`;
+      this.db.run(sql, [otpId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async markEmailAsVerified(email) {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET email_verified = 1 WHERE email = ?`;
+      this.db.run(sql, [email], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async cleanupExpiredOTPs() {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM otp_verifications WHERE expires_at < datetime('now')`;
+      this.db.run(sql, [], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes);
+      });
+    });
   }
 
   close() {

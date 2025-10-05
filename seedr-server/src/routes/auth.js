@@ -3,12 +3,15 @@ const database = require('../models/database');
 const { generateToken, authenticateToken } = require('../middlewares/auth');
 const asyncHandler = require('../middlewares/asyncHandler');
 const { updateUserStorageUsage } = require('../utils/storage');
+const emailService = require('../services/emailService');
+const { generateOTP } = require('../utils/otpGenerator');
+const axios = require('axios');
 
 const router = express.Router();
 
-// Register new user
+// Register new user - Step 1: Send OTP
 router.post('/register', asyncHandler(async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, recaptchaToken } = req.body;
 
   // Validation
   if (!username || !email || !password) {
@@ -24,6 +27,25 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'This username is reserved. Please choose a different username.' });
   }
 
+  // Verify reCAPTCHA if token is provided
+  if (recaptchaToken) {
+    const recaptchaSecret = process.env.RECAPTCHA_SECRET_KEY;
+    if (recaptchaSecret) {
+      try {
+        const recaptchaResponse = await axios.post(
+          `https://www.google.com/recaptcha/api/siteverify?secret=${recaptchaSecret}&response=${recaptchaToken}`
+        );
+
+        if (!recaptchaResponse.data.success || recaptchaResponse.data.score < 0.5) {
+          return res.status(400).json({ error: 'reCAPTCHA verification failed. Please try again.' });
+        }
+      } catch (error) {
+        console.error('reCAPTCHA verification error:', error);
+        return res.status(500).json({ error: 'Failed to verify reCAPTCHA' });
+      }
+    }
+  }
+
   // Check if user already exists
   const existingUser = await database.getUserByEmail(email);
   if (existingUser) {
@@ -31,11 +53,70 @@ router.post('/register', asyncHandler(async (req, res) => {
   }
 
   try {
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Store OTP in database
+    await database.createOTP(email, otp);
+
+    // Send OTP email
+    await emailService.sendOTPEmail(email, otp);
+
+    res.status(200).json({
+      message: 'OTP sent to your email. Please verify to complete registration.',
+      email: email
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    if (error.message.includes('Email service not configured')) {
+      return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
+    }
+    res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+  }
+}));
+
+// Verify OTP and complete registration - Step 2
+router.post('/verify-otp', asyncHandler(async (req, res) => {
+  const { email, otp, username, password } = req.body;
+
+  // Validation
+  if (!email || !otp || !username || !password) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+
+  try {
+    // Get OTP from database
+    const storedOTP = await database.getOTPByEmail(email);
+
+    if (!storedOTP) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // Verify OTP
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    // Check if user already exists (double check)
+    const existingUser = await database.getUserByEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+
+    // Create user
     const user = await database.createUser({ username, email, password });
+
+    // Mark email as verified
+    await database.markEmailAsVerified(email);
+
+    // Mark OTP as verified
+    await database.markOTPAsVerified(storedOTP.id);
+
+    // Generate token
     const token = generateToken(user.id);
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'Registration completed successfully',
       user: {
         id: user.id,
         username: user.username,
@@ -48,11 +129,35 @@ router.post('/register', asyncHandler(async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Registration error:', error);
-    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      return res.status(409).json({ error: 'Username or email already exists' });
-    }
-    res.status(500).json({ error: 'Failed to register user' });
+    console.error('OTP verification error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP. Please try again.' });
+  }
+}));
+
+// Resend OTP
+router.post('/resend-otp', asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Generate new OTP
+    const otp = generateOTP();
+
+    // Store OTP in database
+    await database.createOTP(email, otp);
+
+    // Send OTP email
+    await emailService.sendOTPEmail(email, otp);
+
+    res.status(200).json({
+      message: 'OTP resent successfully'
+    });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP. Please try again.' });
   }
 }));
 

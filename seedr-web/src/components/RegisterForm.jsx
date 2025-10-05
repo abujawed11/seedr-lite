@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getRecaptchaToken } from '../utils/recaptcha';
+import OTPVerification from './OTPVerification';
+import axios from 'axios';
 
 export default function RegisterForm({ onSwitchToLogin }) {
   const [formData, setFormData] = useState({
@@ -10,8 +13,21 @@ export default function RegisterForm({ onSwitchToLogin }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showOTPVerification, setShowOTPVerification] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
-  const { register } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  // Load reCAPTCHA script on mount
+  useEffect(() => {
+    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+    if (siteKey && !window.grecaptcha) {
+      const script = document.createElement('script');
+      script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,20 +48,85 @@ export default function RegisterForm({ onSwitchToLogin }) {
     }
 
     try {
-      const result = await register(formData.username, formData.email, formData.password);
+      // Get reCAPTCHA token
+      const recaptchaToken = await getRecaptchaToken('register');
 
-      if (!result.success) {
-        setError(result.error);
-      } else {
-        // Registration successful, switch to login screen
-        onSwitchToLogin();
+      // Send registration request
+      const response = await axios.post(`${API_URL}/api/auth/register`, {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        recaptchaToken
+      });
+
+      if (response.status === 200) {
+        // OTP sent successfully, show verification screen
+        setShowOTPVerification(true);
       }
     } catch (error) {
-      setError('Registration failed. Please check your connection and try again.');
+      setError(error.response?.data?.error || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleOTPSuccess = () => {
+    // Show success message
+    setShowOTPVerification(false);
+    setShowSuccessMessage(true);
+
+    // Redirect to login after 3 seconds
+    setTimeout(() => {
+      onSwitchToLogin();
+    }, 3000);
+  };
+
+  const handleBackToRegistration = () => {
+    setShowOTPVerification(false);
+    setError('');
+  };
+
+  // Show success message
+  if (showSuccessMessage) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center px-4">
+        <div className="max-w-md w-full">
+          <div className="bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-xl p-8 border border-gray-700 text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-green-400 to-green-500 rounded-full mb-6">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-4">
+              Registration Successful!
+            </h1>
+            <p className="text-gray-400 mb-6">
+              Your account has been created and verified successfully.
+            </p>
+            <p className="text-yellow-400 font-medium">
+              Redirecting to login page...
+            </p>
+            <div className="mt-6">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-400 mx-auto"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show OTP verification screen if needed
+  if (showOTPVerification) {
+    return (
+      <OTPVerification
+        email={formData.email}
+        username={formData.username}
+        password={formData.password}
+        onSuccess={handleOTPSuccess}
+        onBack={handleBackToRegistration}
+      />
+    );
+  }
 
   const handleChange = (e) => {
     // Clear error when user starts typing

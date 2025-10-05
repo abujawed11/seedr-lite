@@ -102,6 +102,21 @@ const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  // Direct login with token and user data (for OTP verification)
+  const setAuthData = async (userData, authToken) => {
+    localStorage.setItem('seedr_token', authToken);
+    setToken(authToken);
+    setUser(userData);
+
+    // Fetch detailed quota immediately
+    try {
+      const quotaData = await getQuotaInfo();
+      setDetailedQuota(quotaData);
+    } catch (quotaError) {
+      console.error('Failed to fetch detailed quota:', quotaError);
+    }
+  };
+
   const formatBytes = (bytes) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -184,6 +199,7 @@ const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    setAuthData,
     isAuthenticated: !!user,
     getStorageInfo,
     refreshUserProfile,
