@@ -277,24 +277,6 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
-  // Check if user is admin and IP whitelist is enabled
-  if (user.role === 'admin' && process.env.ADMIN_IP_WHITELIST) {
-    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0];
-    const allowedIPs = process.env.ADMIN_IP_WHITELIST.split(',').map(ip => ip.trim());
-
-    // Debug: Show detected IP
-    console.log(`🔍 Admin login attempt - Detected IP: ${clientIP}, Allowed IPs: ${allowedIPs.join(', ')}`);
-
-    // Normalize IPv6 localhost to IPv4
-    const normalizedIP = clientIP === '::1' || clientIP === '::ffff:127.0.0.1' ? '127.0.0.1' : clientIP;
-
-    if (!allowedIPs.includes(normalizedIP)) {
-      console.warn(`🚫 Admin login blocked from unauthorized IP: ${normalizedIP}`);
-      return res.status(403).json({ error: 'Access denied. Admin login is restricted to authorized IP addresses.' });
-    }
-    console.log(`✅ Admin login allowed from whitelisted IP: ${normalizedIP}`);
-  }
-
   const isValidPassword = await database.verifyPassword(password, user.password);
   if (!isValidPassword) {
     return res.status(401).json({ error: 'Invalid username or password' });
