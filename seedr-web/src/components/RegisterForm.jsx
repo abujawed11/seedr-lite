@@ -16,7 +16,8 @@ export default function RegisterForm({ onSwitchToLogin }) {
   const [showOTPVerification, setShowOTPVerification] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+  // const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_API_BASE || '';
 
   // Load reCAPTCHA script on mount
   useEffect(() => {
