@@ -9,7 +9,7 @@ export default function OTPVerification({ email, username, password, onSuccess, 
   const [resendSuccess, setResendSuccess] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
 
   // Countdown timer for resend button
   useEffect(() => {
