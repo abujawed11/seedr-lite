@@ -11,6 +11,7 @@ import {
   clearUserStorage
 } from '../api';
 import { useAuth } from '../context/AuthContext';
+import AdminActivityLogs from './AdminActivityLogs';
 
 export default function AdminDashboard({ onBackToMain }) {
   const { user, logout } = useAuth();
@@ -223,6 +224,16 @@ export default function AdminDashboard({ onBackToMain }) {
               }`}
             >
               📝 Upgrade Requests ({requests.filter(r => r.status === 'pending').length})
+            </button>
+            <button
+              onClick={() => setActiveTab('activity')}
+              className={`py-4 px-2 border-b-2 font-medium transition-colors ${
+                activeTab === 'activity'
+                  ? 'border-red-500 text-red-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              📋 Activity Logs
             </button>
           </div>
         </div>
@@ -566,6 +577,10 @@ export default function AdminDashboard({ onBackToMain }) {
               )}
             </div>
           </div>
+        )}
+
+        {!loading && activeTab === 'activity' && (
+          <AdminActivityLogs />
         )}
       </main>
 

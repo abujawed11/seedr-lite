@@ -553,4 +553,151 @@ router.post('/subscriptions/monitor/trigger', asyncHandler(async (req, res) => {
   res.json({ message: 'Manual subscription expiry check completed' });
 }));
 
+// ==================== Activity Log Management ====================
+
+// Get all activity logs with pagination and filtering
+router.get('/activity-logs', asyncHandler(async (req, res) => {
+  const { limit = 100, offset = 0, userId, actionType, search } = req.query;
+
+  let logs;
+
+  if (search) {
+    // Search across all fields
+    logs = await database.searchActivityLogs(search, parseInt(limit));
+  } else if (userId) {
+    // Filter by specific user
+    logs = await database.getActivityLogsByUser(userId, parseInt(limit));
+  } else if (actionType) {
+    // Filter by action type
+    logs = await database.getActivityLogsByActionType(actionType, parseInt(limit));
+  } else {
+    // Get all logs
+    logs = await database.getAllActivityLogs(parseInt(limit), parseInt(offset));
+  }
+
+  res.json({
+    logs,
+    count: logs.length,
+    limit: parseInt(limit),
+    offset: parseInt(offset)
+  });
+}));
+
+// Get activity logs for a specific user
+router.get('/activity-logs/user/:userId', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { limit = 50 } = req.query;
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const logs = await database.getActivityLogsByUser(userId, parseInt(limit));
+
+  res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email
+    },
+    logs,
+    count: logs.length
+  });
+}));
+
+// Delete a specific activity log entry
+router.delete('/activity-logs/:logId', asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+
+  const deleted = await database.deleteActivityLog(logId);
+
+  if (!deleted) {
+    return res.status(404).json({ error: 'Activity log not found' });
+  }
+
+  res.json({
+    message: 'Activity log deleted successfully',
+    logId
+  });
+}));
+
+// Clear old activity logs (older than specified days)
+router.post('/activity-logs/cleanup', asyncHandler(async (req, res) => {
+  const { daysToKeep = 90 } = req.body;
+
+  const deletedCount = await database.clearOldActivityLogs(parseInt(daysToKeep));
+
+  console.log(`🧹 Admin ${req.user.username} cleared ${deletedCount} old activity logs (older than ${daysToKeep} days)`);
+
+  res.json({
+    message: `Cleared ${deletedCount} activity logs older than ${daysToKeep} days`,
+    deletedCount,
+    daysToKeep: parseInt(daysToKeep)
+  });
+}));
+
+// Delete a user's file (from activity log context)
+router.delete('/files/:userId', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { filePath } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: 'Missing file path' });
+  }
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const fs = require('fs');
+  const path = require('path');
+  const { getUserStorageDir, updateUserStorageUsage } = require('../utils/storage');
+
+  try {
+    const userRoot = getUserStorageDir(userId);
+
+    // Validate path to prevent directory traversal
+    const normalized = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, '');
+    const fullPath = path.resolve(userRoot, normalized);
+    const resolvedRoot = path.resolve(userRoot);
+
+    if (!fullPath.startsWith(resolvedRoot)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File or directory not found' });
+    }
+
+    const stat = fs.statSync(fullPath);
+    const sizeBefore = stat.size;
+
+    if (stat.isDirectory()) {
+      // Remove directory recursively
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      // Remove file
+      fs.unlinkSync(fullPath);
+    }
+
+    // Update user's storage usage after deletion
+    await updateUserStorageUsage(userId, true);
+
+    console.log(`🗑️ Admin ${req.user.username} deleted file for user ${user.username}: ${filePath}`);
+
+    res.json({
+      success: true,
+      message: 'File deleted successfully',
+      deletedFile: filePath,
+      deletedSize: humanBytes(sizeBefore),
+      type: stat.isDirectory() ? 'directory' : 'file'
+    });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
+  }
+}));
+
 module.exports = router;

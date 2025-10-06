@@ -498,6 +498,28 @@ exports.create = async (req, res) => {
                 console.error('💥 CRITICAL: addMagnet failed:', e);
               });
 
+              // Log activity: torrent addition after cleanup
+              try {
+                const clientIp = req.ip || req.connection.remoteAddress;
+                const userAgent = req.get('user-agent') || 'Unknown';
+
+                await database.logActivity({
+                  userId,
+                  username: req.user.username,
+                  actionType: 'torrent_add',
+                  torrentName: null,
+                  torrentHash: null,
+                  magnetLink: magnet,
+                  filePath: null,
+                  fileSize: null,
+                  ipAddress: clientIp,
+                  userAgent
+                });
+                console.log(`📝 Activity logged: torrent_add by ${req.user.username} (after cleanup)`);
+              } catch (logError) {
+                console.error('⚠️ Failed to log activity:', logError);
+              }
+
               return res.status(202).json({
                 status: 'accepted',
                 message: 'Stale reservations cleaned up. Torrent add started.',
@@ -567,6 +589,29 @@ exports.create = async (req, res) => {
         errorStack: e.stack
       });
     });
+
+    // Log activity: torrent addition
+    try {
+      const clientIp = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('user-agent') || 'Unknown';
+
+      await database.logActivity({
+        userId,
+        username: req.user.username,
+        actionType: 'torrent_add',
+        torrentName: null, // Will be updated when metadata arrives
+        torrentHash: null,
+        magnetLink: magnet,
+        filePath: null,
+        fileSize: null,
+        ipAddress: clientIp,
+        userAgent
+      });
+      console.log(`📝 Activity logged: torrent_add by ${req.user.username}`);
+    } catch (logError) {
+      console.error('⚠️ Failed to log activity:', logError);
+      // Don't fail the request if logging fails
+    }
 
     console.log('✅ Torrent add started - quota will be validated when metadata arrives');
     return res.status(202).json({

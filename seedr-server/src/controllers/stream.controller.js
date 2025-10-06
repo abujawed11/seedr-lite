@@ -69,6 +69,7 @@ const rangeParser = require('range-parser');
 const mime = require('mime-types');
 const { getTorrent } = require('../services/torrentManager');
 const { verifyLink } = require('../services/linkSigner');
+const database = require('../models/database');
 
 async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false }) {
   // getTorrent is async now — await it
@@ -131,6 +132,32 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
     else res.destroy(e);
   });
   stream.pipe(res);
+
+  // Log activity: file stream/download (only log once per request, not for range requests)
+  if (!req.headers.range && userId) {
+    try {
+      const user = await database.getUserById(userId);
+      const clientIp = req.ip || req.connection?.remoteAddress || 'Unknown';
+      const userAgent = req.get('user-agent') || 'Unknown';
+
+      await database.logActivity({
+        userId,
+        username: user?.username || 'Unknown',
+        actionType: asAttachment ? 'file_download' : 'file_stream',
+        torrentName: t.name,
+        torrentHash: torrentId,
+        magnetLink: null,
+        filePath: file.name,
+        fileSize: total,
+        ipAddress: clientIp,
+        userAgent
+      });
+      console.log(`📝 Activity logged: ${asAttachment ? 'file_download' : 'file_stream'} by ${user?.username || userId}`);
+    } catch (logError) {
+      console.error('⚠️ Failed to log activity:', logError);
+      // Don't fail the request if logging fails
+    }
+  }
 }
 
 exports.stream = async (req, res) => {

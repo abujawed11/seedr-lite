@@ -228,6 +228,44 @@ class Database {
 
     console.log('DMCA reports table created or verified');
 
+    // Create activity logs table
+    const createActivityLogsTable = `
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        torrent_name TEXT,
+        torrent_hash TEXT,
+        magnet_link TEXT,
+        file_path TEXT,
+        file_size INTEGER,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createActivityLogsTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Activity logs table created or verified');
+
+    // Create index for faster queries
+    const createActivityLogsIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_activity_logs_action_type ON activity_logs(action_type);
+      CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createActivityLogsIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Activity logs indexes created or verified');
+
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
@@ -1166,6 +1204,133 @@ class Database {
       this.db.run(sql, [reportId], function (err) {
         if (err) return reject(err);
         resolve(this.changes > 0);
+      });
+    });
+  }
+
+  // ---------------------- Activity Logging ----------------------
+  async logActivity(activityData) {
+    const {
+      id,
+      userId,
+      username,
+      actionType,
+      torrentName,
+      torrentHash,
+      magnetLink,
+      filePath,
+      fileSize,
+      ipAddress,
+      userAgent
+    } = activityData;
+
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO activity_logs (
+          id, user_id, username, action_type, torrent_name, torrent_hash,
+          magnet_link, file_path, file_size, ip_address, user_agent
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      this.db.run(
+        sql,
+        [
+          id,
+          userId,
+          username,
+          actionType,
+          torrentName || null,
+          torrentHash || null,
+          magnetLink || null,
+          filePath || null,
+          fileSize || null,
+          ipAddress || null,
+          userAgent || null
+        ],
+        function (err) {
+          if (err) return reject(err);
+          resolve({ id });
+        }
+      );
+    });
+  }
+
+  async getAllActivityLogs(limit = 100, offset = 0) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM activity_logs
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      this.db.all(sql, [limit, offset], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async getActivityLogsByUser(userId, limit = 50) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM activity_logs
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      this.db.get(sql, [userId, limit], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async getActivityLogsByActionType(actionType, limit = 100) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM activity_logs
+        WHERE action_type = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      this.db.all(sql, [actionType, limit], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async searchActivityLogs(searchTerm, limit = 100) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM activity_logs
+        WHERE torrent_name LIKE ? OR username LIKE ? OR file_path LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      const searchPattern = `%${searchTerm}%`;
+      this.db.all(sql, [searchPattern, searchPattern, searchPattern, limit], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async deleteActivityLog(logId) {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM activity_logs WHERE id = ?`;
+      this.db.run(sql, [logId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async clearOldActivityLogs(daysToKeep = 90) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        DELETE FROM activity_logs
+        WHERE created_at < datetime('now', '-' || ? || ' days')
+      `;
+      this.db.run(sql, [daysToKeep], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes);
       });
     });
   }

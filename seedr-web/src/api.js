@@ -189,3 +189,34 @@ export async function clearUserStorage(userId) {
   const res = await api.delete(`/admin/users/${userId}/storage`);
   return res.data;
 }
+
+// ==================== Activity Log API ====================
+
+export async function getActivityLogs(params = {}) {
+  const res = await api.get('/admin/activity-logs', { params });
+  return res.data;
+}
+
+export async function getActivityLogsByUser(userId, limit = 50) {
+  const res = await api.get(`/admin/activity-logs/user/${userId}`, {
+    params: { limit }
+  });
+  return res.data;
+}
+
+export async function deleteActivityLog(logId) {
+  const res = await api.delete(`/admin/activity-logs/${logId}`);
+  return res.data;
+}
+
+export async function clearOldActivityLogs(daysToKeep = 90) {
+  const res = await api.post('/admin/activity-logs/cleanup', { daysToKeep });
+  return res.data;
+}
+
+export async function deleteUserFile(userId, filePath) {
+  const res = await api.delete(`/admin/files/${userId}`, {
+    data: { filePath }
+  });
+  return res.data;
+}
