@@ -258,7 +258,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* Footer */}
+      {/* Footer with Stats */}
       <footer className="bg-gray-800/50 border-t border-gray-700 mt-16">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between text-sm text-gray-400">

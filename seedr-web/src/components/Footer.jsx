@@ -40,8 +40,8 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               <p><strong className="text-gray-400">Seedr-Lite Technologies Pvt. Ltd.</strong></p>
               <p>123 Tech Park, Electronic City</p>
               <p>Bangalore, Karnataka 560100, India</p>
-              <p className="mt-2">CIN: U72900KA2024PTC123456</p>
-              <p>GST: 29AABCS1234F1Z5</p>
+              {/* <p className="mt-2">CIN: U72900KA2024PTC123456</p> */}
+              {/* <p>GST: 29AABCS1234F1Z5</p> */}
             </div>
           </div>
 
@@ -251,6 +251,42 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <p className="mt-2">
               Payments secured by <span className="text-blue-400">Razorpay</span> | SSL Certified | ISO 27001 Compliant
             </p>
+          </div>
+        </div>
+
+        {/* Disclaimer Banner */}
+        <div className="mt-8 border-t border-gray-800 pt-6">
+          <div className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4">
+            <div className="text-center space-y-3">
+              <p className="text-sm text-gray-300 leading-relaxed">
+                <span className="text-yellow-400 text-lg mr-2">⚠️</span>
+                <strong className="text-yellow-300">Disclaimer:</strong> This service acts as a torrent client only.
+                We do not host, store, or distribute copyrighted content. Users are solely responsible for ensuring their
+                downloads comply with applicable copyright laws and intellectual property rights.
+              </p>
+              <div className="flex justify-center gap-6 text-xs">
+                <button
+                  onClick={() => onNavigate && onNavigate('disclaimer')}
+                  className="text-yellow-300 hover:text-yellow-200 transition-colors underline font-medium"
+                >
+                  Read Full Disclaimer
+                </button>
+                <span className="text-gray-600">•</span>
+                <button
+                  onClick={() => onNavigate && onNavigate('terms')}
+                  className="text-gray-400 hover:text-white transition-colors underline"
+                >
+                  Terms of Service
+                </button>
+                <span className="text-gray-600">•</span>
+                <button
+                  onClick={() => onNavigate && onNavigate('privacy')}
+                  className="text-gray-400 hover:text-white transition-colors underline"
+                >
+                  Privacy Policy
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
