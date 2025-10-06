@@ -26,6 +26,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   const [magnets, setMagnets] = useState([{ id: 1, value: "", state: 'idle', error: null }]);
   const [nextId, setNextId] = useState(2);
   const [notifications, setNotifications] = useState([]);
+  const [showCopyrightWarning, setShowCopyrightWarning] = useState(false);
 
   // Fetch notifications on component mount and periodically
   useEffect(() => {
@@ -202,6 +203,49 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
           ))}
         </div>
       )}
+
+      {/* Copyright Warning Section - Collapsible */}
+      <div className="bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setShowCopyrightWarning(!showCopyrightWarning)}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-yellow-900/30 transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm font-medium text-yellow-300">
+              ⚖️ <strong>Copyright Notice:</strong> You are solely responsible for ensuring you have legal rights to download content.
+            </span>
+          </div>
+          <svg
+            className={`w-5 h-5 text-yellow-400 transition-transform ${showCopyrightWarning ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showCopyrightWarning && (
+          <div className="px-4 pb-4 pt-2 border-t border-yellow-600/30 space-y-3">
+            <p className="text-sm text-yellow-200/90 leading-relaxed">
+              You are <strong className="text-yellow-100">solely responsible</strong> for ensuring you have the legal right to download the content you add.
+              Downloading copyrighted material without permission is <strong className="text-red-400">illegal</strong> and may result in:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/80 ml-4">
+              <li>Account suspension or termination</li>
+              <li>Legal action from copyright holders</li>
+              <li>Criminal prosecution in some jurisdictions</li>
+              <li>Financial penalties and damages</li>
+            </ul>
+            <p className="text-xs text-yellow-300/70 mt-3 p-3 bg-yellow-900/30 rounded border border-yellow-600/20">
+              <strong className="text-yellow-300">Confirmation:</strong> By adding a torrent, you confirm that you have the legal right to download this content and will not use this service to infringe copyrights.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Add Torrents Section */}
       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
