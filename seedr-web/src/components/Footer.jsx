@@ -149,6 +149,14 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 </button>
               </li>
               <li>
+                <button
+                  onClick={() => onNavigate && onNavigate('dmca')}
+                  className="text-gray-400 hover:text-white transition-colors text-left"
+                >
+                  DMCA Takedown
+                </button>
+              </li>
+              <li>
                 <a href="mailto:legal@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
                   Legal Inquiries
                 </a>

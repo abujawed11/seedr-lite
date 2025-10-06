@@ -11,6 +11,7 @@ import PrivacyPage from '../pages/PrivacyPage';
 import RefundPage from '../pages/RefundPage';
 import ContactPage from '../pages/ContactPage';
 import Disclaimer from './Disclaimer';
+import DMCAPage from '../pages/DMCAPage';
 
 export default function AuthWrapper({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -104,6 +105,7 @@ export default function AuthWrapper({ children }) {
       {currentPage === 'refund' && <RefundPage onNavigate={handleNavigate} />}
       {currentPage === 'contact' && <ContactPage onNavigate={handleNavigate} />}
       {currentPage === 'disclaimer' && <Disclaimer onNavigate={handleNavigate} />}
+      {currentPage === 'dmca' && <DMCAPage onNavigate={handleNavigate} />}
       <Footer onNavigate={handleNavigate} isAuthenticated={isAuthenticated} />
     </>
   );

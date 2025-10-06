@@ -199,6 +199,35 @@ class Database {
 
     console.log('OTP table migration completed');
 
+    // Create DMCA reports table
+    const createDMCAReportsTable = `
+      CREATE TABLE IF NOT EXISTS dmca_reports (
+        id TEXT PRIMARY KEY,
+        reporter_name TEXT NOT NULL,
+        reporter_email TEXT NOT NULL,
+        reporter_phone TEXT,
+        reporter_address TEXT,
+        copyrighted_work TEXT NOT NULL,
+        infringing_content TEXT NOT NULL,
+        good_faith_statement INTEGER DEFAULT 0,
+        accuracy_statement INTEGER DEFAULT 0,
+        signature TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        client_ip TEXT,
+        submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        processed_at DATETIME,
+        processed_by TEXT,
+        admin_notes TEXT,
+        FOREIGN KEY (processed_by) REFERENCES users(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createDMCAReportsTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('DMCA reports table created or verified');
+
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
@@ -1033,6 +1062,111 @@ class Database {
     this.db.close((err) => {
       if (err) console.error('Error closing database:', err);
       else console.log('Database connection closed');
+    });
+  }
+
+  // ---------------------- DMCA Reports ----------------------
+  async createDMCAReport(reportData) {
+    const {
+      id,
+      reporterName,
+      reporterEmail,
+      reporterPhone,
+      reporterAddress,
+      copyrightedWork,
+      infringingContent,
+      goodFaithStatement,
+      accuracyStatement,
+      signature,
+      clientIp
+    } = reportData;
+
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO dmca_reports (
+          id, reporter_name, reporter_email, reporter_phone, reporter_address,
+          copyrighted_work, infringing_content, good_faith_statement,
+          accuracy_statement, signature, client_ip
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      this.db.run(
+        sql,
+        [
+          id,
+          reporterName,
+          reporterEmail,
+          reporterPhone || null,
+          reporterAddress || null,
+          copyrightedWork,
+          infringingContent,
+          goodFaithStatement ? 1 : 0,
+          accuracyStatement ? 1 : 0,
+          signature,
+          clientIp || null
+        ],
+        function (err) {
+          if (err) return reject(err);
+          resolve({ id, reporterEmail });
+        }
+      );
+    });
+  }
+
+  async getAllDMCAReports() {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT
+          r.*,
+          u.username as processed_by_username
+        FROM dmca_reports r
+        LEFT JOIN users u ON r.processed_by = u.id
+        ORDER BY r.submitted_at DESC
+      `;
+      this.db.all(sql, [], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
+  async getDMCAReportById(reportId) {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM dmca_reports WHERE id = ?`;
+      this.db.get(sql, [reportId], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
+  async updateDMCAReport(reportId, updates) {
+    const { status, processedBy, adminNotes, processedAt } = updates;
+
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE dmca_reports
+        SET status = ?, processed_by = ?, admin_notes = ?, processed_at = ?
+        WHERE id = ?
+      `;
+
+      this.db.run(
+        sql,
+        [status, processedBy || null, adminNotes || null, processedAt || null, reportId],
+        function (err) {
+          if (err) return reject(err);
+          resolve(this.changes > 0);
+        }
+      );
+    });
+  }
+
+  async deleteDMCAReport(reportId) {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM dmca_reports WHERE id = ?`;
+      this.db.run(sql, [reportId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
     });
   }
 }

@@ -9,6 +9,7 @@ const streamRoutes = require('./routes/stream.routes');
 const authRoutes = require('./routes/auth');
 const plansRoutes = require('./routes/plans');
 const adminRoutes = require('./routes/admin');
+const dmcaRoutes = require('./routes/dmca');
 
 const app = express();
 
@@ -25,6 +26,9 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 
 // Auth routes (public)
 app.use('/api/auth', authRoutes);
+
+// DMCA routes (public submission, admin management)
+app.use('/api/dmca', dmcaRoutes);
 
 // Protected routes
 app.use('/api', plansRoutes); // Plan management routes
