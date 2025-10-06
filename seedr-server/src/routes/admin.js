@@ -203,7 +203,7 @@ router.delete('/users/:userId/storage', asyncHandler(async (req, res) => {
   const storageInfoBefore = await database.getUserStorageInfo(userId);
 
   // Import torrentManager to remove active torrents
-  const { getUserClient } = require('../services/torrentManager');
+  const { getUserClient } = require('../services/torrentManagerV2');
 
   try {
     // Get user's WebTorrent client and remove all active torrents

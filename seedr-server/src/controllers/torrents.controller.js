@@ -383,7 +383,7 @@ const {
   getQuotaExceededNotifications,
   clearQuotaExceededNotification,
   clearAllQuotaExceededNotifications
-} = require('../services/torrentManager');
+} = require('../services/torrentManagerV2');
 
 const { signLink, makeDirectLinkPayload } = require('../services/linkSigner');
 const database = require('../models/database');

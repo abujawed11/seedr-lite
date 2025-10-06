@@ -67,7 +67,7 @@
 // src/controllers/stream.controller.js
 const rangeParser = require('range-parser');
 const mime = require('mime-types');
-const { getTorrent } = require('../services/torrentManager');
+const { getTorrent } = require('../services/torrentManagerV2');
 const { verifyLink } = require('../services/linkSigner');
 
 async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false }) {

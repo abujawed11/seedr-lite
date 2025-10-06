@@ -171,7 +171,7 @@ router.post('/verify-admin-otp', asyncHandler(async (req, res) => {
 
     // Clear quota notifications
     try {
-      const { clearAllQuotaExceededNotifications } = require('../services/torrentManager');
+      const { clearAllQuotaExceededNotifications } = require('../services/torrentManagerV2');
       clearAllQuotaExceededNotifications(user.id);
       console.log(`🧹 Cleared stale notifications for admin ${user.id.substring(0, 8)}...`);
     } catch (error) {
@@ -315,7 +315,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   // These notifications might have been created with outdated quota information
   // and can confuse users with incorrect "quota exceeded" messages on login
   try {
-    const { clearAllQuotaExceededNotifications } = require('../services/torrentManager');
+    const { clearAllQuotaExceededNotifications } = require('../services/torrentManagerV2');
     clearAllQuotaExceededNotifications(user.id);
     console.log(`🧹 Cleared stale notifications for user ${user.id.substring(0, 8)}... on login`);
   } catch (error) {

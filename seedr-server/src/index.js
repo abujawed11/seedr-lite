@@ -35,8 +35,10 @@ async function initServer() {
     // Ensure storage directories
     ensureDirs();
 
-    // Initialize torrent manager (triggers startup cleanup)
-    require('./services/torrentManager');
+    // Initialize torrent engine (supports both WebTorrent and qBittorrent)
+    const torrentManager = require('./services/torrentManagerV2');
+    await torrentManager.initializeEngine();
+    logger.info(`Torrent engine initialized: ${torrentManager.getEngineType()}`);
 
     // Start subscription monitor
     const subscriptionMonitor = require('./utils/subscriptionMonitor');
