@@ -47,6 +47,10 @@ class Database {
         max_concurrent_downloads INTEGER DEFAULT 2,        -- Admin controllable
         is_active INTEGER DEFAULT 1,                       -- 1 = active, 0 = disabled
         email_verified INTEGER DEFAULT 0,                  -- 0 = not verified, 1 = verified
+        age_confirmed INTEGER DEFAULT 0,                   -- Legal: Age 18+ confirmation
+        terms_accepted_at DATETIME,                        -- Legal: Terms acceptance timestamp
+        privacy_accepted_at DATETIME,                      -- Legal: Privacy policy acceptance timestamp
+        registration_ip TEXT,                              -- Legal: IP address during registration
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -57,6 +61,27 @@ class Database {
     );
 
     console.log('Users table created or verified');
+
+    // Add new columns to existing users table (for migration)
+    const alterTableQueries = [
+      'ALTER TABLE users ADD COLUMN age_confirmed INTEGER DEFAULT 0',
+      'ALTER TABLE users ADD COLUMN terms_accepted_at DATETIME',
+      'ALTER TABLE users ADD COLUMN privacy_accepted_at DATETIME',
+      'ALTER TABLE users ADD COLUMN registration_ip TEXT'
+    ];
+
+    for (const query of alterTableQueries) {
+      await new Promise((resolve) => {
+        this.db.run(query, (err) => {
+          if (err && !err.message.includes('duplicate column')) {
+            console.warn(`Column migration warning: ${err.message}`);
+          }
+          resolve();
+        });
+      });
+    }
+
+    console.log('Users table migration completed');
 
     // Create upgrade requests table
     const createUpgradeRequestsTable = `
@@ -143,7 +168,9 @@ class Database {
         otp TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         expires_at DATETIME NOT NULL,
-        verified INTEGER DEFAULT 0
+        verified INTEGER DEFAULT 0,
+        age_confirmed INTEGER DEFAULT 0,
+        registration_ip TEXT
       );
     `;
 
@@ -152,6 +179,25 @@ class Database {
     );
 
     console.log('OTP verifications table created or verified');
+
+    // Add new columns to existing OTP table (for migration)
+    const alterOTPTableQueries = [
+      'ALTER TABLE otp_verifications ADD COLUMN age_confirmed INTEGER DEFAULT 0',
+      'ALTER TABLE otp_verifications ADD COLUMN registration_ip TEXT'
+    ];
+
+    for (const query of alterOTPTableQueries) {
+      await new Promise((resolve) => {
+        this.db.run(query, (err) => {
+          if (err && !err.message.includes('duplicate column')) {
+            console.warn(`OTP table migration warning: ${err.message}`);
+          }
+          resolve();
+        });
+      });
+    }
+
+    console.log('OTP table migration completed');
 
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
@@ -369,19 +415,34 @@ class Database {
   }
 
   // ---------------------- Users CRUD / helpers ----------------------
-  async createUser({ username, email, password }) {
+  async createUser({ username, email, password, ageConfirmed, registrationIp }) {
     const id = nanoid();
     const hashedPassword = await bcrypt.hash(password, 10);
     const storageQuota = 5368709120; // 5GB
+    const now = new Date().toISOString();
 
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT INTO users (id, username, email, password, storage_quota, remaining_quota)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO users (
+          id, username, email, password, storage_quota, remaining_quota,
+          age_confirmed, terms_accepted_at, privacy_accepted_at, registration_ip
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       this.db.run(
         sql,
-        [id, username, email, hashedPassword, storageQuota, storageQuota],
+        [
+          id,
+          username,
+          email,
+          hashedPassword,
+          storageQuota,
+          storageQuota,
+          ageConfirmed ? 1 : 0,
+          now,  // terms_accepted_at
+          now,  // privacy_accepted_at
+          registrationIp || null
+        ],
         function (err) {
           if (err) return reject(err);
           resolve({
@@ -910,15 +971,21 @@ class Database {
   }
 
   // ---------------------- OTP Verification ----------------------
-  async createOTP(email, otp) {
+  async createOTP(email, otp, metadata = {}) {
     const id = nanoid();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const { ageConfirmed, registrationIp } = metadata;
+
     return new Promise((resolve, reject) => {
-      const sql = `INSERT INTO otp_verifications (id, email, otp, expires_at) VALUES (?, ?, ?, ?)`;
-      this.db.run(sql, [id, email, otp, expiresAt.toISOString()], function (err) {
-        if (err) return reject(err);
-        resolve({ id, email, otp, expiresAt });
-      });
+      const sql = `INSERT INTO otp_verifications (id, email, otp, expires_at, age_confirmed, registration_ip) VALUES (?, ?, ?, ?, ?, ?)`;
+      this.db.run(
+        sql,
+        [id, email, otp, expiresAt.toISOString(), ageConfirmed ? 1 : 0, registrationIp || null],
+        function (err) {
+          if (err) return reject(err);
+          resolve({ id, email, otp, expiresAt, ageConfirmed, registrationIp });
+        }
+      );
     });
   }
 

@@ -11,7 +11,7 @@ const router = express.Router();
 
 // Register new user - Step 1: Send OTP
 router.post('/register', asyncHandler(async (req, res) => {
-  const { username, email, password, recaptchaToken } = req.body;
+  const { username, email, password, recaptchaToken, ageConfirmed, termsAccepted, privacyAccepted } = req.body;
 
   // Validation
   if (!username || !email || !password) {
@@ -20,6 +20,19 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+
+  // Legal validation
+  if (!ageConfirmed) {
+    return res.status(400).json({ error: 'You must confirm that you are at least 18 years old' });
+  }
+
+  if (!termsAccepted) {
+    return res.status(400).json({ error: 'You must accept the Terms of Service' });
+  }
+
+  if (!privacyAccepted) {
+    return res.status(400).json({ error: 'You must accept the Privacy Policy' });
   }
 
   // Prevent registration with reserved admin username
@@ -56,8 +69,11 @@ router.post('/register', asyncHandler(async (req, res) => {
     // Generate OTP
     const otp = generateOTP();
 
-    // Store OTP in database
-    await database.createOTP(email, otp);
+    // Get client IP address
+    const registrationIp = req.ip || req.connection.remoteAddress;
+
+    // Store OTP in database with legal acceptance data
+    await database.createOTP(email, otp, { ageConfirmed, registrationIp });
 
     // Send OTP email
     await emailService.sendOTPEmail(email, otp);
@@ -103,8 +119,14 @@ router.post('/verify-otp', asyncHandler(async (req, res) => {
       return res.status(409).json({ error: 'User with this email already exists' });
     }
 
-    // Create user
-    const user = await database.createUser({ username, email, password });
+    // Create user with legal acceptance data from OTP record
+    const user = await database.createUser({
+      username,
+      email,
+      password,
+      ageConfirmed: storedOTP.age_confirmed === 1,
+      registrationIp: storedOTP.registration_ip
+    });
 
     // Mark email as verified
     await database.markEmailAsVerified(email);

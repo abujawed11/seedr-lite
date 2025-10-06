@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getRecaptchaToken } from '../utils/recaptcha';
 import OTPVerification from './OTPVerification';
+import LegalModal from './LegalModal';
+import TermsContent from './TermsContent';
+import PrivacyContent from './PrivacyContent';
 import axios from 'axios';
 
 export default function RegisterForm({ onSwitchToLogin }) {
@@ -15,6 +18,15 @@ export default function RegisterForm({ onSwitchToLogin }) {
   const [error, setError] = useState('');
   const [showOTPVerification, setShowOTPVerification] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // Legal acceptance checkboxes
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+
+  // Modal states
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   // const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
   const API_URL = import.meta.env.VITE_API_BASE || '';
@@ -48,6 +60,25 @@ export default function RegisterForm({ onSwitchToLogin }) {
       return;
     }
 
+    // Legal acceptance validation
+    if (!ageConfirmed) {
+      setError('You must confirm that you are at least 18 years old');
+      setLoading(false);
+      return;
+    }
+
+    if (!termsAccepted) {
+      setError('You must accept the Terms of Service to continue');
+      setLoading(false);
+      return;
+    }
+
+    if (!privacyAccepted) {
+      setError('You must accept the Privacy Policy to continue');
+      setLoading(false);
+      return;
+    }
+
     try {
       // Get reCAPTCHA token
       const recaptchaToken = await getRecaptchaToken('register');
@@ -57,7 +88,10 @@ export default function RegisterForm({ onSwitchToLogin }) {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        recaptchaToken
+        recaptchaToken,
+        ageConfirmed,
+        termsAccepted,
+        privacyAccepted
       });
 
       if (response.status === 200) {
@@ -227,9 +261,69 @@ export default function RegisterForm({ onSwitchToLogin }) {
               />
             </div>
 
+            {/* Legal Acceptance Checkboxes */}
+            <div className="space-y-4 bg-gray-700/30 border border-gray-600 rounded-lg p-4">
+              <p className="text-xs text-gray-400 mb-3">
+                Please confirm the following to continue:
+              </p>
+
+              {/* Age Confirmation */}
+              <label className="flex items-start cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={ageConfirmed}
+                  onChange={(e) => setAgeConfirmed(e.target.checked)}
+                  className="mt-1 mr-3 h-4 w-4 rounded border-gray-500 bg-gray-700 text-yellow-500 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-gray-800 cursor-pointer"
+                />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
+                  I confirm that I am at least <strong className="text-white">18 years old</strong>.
+                </span>
+              </label>
+
+              {/* Terms of Service */}
+              <label className="flex items-start cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-1 mr-3 h-4 w-4 rounded border-gray-500 bg-gray-700 text-yellow-500 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-gray-800 cursor-pointer"
+                />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
+                  I have read and agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsModal(true)}
+                    className="text-yellow-400 hover:text-yellow-300 underline font-medium"
+                  >
+                    Terms of Service
+                  </button>
+                </span>
+              </label>
+
+              {/* Privacy Policy */}
+              <label className="flex items-start cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  className="mt-1 mr-3 h-4 w-4 rounded border-gray-500 bg-gray-700 text-yellow-500 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-gray-800 cursor-pointer"
+                />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">
+                  I have read and agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowPrivacyModal(true)}
+                    className="text-yellow-400 hover:text-yellow-300 underline font-medium"
+                  >
+                    Privacy Policy
+                  </button>
+                </span>
+              </label>
+            </div>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !ageConfirmed || !termsAccepted || !privacyAccepted}
               className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-medium py-3 px-4 rounded-lg hover:from-yellow-600 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
               {loading ? (
@@ -256,6 +350,23 @@ export default function RegisterForm({ onSwitchToLogin }) {
             </p>
           </div>
         </div>
+
+        {/* Legal Modals */}
+        <LegalModal
+          isOpen={showTermsModal}
+          onClose={() => setShowTermsModal(false)}
+          title="Terms of Service"
+        >
+          <TermsContent />
+        </LegalModal>
+
+        <LegalModal
+          isOpen={showPrivacyModal}
+          onClose={() => setShowPrivacyModal(false)}
+          title="Privacy Policy"
+        >
+          <PrivacyContent />
+        </LegalModal>
       </div>
     </div>
   );

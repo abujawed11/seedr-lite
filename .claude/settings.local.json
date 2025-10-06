@@ -23,7 +23,8 @@
       "Bash(npm run build:*)",
       "Bash(sqlite3:*)",
       "Bash(timeout:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
