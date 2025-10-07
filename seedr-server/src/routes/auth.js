@@ -445,6 +445,7 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
 
     // Send OTP email
     await emailService.sendPasswordResetOTP(email, otp);
+    console.log("OTP for reset pass: ",otp);
 
     res.status(200).json({
       message: 'Password reset code sent to your email.',
@@ -495,10 +496,10 @@ router.post('/verify-reset-otp', asyncHandler(async (req, res) => {
 
 // Reset password - Step 3
 router.post('/reset-password', asyncHandler(async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+  const { email, newPassword } = req.body;
 
-  if (!email || !otp || !newPassword) {
-    return res.status(400).json({ error: 'Email, OTP, and new password are required' });
+  if (!email || !newPassword) {
+    return res.status(400).json({ error: 'Email and new password are required' });
   }
 
   if (newPassword.length < 6) {
@@ -506,19 +507,11 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
   }
 
   try {
-    // Verify OTP is valid and verified
-    const storedOTP = await database.getOTPByEmail(email, 'password_reset');
+    // Check if there's a verified OTP for password reset
+    const storedOTP = await database.getVerifiedOTPByEmail(email, 'password_reset');
 
     if (!storedOTP) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
-    }
-
-    if (storedOTP.otp !== otp) {
-      return res.status(400).json({ error: 'Invalid OTP code' });
-    }
-
-    if (storedOTP.verified !== 1) {
-      return res.status(400).json({ error: 'OTP not verified. Please verify OTP first.' });
+      return res.status(400).json({ error: 'OTP not verified. Please verify your OTP first.' });
     }
 
     // Reset password
@@ -528,8 +521,8 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Mark OTP as verified again (to prevent reuse)
-    await database.markOTPAsVerified(storedOTP.id);
+    // Delete the OTP after successful password reset to prevent reuse
+    await database.deleteOTP(storedOTP.id);
 
     res.status(200).json({
       message: 'Password reset successfully. You can now login with your new password.'

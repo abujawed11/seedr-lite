@@ -1107,9 +1107,37 @@ class Database {
     });
   }
 
+  async getVerifiedOTPByEmail(email, type = null) {
+    return new Promise((resolve, reject) => {
+      let sql = `SELECT * FROM otp_verifications WHERE email = ? AND verified = 1 AND expires_at > datetime('now')`;
+      const params = [email];
+
+      if (type) {
+        sql += ` AND type = ?`;
+        params.push(type);
+      }
+
+      sql += ` ORDER BY created_at DESC LIMIT 1`;
+
+      this.db.get(sql, params, (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
   async markOTPAsVerified(otpId) {
     return new Promise((resolve, reject) => {
       const sql = `UPDATE otp_verifications SET verified = 1 WHERE id = ?`;
+      this.db.run(sql, [otpId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async deleteOTP(otpId) {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM otp_verifications WHERE id = ?`;
       this.db.run(sql, [otpId], function (err) {
         if (err) return reject(err);
         resolve(this.changes > 0);

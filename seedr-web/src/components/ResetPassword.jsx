@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
-export default function ResetPassword({ email, otp, onSuccess, onBack }) {
+export default function ResetPassword({ email, onSuccess, onBack }) {
   const [formData, setFormData] = useState({
     newPassword: '',
     confirmPassword: ''
@@ -40,7 +40,6 @@ export default function ResetPassword({ email, otp, onSuccess, onBack }) {
     try {
       const response = await axios.post(`${API_BASE_URL}/api/auth/reset-password`, {
         email,
-        otp,
         newPassword: formData.newPassword
       });
 

@@ -38,6 +38,9 @@ class EmailService {
         user: SMTP_USER,
         pass: SMTP_PASS,
       },
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     this.fromName = SMTP_FROM_NAME || 'MyPeerCloud';
@@ -263,6 +266,12 @@ class EmailService {
   // Send password reset OTP email
   async sendPasswordResetOTP(email, otp) {
     if (!this.transporter) {
+      console.error('❌ Email transporter is null/undefined in sendPasswordResetOTP');
+      console.error('Available env vars:', {
+        SMTP_HOST: process.env.SMTP_HOST,
+        SMTP_USER: process.env.SMTP_USER,
+        hasPass: !!process.env.SMTP_PASS
+      });
       throw new Error('Email service not configured. Please set up SMTP settings.');
     }
 

@@ -26,7 +26,9 @@
       "Bash(cat:*)",
       "Bash(dir:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(netsh advfirewall firewall show rule:*)",
+      "Bash(tasklist)"
     ],
     "deny": [],
     "ask": []
