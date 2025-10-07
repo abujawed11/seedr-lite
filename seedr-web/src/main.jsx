@@ -15,6 +15,7 @@ createRoot(document.getElementById('root')).render(
           <Routes>
             <Route path="/" element={<App />} />
             <Route path="/disclaimer" element={<Disclaimer />} />
+            <Route path="*" element={<App />} />
           </Routes>
         </AuthWrapper>
       </AuthProvider>
