@@ -19,7 +19,7 @@ const DisclaimerFooter = () => {
               Full Disclaimer
             </Link>
             <span className="text-gray-600">•</span>
-            <span>© {new Date().getFullYear()} Seedr-Lite</span>
+            <span>© {new Date().getFullYear()} MyPeerCloud</span>
           </div>
         </div>
       </div>

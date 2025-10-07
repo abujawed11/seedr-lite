@@ -61,7 +61,7 @@ export default function PrivacyContent() {
           <li><strong>Opt-Out:</strong> Unsubscribe from marketing communications</li>
         </ul>
         <p className="mt-3 text-gray-300">
-          To exercise these rights, contact: <a href="mailto:privacy@seedr-lite.com" className="text-blue-400 hover:underline">privacy@seedr-lite.com</a>
+          To exercise these rights, contact: <a href="mailto:privacy@mypeercloud.com" className="text-blue-400 hover:underline">privacy@mypeercloud.com</a>
         </p>
       </section>
 
@@ -111,7 +111,7 @@ export default function PrivacyContent() {
           <strong>Last Updated:</strong> January 2025
         </p>
         <p className="text-xs text-gray-400 mt-2">
-          For privacy inquiries, contact: <a href="mailto:privacy@seedr-lite.com" className="text-blue-400 hover:underline">privacy@seedr-lite.com</a> or <a href="mailto:dpo@seedr-lite.com" className="text-blue-400 hover:underline">dpo@seedr-lite.com</a> (Data Protection Officer)
+          For privacy inquiries, contact: <a href="mailto:privacy@mypeercloud.com" className="text-blue-400 hover:underline">privacy@mypeercloud.com</a> or <a href="mailto:dpo@mypeercloud.com" className="text-blue-400 hover:underline">dpo@mypeercloud.com</a> (Data Protection Officer)
         </p>
       </section>
     </div>

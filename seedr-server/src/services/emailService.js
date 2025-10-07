@@ -25,7 +25,7 @@ class EmailService {
       console.warn('   - SMTP_SECURE (true/false)');
       console.warn('   - SMTP_USER (your email)');
       console.warn('   - SMTP_PASS (your app password)');
-      console.warn('   - SMTP_FROM_NAME (optional, e.g., Seedr-Lite)');
+      console.warn('   - SMTP_FROM_NAME (optional, e.g., MyPeerCloud)');
       console.warn('   - SMTP_FROM_EMAIL (optional, defaults to SMTP_USER)');
       return;
     }
@@ -40,7 +40,7 @@ class EmailService {
       },
     });
 
-    this.fromName = SMTP_FROM_NAME || 'Seedr-Lite';
+    this.fromName = SMTP_FROM_NAME || 'MyPeerCloud';
     this.fromEmail = SMTP_FROM_EMAIL || SMTP_USER;
 
     console.log('✅ Email service initialized successfully');
@@ -55,7 +55,7 @@ class EmailService {
     const mailOptions = {
       from: `"${this.fromName}" <${this.fromEmail}>`,
       to: email,
-      subject: 'Verify your email - Seedr-Lite',
+      subject: 'Verify your email - MyPeerCloud',
       html: `
         <!DOCTYPE html>
         <html>
@@ -100,7 +100,7 @@ class EmailService {
         <body>
           <div class="container">
             <h1>Email Verification</h1>
-            <p>Welcome to Seedr-Lite! To complete your registration, please verify your email address.</p>
+            <p>Welcome to MyPeerCloud! To complete your registration, please verify your email address.</p>
 
             <div class="otp-box">
               <p style="margin: 0; color: #666;">Your verification code is:</p>
@@ -112,14 +112,14 @@ class EmailService {
 
             <div class="footer">
               <p>This is an automated email. Please do not reply.</p>
-              <p>&copy; ${new Date().getFullYear()} Seedr-Lite. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} MyPeerCloud. All rights reserved.</p>
             </div>
           </div>
         </body>
         </html>
       `,
       text: `
-        Welcome to Seedr-Lite!
+        Welcome to MyPeerCloud!
 
         Your email verification code is: ${otp}
 
@@ -148,7 +148,7 @@ class EmailService {
     const mailOptions = {
       from: `"${this.fromName}" <${this.fromEmail}>`,
       to: email,
-      subject: '🔐 Admin Login Verification - Seedr-Lite',
+      subject: '🔐 Admin Login Verification - MyPeerCloud',
       html: `
         <!DOCTYPE html>
         <html>
@@ -223,14 +223,14 @@ class EmailService {
 
             <div class="footer">
               <p>This is an automated security email. Please do not reply.</p>
-              <p>&copy; ${new Date().getFullYear()} Seedr-Lite. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} MyPeerCloud. All rights reserved.</p>
             </div>
           </div>
         </body>
         </html>
       `,
       text: `
-        Admin Login Verification - Seedr-Lite
+        Admin Login Verification - MyPeerCloud
 
         Someone is attempting to login to your admin account.
 

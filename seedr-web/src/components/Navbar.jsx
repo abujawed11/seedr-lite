@@ -38,7 +38,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
               <div className="mr-3 transform group-hover:scale-110 transition-all duration-300">
                 <img
                   src="/mypeercloud2.png"
-                  alt="Seedr-Lite Logo"
+                  alt="MyPeerCloud Logo"
                   width="90"
                   height="90"
                   className="drop-shadow-lg"

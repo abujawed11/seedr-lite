@@ -21,7 +21,7 @@ export default function PrivacyPage({ onNavigate }) {
             <section>
               <h2 className="text-2xl font-semibold text-white mb-4">1. Introduction</h2>
               <p className="mb-4">
-                At Seedr-Lite ("we," "our," or "us"), we are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your data when you use our Service.
+                At MyPeerCloud ("we," "our," or "us"), we are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your data when you use our Service.
               </p>
               <p>
                 By using our Service, you consent to the data practices described in this policy.
@@ -144,7 +144,7 @@ export default function PrivacyPage({ onNavigate }) {
                 <li><strong>Objection:</strong> Object to certain data processing activities</li>
               </ul>
               <p className="mt-4">
-                To exercise these rights, contact us at privacy@seedr-lite.com
+                To exercise these rights, contact us at privacy@mypeercloud.com
               </p>
             </section>
 
@@ -198,8 +198,8 @@ export default function PrivacyPage({ onNavigate }) {
                 If you have questions or concerns about this Privacy Policy or our data practices, please contact:
               </p>
               <ul className="space-y-1 ml-4">
-                <li><strong>Email:</strong> privacy@seedr-lite.com</li>
-                <li><strong>Data Protection Officer:</strong> dpo@seedr-lite.com</li>
+                <li><strong>Email:</strong> privacy@mypeercloud.com</li>
+                <li><strong>Data Protection Officer:</strong> dpo@mypeercloud.com</li>
                 <li><strong>Address:</strong> [Your Business Address]</li>
                 <li><strong>Phone:</strong> [Your Business Phone]</li>
               </ul>

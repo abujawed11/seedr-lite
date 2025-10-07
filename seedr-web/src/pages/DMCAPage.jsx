@@ -147,8 +147,8 @@ export default function DMCAPage({ onNavigate }) {
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 mb-8">
           <h3 className="text-lg font-semibold text-white mb-3">DMCA Agent Contact Information</h3>
           <div className="text-gray-300 space-y-1 text-sm">
-            <p><strong>Email:</strong> <a href="mailto:dmca@seedr-lite.com" className="text-blue-400 hover:underline">dmca@seedr-lite.com</a></p>
-            <p><strong>Company:</strong> Seedr-Lite Technologies Pvt. Ltd.</p>
+            <p><strong>Email:</strong> <a href="mailto:dmca@mypeercloud.com" className="text-blue-400 hover:underline">dmca@mypeercloud.com</a></p>
+            <p><strong>Company:</strong> MyPeerCloud Technologies Pvt. Ltd.</p>
             <p><strong>Address:</strong> 123 Tech Park, Electronic City, Bangalore, Karnataka 560100, India</p>
           </div>
         </div>

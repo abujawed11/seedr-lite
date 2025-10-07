@@ -24,7 +24,9 @@
       "Bash(sqlite3:*)",
       "Bash(timeout:*)",
       "Bash(cat:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,7 +4,7 @@ export default function TermsContent() {
       <section>
         <h3 className="text-lg font-semibold text-white mb-3">1. Introduction</h3>
         <p className="mb-3">
-          Welcome to Seedr-Lite. By accessing or using our cloud-based torrent downloading service, you agree to be bound by these Terms and Conditions.
+          Welcome to MyPeerCloud. By accessing or using our cloud-based torrent downloading service, you agree to be bound by these Terms and Conditions.
         </p>
       </section>
 
@@ -106,7 +106,7 @@ export default function TermsContent() {
           <strong>Last Updated:</strong> January 2025
         </p>
         <p className="text-xs text-gray-400 mt-2">
-          For questions, contact: <a href="mailto:legal@seedr-lite.com" className="text-blue-400 hover:underline">legal@seedr-lite.com</a>
+          For questions, contact: <a href="mailto:legal@mypeercloud.com" className="text-blue-400 hover:underline">legal@mypeercloud.com</a>
         </p>
       </section>
     </div>

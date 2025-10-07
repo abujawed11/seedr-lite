@@ -21,7 +21,7 @@ export default function RefundPage({ onNavigate }) {
             <section>
               <h2 className="text-2xl font-semibold text-white mb-4">1. Overview</h2>
               <p className="mb-4">
-                At Seedr-Lite, we want you to be completely satisfied with our Service. This Refund and Cancellation Policy outlines the terms and conditions for subscription cancellations and refund requests.
+                At MyPeerCloud, we want you to be completely satisfied with our Service. This Refund and Cancellation Policy outlines the terms and conditions for subscription cancellations and refund requests.
               </p>
               <p>
                 We encourage you to try our Free plan before subscribing to a paid plan to ensure our Service meets your needs.
@@ -37,7 +37,7 @@ export default function RefundPage({ onNavigate }) {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Your Account Settings → Subscription → Cancel Subscription</li>
-                <li>Contacting our support team at support@seedr-lite.com</li>
+                <li>Contacting our support team at support@mypeercloud.com</li>
               </ul>
 
               <h3 className="text-xl font-semibold text-white mb-3 mt-4">2.2 Effect of Cancellation</h3>
@@ -103,7 +103,7 @@ export default function RefundPage({ onNavigate }) {
                 To request a refund within the 7-day guarantee period:
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
-                <li>Email us at <strong className="text-blue-400">refunds@seedr-lite.com</strong></li>
+                <li>Email us at <strong className="text-blue-400">refunds@mypeercloud.com</strong></li>
                 <li>Include your account email and transaction ID</li>
                 <li>Briefly explain your reason for the refund request</li>
                 <li>Our team will review and respond within 24-48 hours</li>
@@ -163,7 +163,7 @@ export default function RefundPage({ onNavigate }) {
                 If you notice an incorrect charge or billing issue:
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
-                <li>Contact us immediately at billing@seedr-lite.com</li>
+                <li>Contact us immediately at billing@mypeercloud.com</li>
                 <li>Provide transaction details and description of the issue</li>
                 <li>We will investigate within 48 hours</li>
                 <li>Legitimate billing errors will be corrected and refunded promptly</li>
@@ -209,9 +209,9 @@ export default function RefundPage({ onNavigate }) {
                 For questions about refunds, cancellations, or billing:
               </p>
               <ul className="space-y-1 ml-4">
-                <li><strong>Refunds:</strong> refunds@seedr-lite.com</li>
-                <li><strong>Billing Issues:</strong> billing@seedr-lite.com</li>
-                <li><strong>General Support:</strong> support@seedr-lite.com</li>
+                <li><strong>Refunds:</strong> refunds@mypeercloud.com</li>
+                <li><strong>Billing Issues:</strong> billing@mypeercloud.com</li>
+                <li><strong>General Support:</strong> support@mypeercloud.com</li>
                 <li><strong>Phone:</strong> [Your Business Phone] (Mon-Fri, 9 AM - 6 PM IST)</li>
                 <li><strong>Address:</strong> [Your Business Address]</li>
               </ul>
@@ -222,7 +222,7 @@ export default function RefundPage({ onNavigate }) {
             <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-green-400 mb-3">Our Commitment to You</h3>
               <p className="text-gray-300">
-                We stand behind the quality of our Service. If you experience any issues or are unsatisfied with Seedr-Lite, please reach out to us. We're here to help and will work with you to resolve any concerns. Your satisfaction is our priority.
+                We stand behind the quality of our Service. If you experience any issues or are unsatisfied with MyPeerCloud, please reach out to us. We're here to help and will work with you to resolve any concerns. Your satisfaction is our priority.
               </p>
             </div>
           </div>

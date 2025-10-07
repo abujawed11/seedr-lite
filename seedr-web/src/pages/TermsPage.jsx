@@ -21,7 +21,7 @@ export default function TermsPage({ onNavigate }) {
             <section>
               <h2 className="text-2xl font-semibold text-white mb-4">1. Introduction</h2>
               <p className="mb-4">
-                Welcome to Seedr-Lite ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your access to and use of our cloud-based torrent downloading service, including our website, mobile applications, and related services (collectively, the "Service").
+                Welcome to MyPeerCloud ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your access to and use of our cloud-based torrent downloading service, including our website, mobile applications, and related services (collectively, the "Service").
               </p>
               <p>
                 By accessing or using the Service, you agree to be bound by these Terms. If you do not agree to these Terms, you may not access or use the Service.
@@ -102,7 +102,7 @@ export default function TermsPage({ onNavigate }) {
                 <li>Display your content to you through our platform</li>
               </ul>
               <p className="mt-4">
-                All Service software, trademarks, and related intellectual property are owned by Seedr-Lite or our licensors.
+                All Service software, trademarks, and related intellectual property are owned by MyPeerCloud or our licensors.
               </p>
             </section>
 
@@ -163,7 +163,7 @@ export default function TermsPage({ onNavigate }) {
                 If you have any questions about these Terms, please contact us:
               </p>
               <ul className="space-y-1 ml-4">
-                <li>Email: legal@seedr-lite.com</li>
+                <li>Email: legal@mypeercloud.com</li>
                 <li>Address: [Your Business Address]</li>
                 <li>Phone: [Your Business Phone]</li>
               </ul>
@@ -172,7 +172,7 @@ export default function TermsPage({ onNavigate }) {
 
           <div className="mt-12 pt-8 border-t border-gray-700">
             <p className="text-sm text-gray-400 text-center">
-              By using Seedr-Lite, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
+              By using MyPeerCloud, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
             </p>
           </div>
         </div>

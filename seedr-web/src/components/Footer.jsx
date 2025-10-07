@@ -24,20 +24,20 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <div className="flex items-center mb-4">
               <img
                 src="/mypeercloud2.png"
-                alt="Seedr-Lite"
+                alt="MyPeerCloud"
                 width="40"
                 height="40"
                 className="mr-3"
               />
               <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
-                Seedr-Lite
+                MyPeerCloud
               </h3>
             </div>
             <p className="text-gray-400 mb-4 max-w-md">
               Fast, secure, and reliable cloud-based torrent downloading service. Download to the cloud and stream from anywhere.
             </p>
             <div className="text-sm text-gray-500 space-y-1">
-              <p><strong className="text-gray-400">Seedr-Lite Technologies Pvt. Ltd.</strong></p>
+              <p><strong className="text-gray-400">MyPeerCloud Technologies Pvt. Ltd.</strong></p>
               <p>123 Tech Park, Electronic City</p>
               <p>Bangalore, Karnataka 560100, India</p>
               {/* <p className="mt-2">CIN: U72900KA2024PTC123456</p> */}
@@ -103,17 +103,17 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 </button>
               </li>
               <li>
-                <a href="mailto:support@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:support@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
                   Support
                 </a>
               </li>
               <li>
-                <a href="mailto:careers@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:careers@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
                   Careers
                 </a>
               </li>
               <li>
-                <a href="mailto:partners@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:partners@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
                   Partnerships
                 </a>
               </li>
@@ -157,7 +157,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 </button>
               </li>
               <li>
-                <a href="mailto:legal@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:legal@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
                   Legal Inquiries
                 </a>
               </li>
@@ -172,8 +172,8 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
-              <a href="mailto:support@seedr-lite.com" className="text-gray-400 hover:text-white transition-colors">
-                support@seedr-lite.com
+              <a href="mailto:support@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
+                support@mypeercloud.com
               </a>
             </div>
             <div className="flex items-center justify-center">
@@ -197,7 +197,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
         <div className="mt-8 pt-8 border-t border-gray-800">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="text-gray-400 text-sm mb-4 md:mb-0">
-              <p>&copy; {currentYear} Seedr-Lite Technologies Pvt. Ltd. All rights reserved.</p>
+              <p>&copy; {currentYear} MyPeerCloud Technologies Pvt. Ltd. All rights reserved.</p>
             </div>
 
             {/* Social Media Icons */}
@@ -252,9 +252,9 @@ export default function Footer({ onNavigate, isAuthenticated }) {
           {/* Additional Legal Info */}
           <div className="mt-6 text-center text-xs text-gray-500">
             <p>
-              Seedr-Lite is committed to protecting copyrights. We comply with the Digital Millennium Copyright Act (DMCA).
+              MyPeerCloud is committed to protecting copyrights. We comply with the Digital Millennium Copyright Act (DMCA).
               <br />
-              For copyright concerns, please contact: <a href="mailto:dmca@seedr-lite.com" className="text-blue-400 hover:text-blue-300">dmca@seedr-lite.com</a>
+              For copyright concerns, please contact: <a href="mailto:dmca@mypeercloud.com" className="text-blue-400 hover:text-blue-300">dmca@mypeercloud.com</a>
             </p>
             <p className="mt-2">
               Payments secured by <span className="text-blue-400">Razorpay</span> | SSL Certified | ISO 27001 Compliant

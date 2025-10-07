@@ -81,7 +81,7 @@ export default function LoginForm({ onSwitchToRegister }) {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent mb-2">
-              Seedr-Lite
+              MyPeerCloud
             </h1>
             <p className="text-gray-400">Sign in to your account</p>
           </div>

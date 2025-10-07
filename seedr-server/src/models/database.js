@@ -452,7 +452,7 @@ class Database {
   async createDefaultAdminIfNeeded() {
     const adminUsername = 'admin';
     const adminPassword = 'admin123';
-    const adminEmail = 'admin@seedr-lite.local';
+    const adminEmail = 'admin@mypeercloud.local';
 
     return new Promise((resolve, reject) => {
       // Check if admin user exists

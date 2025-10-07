@@ -182,7 +182,7 @@ export default function RegisterForm({ onSwitchToLogin }) {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent mb-2">
-              Seedr-Lite
+              MyPeerCloud
             </h1>
             <p className="text-gray-400">Create your account</p>
             {/* <p className="text-sm text-gray-500 mt-2">Get 30GB free storage</p> */}

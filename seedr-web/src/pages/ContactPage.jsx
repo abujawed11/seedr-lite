@@ -33,8 +33,8 @@ export default function ContactPage({ onNavigate }) {
                 </div>
                 <div className="ml-4">
                   <h3 className="text-lg font-semibold text-white mb-1">Email</h3>
-                  <a href="mailto:support@seedr-lite.com" className="text-blue-400 hover:text-blue-300 transition-colors">
-                    support@seedr-lite.com
+                  <a href="mailto:support@mypeercloud.com" className="text-blue-400 hover:text-blue-300 transition-colors">
+                    support@mypeercloud.com
                   </a>
                   <p className="text-sm text-gray-400 mt-1">We'll respond within 24 hours</p>
                 </div>
@@ -71,7 +71,7 @@ export default function ContactPage({ onNavigate }) {
                 <div className="ml-4">
                   <h3 className="text-lg font-semibold text-white mb-1">Office Address</h3>
                   <p className="text-gray-300">
-                    Seedr-Lite Technologies Pvt. Ltd.<br />
+                    MyPeerCloud Technologies Pvt. Ltd.<br />
                     123 Tech Park, 4th Floor<br />
                     Electronic City, Bangalore<br />
                     Karnataka 560100, India
@@ -190,7 +190,7 @@ export default function ContactPage({ onNavigate }) {
 
             <div className="mt-6 p-4 bg-blue-900/20 border border-blue-700/50 rounded-lg">
               <p className="text-sm text-blue-300">
-                <strong>Quick Response:</strong> For urgent issues, please email us directly at support@seedr-lite.com or call our support line.
+                <strong>Quick Response:</strong> For urgent issues, please email us directly at support@mypeercloud.com or call our support line.
               </p>
             </div>
           </div>
@@ -202,7 +202,7 @@ export default function ContactPage({ onNavigate }) {
           <div className="grid md:grid-cols-3 gap-6 text-gray-300">
             <div>
               <h3 className="font-semibold text-white mb-2">Legal Entity</h3>
-              <p>Seedr-Lite Technologies Private Limited</p>
+              <p>MyPeerCloud Technologies Private Limited</p>
             </div>
             <div>
               <h3 className="font-semibold text-white mb-2">CIN</h3>

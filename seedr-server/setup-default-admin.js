@@ -19,7 +19,7 @@ async function setupDefaultAdmin() {
 
   const adminUsername = 'admin';
   const adminPassword = 'admin123';
-  const adminEmail = 'admin@seedr-lite.local';
+  const adminEmail = 'admin@mypeercloud.local';
 
   // Check if admin user already exists
   await new Promise((resolve, reject) => {

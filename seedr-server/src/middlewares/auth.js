@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const database = require('../models/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'seedr-lite-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'mypeercloud-secret-key-change-in-production';
 
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];

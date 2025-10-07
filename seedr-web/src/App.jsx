@@ -262,7 +262,7 @@ export default function App() {
       <footer className="bg-gray-800/50 border-t border-gray-700 mt-16">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between text-sm text-gray-400">
-            <div>© 2024 Seedr-Lite • Built with React & Tailwind CSS</div>
+            <div>© 2025 MyPeerCloud • Built with React & Tailwind CSS</div>
             <div className="flex items-center space-x-4">
               <span className="flex items-center">
                 <span className="mr-1">⚡</span>

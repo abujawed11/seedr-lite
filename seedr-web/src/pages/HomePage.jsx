@@ -167,7 +167,7 @@ export default function HomePage({ onNavigate }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-white mb-4">
-              Why Choose Seedr Lite?
+              Why Choose MyPeerCloud?
             </h2>
             <p className="text-xl text-gray-400">
               Everything you need for seamless torrent downloads
@@ -301,7 +301,7 @@ export default function HomePage({ onNavigate }) {
             Ready to Get Started?
           </h2>
           <p className="text-xl text-gray-400 mb-8">
-            Join thousands of users who trust Seedr Lite for their torrent downloads
+            Join thousands of users who trust MyPeerCloud for their torrent downloads
           </p>
           <button
             onClick={() => onNavigate('register')}
