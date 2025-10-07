@@ -253,6 +253,38 @@ class Database {
 
     console.log('Activity logs table created or verified');
 
+    // Migration: Fix any existing activity logs with null IDs
+    await new Promise((resolve) => {
+      this.db.all('SELECT rowid FROM activity_logs WHERE id IS NULL', [], (err, rows) => {
+        if (err || !rows || rows.length === 0) {
+          return resolve();
+        }
+
+        console.log(`🔧 Migrating ${rows.length} activity logs with null IDs...`);
+
+        const updatePromises = rows.map((row) => {
+          return new Promise((resolveUpdate) => {
+            const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            this.db.run(
+              'UPDATE activity_logs SET id = ? WHERE rowid = ?',
+              [newId, row.rowid],
+              (updateErr) => {
+                if (updateErr) {
+                  console.error(`⚠️ Failed to update activity log rowid ${row.rowid}:`, updateErr);
+                }
+                resolveUpdate();
+              }
+            );
+          });
+        });
+
+        Promise.all(updatePromises).then(() => {
+          console.log(`✅ Activity logs migration completed`);
+          resolve();
+        });
+      });
+    });
+
     // Create index for faster queries
     const createActivityLogsIndexes = `
       CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
@@ -1211,7 +1243,6 @@ class Database {
   // ---------------------- Activity Logging ----------------------
   async logActivity(activityData) {
     const {
-      id,
       userId,
       username,
       actionType,
@@ -1223,6 +1254,9 @@ class Database {
       ipAddress,
       userAgent
     } = activityData;
+
+    // Generate unique ID if not provided
+    const activityId = activityData.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     return new Promise((resolve, reject) => {
       const sql = `
@@ -1236,7 +1270,7 @@ class Database {
       this.db.run(
         sql,
         [
-          id,
+          activityId,
           userId,
           username,
           actionType,
@@ -1250,7 +1284,7 @@ class Database {
         ],
         function (err) {
           if (err) return reject(err);
-          resolve({ id });
+          resolve({ id: activityId });
         }
       );
     });
@@ -1334,6 +1368,7 @@ class Database {
       });
     });
   }
+
 }
 
 // Singleton

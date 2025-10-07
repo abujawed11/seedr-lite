@@ -212,8 +212,8 @@ export default function AdminActivityLogs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-750 transition-colors">
+                {logs.map((log, index) => (
+                  <tr key={log.id || `log-${index}-${log.created_at}`} className="hover:bg-gray-750 transition-colors">
                     <td className="px-4 py-3 text-sm text-gray-400">
                       {formatDate(log.created_at)}
                     </td>

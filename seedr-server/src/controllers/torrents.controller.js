@@ -577,9 +577,20 @@ exports.create = async (req, res) => {
       });
     }
 
-    // Fire-and-forget: kick off torrent add in background immediately
-    // Quota validation will happen when metadata is received
-    console.log('⚡ Starting torrent immediately (quota will be validated on metadata)...');
+    // Extract torrent name from magnet link (dn parameter)
+    let torrentNameFromMagnet = null;
+    try {
+      const dnMatch = magnet.match(/[?&]dn=([^&]+)/);
+      if (dnMatch) {
+        torrentNameFromMagnet = decodeURIComponent(dnMatch[1].replace(/\+/g, ' '));
+        console.log(`📋 Extracted name from magnet: ${torrentNameFromMagnet}`);
+      }
+    } catch (e) {
+      console.log('⚠️ Could not extract name from magnet link');
+    }
+
+    // Start torrent in background
+    console.log('⚡ Starting torrent...');
     addMagnet(magnet, userId).catch((e) => {
       console.error('💥 CRITICAL: addMagnet failed:', e);
       console.error('📊 Error details:', {
@@ -590,16 +601,16 @@ exports.create = async (req, res) => {
       });
     });
 
-    // Log activity: torrent addition
-    try {
-      const clientIp = req.ip || req.connection.remoteAddress;
-      const userAgent = req.get('user-agent') || 'Unknown';
+    // Log activity: torrent addition with name from magnet link
+    const clientIp = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('user-agent') || 'Unknown';
 
+    try {
       await database.logActivity({
         userId,
         username: req.user.username,
         actionType: 'torrent_add',
-        torrentName: null, // Will be updated when metadata arrives
+        torrentName: torrentNameFromMagnet, // Use name from magnet link!
         torrentHash: null,
         magnetLink: magnet,
         filePath: null,
@@ -607,10 +618,9 @@ exports.create = async (req, res) => {
         ipAddress: clientIp,
         userAgent
       });
-      console.log(`📝 Activity logged: torrent_add by ${req.user.username}`);
+      console.log(`📝 Activity logged: torrent_add by ${req.user.username} - ${torrentNameFromMagnet || 'Unknown'}`);
     } catch (logError) {
       console.error('⚠️ Failed to log activity:', logError);
-      // Don't fail the request if logging fails
     }
 
     console.log('✅ Torrent add started - quota will be validated when metadata arrives');
