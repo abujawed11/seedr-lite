@@ -25,8 +25,8 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
   };
 
   return (
-    <nav className="bg-gray-800/90 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-xl">
-      <div className="max-w-7xl mx-auto px-6 py-4">
+    <nav className="bg-gray-900 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-xl">
+      <div className="max-w-7xl mx-auto px-6">
         <div className="flex justify-between items-center">
           {/* Logo */}
           <div className="flex items-center">
@@ -37,19 +37,19 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
               {/* App Icon */}
               <div className="mr-3 transform group-hover:scale-110 transition-all duration-300">
                 <img
-                  src="/seedr-lite.png"
+                  src="/mypeercloud2.png"
                   alt="Seedr-Lite Logo"
-                  width="40"
-                  height="40"
+                  width="90"
+                  height="90"
                   className="drop-shadow-lg"
                 />
               </div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent hover:from-yellow-300 hover:via-orange-400 hover:to-red-400 transition-all duration-300 transform group-hover:scale-105">
-                Seedr-Lite
+                MyPeerCloud
               </h1>
-              {!isAuthenticated && (
+              {/* {!isAuthenticated && (
                 <div className="ml-4 text-sm text-gray-400 group-hover:text-gray-300 transition-colors">Modern torrent client</div>
-              )}
+              )} */}
             </div>
           </div>
 

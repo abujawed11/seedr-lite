@@ -23,7 +23,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
           <div className="lg:col-span-2">
             <div className="flex items-center mb-4">
               <img
-                src="/seedr-lite.png"
+                src="/mypeercloud2.png"
                 alt="Seedr-Lite"
                 width="40"
                 height="40"
