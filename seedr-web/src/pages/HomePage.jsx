@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import CookieConsent from '../components/CookieConsent';
 
 export default function HomePage({ onNavigate }) {
   const [currency, setCurrency] = useState(() => {
@@ -312,6 +313,8 @@ export default function HomePage({ onNavigate }) {
         </div>
       </section>
 
+      {/* Cookie Consent Banner */}
+      <CookieConsent />
     </div>
   );
 }
