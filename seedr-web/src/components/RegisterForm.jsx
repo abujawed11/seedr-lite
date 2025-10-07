@@ -5,6 +5,7 @@ import OTPVerification from './OTPVerification';
 import LegalModal from './LegalModal';
 import TermsContent from './TermsContent';
 import PrivacyContent from './PrivacyContent';
+import PasswordToggle from './PasswordToggle';
 import axios from 'axios';
 
 export default function RegisterForm({ onSwitchToLogin }) {
@@ -18,6 +19,8 @@ export default function RegisterForm({ onSwitchToLogin }) {
   const [error, setError] = useState('');
   const [showOTPVerification, setShowOTPVerification] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Legal acceptance checkboxes
   const [ageConfirmed, setAgeConfirmed] = useState(false);
@@ -233,32 +236,44 @@ export default function RegisterForm({ onSwitchToLogin }) {
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
                 Password
               </label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                placeholder="Create a password (min 6 chars)"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  placeholder="Create a password (min 6 chars)"
+                />
+                <PasswordToggle
+                  showPassword={showPassword}
+                  onClick={() => setShowPassword(!showPassword)}
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-2">
                 Confirm Password
               </label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                placeholder="Confirm your password"
-              />
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  placeholder="Confirm your password"
+                />
+                <PasswordToggle
+                  showPassword={showConfirmPassword}
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                />
+              </div>
             </div>
 
             {/* Legal Acceptance Checkboxes */}

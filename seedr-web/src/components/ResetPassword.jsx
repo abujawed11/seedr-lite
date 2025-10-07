@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import PasswordToggle from './PasswordToggle';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -88,13 +89,10 @@ export default function ResetPassword({ email, onSuccess, onBack }) {
                   className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                   placeholder="Enter new password (min. 6 characters)"
                 />
-                <button
-                  type="button"
+                <PasswordToggle
+                  showPassword={showPassword}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
-                >
-                  {showPassword ? '👁️' : '👁️‍🗨️'}
-                </button>
+                />
               </div>
             </div>
 

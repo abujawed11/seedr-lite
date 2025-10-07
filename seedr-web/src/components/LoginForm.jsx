@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import AdminOTPVerification from './AdminOTPVerification';
+import PasswordToggle from './PasswordToggle';
 
 export default function LoginForm({ onSwitchToRegister }) {
   const [formData, setFormData] = useState({
@@ -11,6 +12,7 @@ export default function LoginForm({ onSwitchToRegister }) {
   const [error, setError] = useState('');
   const [showAdminOTP, setShowAdminOTP] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const { login, setAuthData } = useAuth();
 
@@ -115,20 +117,26 @@ export default function LoginForm({ onSwitchToRegister }) {
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
                 Password
               </label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                placeholder="Enter your password"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  placeholder="Enter your password"
+                />
+                <PasswordToggle
+                  showPassword={showPassword}
+                  onClick={() => setShowPassword(!showPassword)}
+                />
+              </div>
             </div>
 
             {/* Forgot Password Link */}
-            <div className="flex justify-end">
+            <div className="flex justify-center">
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent('navigateToForgotPassword'))}
