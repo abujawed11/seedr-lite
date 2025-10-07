@@ -260,6 +260,126 @@ class EmailService {
     }
   }
 
+  // Send password reset OTP email
+  async sendPasswordResetOTP(email, otp) {
+    if (!this.transporter) {
+      throw new Error('Email service not configured. Please set up SMTP settings.');
+    }
+
+    const mailOptions = {
+      from: `"${this.fromName}" <${this.fromEmail}>`,
+      to: email,
+      subject: '🔑 Password Reset Code - MyPeerCloud',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .container {
+              background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+              border-radius: 10px;
+              padding: 30px;
+              color: white;
+            }
+            .info-box {
+              background: #fef3c7;
+              border-left: 4px solid #f59e0b;
+              color: #92400e;
+              padding: 15px;
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+            .otp-box {
+              background: white;
+              color: #333;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+              margin: 20px 0;
+            }
+            .otp-code {
+              font-size: 32px;
+              font-weight: bold;
+              letter-spacing: 8px;
+              color: #8b5cf6;
+              margin: 10px 0;
+            }
+            .footer {
+              margin-top: 20px;
+              font-size: 12px;
+              opacity: 0.8;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>🔑 Password Reset Request</h1>
+            <p>We received a request to reset your password. Use the code below to reset your password.</p>
+
+            <div class="otp-box">
+              <p style="margin: 0; color: #666;">Your password reset code is:</p>
+              <div class="otp-code">${otp}</div>
+              <p style="margin: 0; color: #666; font-size: 14px;">This code will expire in 10 minutes</p>
+            </div>
+
+            <div class="info-box">
+              <strong>ℹ️ Note:</strong><br>
+              If you did NOT request a password reset, please ignore this email. Your password will remain unchanged.
+            </div>
+
+            <p><strong>Reset Details:</strong></p>
+            <ul>
+              <li>Time: ${new Date().toLocaleString()}</li>
+              <li>Email: ${email}</li>
+            </ul>
+
+            <div class="footer">
+              <p>This is an automated email. Please do not reply.</p>
+              <p>&copy; ${new Date().getFullYear()} MyPeerCloud. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        Password Reset Request - MyPeerCloud
+
+        We received a request to reset your password.
+
+        Your password reset code is: ${otp}
+
+        This code will expire in 10 minutes.
+
+        ℹ️ NOTE:
+        If you did NOT request a password reset, please ignore this email.
+        Your password will remain unchanged.
+
+        Reset Details:
+        - Time: ${new Date().toLocaleString()}
+        - Email: ${email}
+
+        This is an automated email.
+      `
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log('✅ Password reset OTP email sent successfully to:', email);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error('❌ Failed to send password reset OTP email:', error);
+      throw new Error('Failed to send password reset email. Please try again later.');
+    }
+  }
+
   // Verify SMTP connection
   async verifyConnection() {
     if (!this.transporter) {

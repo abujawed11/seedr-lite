@@ -127,6 +127,17 @@ export default function LoginForm({ onSwitchToRegister }) {
               />
             </div>
 
+            {/* Forgot Password Link */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('navigateToForgotPassword'))}
+                className="text-sm text-yellow-400 hover:text-yellow-300 transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
+
             <button
               type="submit"
               disabled={loading}

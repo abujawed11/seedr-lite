@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
+import ForgotPassword from './ForgotPassword';
+import VerifyResetOTP from './VerifyResetOTP';
+import ResetPassword from './ResetPassword';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import HomePage from '../pages/HomePage';
@@ -15,14 +18,28 @@ import DMCAPage from '../pages/DMCAPage';
 
 export default function AuthWrapper({ children }) {
   const { isAuthenticated, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'login', 'register', 'dashboard', 'features', 'pricing'
+  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'login', 'register', 'forgot-password', 'verify-reset-otp', 'reset-password', etc.
   const [showMyAccount, setShowMyAccount] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetOTP, setResetOTP] = useState('');
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
 
   const handleNavigate = (page) => {
     setCurrentPage(page);
     // Scroll to top when navigating
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Listen for forgot password navigation event
+  useEffect(() => {
+    const handleForgotPassword = () => {
+      setCurrentPage('forgot-password');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.addEventListener('navigateToForgotPassword', handleForgotPassword);
+    return () => window.removeEventListener('navigateToForgotPassword', handleForgotPassword);
+  }, []);
 
   if (loading) {
     return (
@@ -98,8 +115,65 @@ export default function AuthWrapper({ children }) {
           <HomePage onNavigate={handleNavigate} />
         </div>
       )}
-      {currentPage === 'login' && <LoginForm onSwitchToRegister={() => handleNavigate('register')} />}
+      {currentPage === 'login' && (
+        resetSuccessMessage ? (
+          <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center px-4">
+            <div className="max-w-md w-full">
+              <div className="bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-xl p-8 border border-gray-700">
+                <div className="text-center mb-8">
+                  <div className="text-6xl mb-4">✅</div>
+                  <h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-green-500 bg-clip-text text-transparent mb-2">
+                    Password Reset Successful
+                  </h1>
+                  <p className="text-gray-400">{resetSuccessMessage}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setResetSuccessMessage('');
+                    handleNavigate('login');
+                  }}
+                  className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-medium py-3 px-4 rounded-lg hover:from-yellow-600 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-all duration-200"
+                >
+                  Go to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <LoginForm onSwitchToRegister={() => handleNavigate('register')} />
+        )
+      )}
       {currentPage === 'register' && <RegisterForm onSwitchToLogin={() => handleNavigate('login')} />}
+      {currentPage === 'forgot-password' && (
+        <ForgotPassword
+          onSwitchToLogin={() => handleNavigate('login')}
+          onOTPSent={(email) => {
+            setResetEmail(email);
+            setCurrentPage('verify-reset-otp');
+          }}
+        />
+      )}
+      {currentPage === 'verify-reset-otp' && (
+        <VerifyResetOTP
+          email={resetEmail}
+          onOTPVerified={(otp) => {
+            setResetOTP(otp);
+            setCurrentPage('reset-password');
+          }}
+          onBack={() => setCurrentPage('forgot-password')}
+        />
+      )}
+      {currentPage === 'reset-password' && (
+        <ResetPassword
+          email={resetEmail}
+          otp={resetOTP}
+          onSuccess={(message) => {
+            setResetSuccessMessage(message);
+            setCurrentPage('login');
+          }}
+          onBack={() => setCurrentPage('verify-reset-otp')}
+        />
+      )}
       {currentPage === 'terms' && <TermsPage onNavigate={handleNavigate} />}
       {currentPage === 'privacy' && <PrivacyPage onNavigate={handleNavigate} />}
       {currentPage === 'refund' && <RefundPage onNavigate={handleNavigate} />}

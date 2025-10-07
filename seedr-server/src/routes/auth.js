@@ -420,6 +420,126 @@ router.put('/quota', authenticateToken, asyncHandler(async (req, res) => {
   });
 }));
 
+// Forgot password - Step 1: Send OTP
+router.post('/forgot-password', asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Check if user exists
+    const user = await database.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        error: 'This email is not registered. Please check your email or sign up for a new account.'
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Store OTP in database with type 'password_reset'
+    await database.createOTP(email, otp, { type: 'password_reset' });
+
+    // Send OTP email
+    await emailService.sendPasswordResetOTP(email, otp);
+
+    res.status(200).json({
+      message: 'Password reset code sent to your email.',
+      email: email
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    if (error.message.includes('Email service not configured')) {
+      return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
+    }
+    res.status(500).json({ error: 'Failed to send password reset code. Please try again.' });
+  }
+}));
+
+// Verify password reset OTP - Step 2
+router.post('/verify-reset-otp', asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP are required' });
+  }
+
+  try {
+    // Get OTP from database (password_reset type only)
+    const storedOTP = await database.getOTPByEmail(email, 'password_reset');
+
+    if (!storedOTP) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    // Verify OTP
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    // Mark OTP as verified
+    await database.markOTPAsVerified(storedOTP.id);
+
+    res.status(200).json({
+      message: 'OTP verified successfully. You can now reset your password.',
+      verified: true
+    });
+  } catch (error) {
+    console.error('Verify reset OTP error:', error);
+    res.status(500).json({ error: 'Failed to verify OTP. Please try again.' });
+  }
+}));
+
+// Reset password - Step 3
+router.post('/reset-password', asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ error: 'Email, OTP, and new password are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+
+  try {
+    // Verify OTP is valid and verified
+    const storedOTP = await database.getOTPByEmail(email, 'password_reset');
+
+    if (!storedOTP) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    }
+
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP code' });
+    }
+
+    if (storedOTP.verified !== 1) {
+      return res.status(400).json({ error: 'OTP not verified. Please verify OTP first.' });
+    }
+
+    // Reset password
+    const updated = await database.resetUserPassword(email, newPassword);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Mark OTP as verified again (to prevent reuse)
+    await database.markOTPAsVerified(storedOTP.id);
+
+    res.status(200).json({
+      message: 'Password reset successfully. You can now login with your new password.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+  }
+}));
+
 // Get current user's subscription details
 router.get('/subscription', authenticateToken, asyncHandler(async (req, res) => {
   const userId = req.user.id;

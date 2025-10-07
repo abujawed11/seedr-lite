@@ -183,7 +183,8 @@ class Database {
     // Add new columns to existing OTP table (for migration)
     const alterOTPTableQueries = [
       'ALTER TABLE otp_verifications ADD COLUMN age_confirmed INTEGER DEFAULT 0',
-      'ALTER TABLE otp_verifications ADD COLUMN registration_ip TEXT'
+      'ALTER TABLE otp_verifications ADD COLUMN registration_ip TEXT',
+      'ALTER TABLE otp_verifications ADD COLUMN type TEXT DEFAULT \'registration\'' // 'registration' or 'password_reset'
     ];
 
     for (const query of alterOTPTableQueries) {
@@ -1073,25 +1074,34 @@ class Database {
   async createOTP(email, otp, metadata = {}) {
     const id = nanoid();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    const { ageConfirmed, registrationIp } = metadata;
+    const { ageConfirmed, registrationIp, type = 'registration' } = metadata;
 
     return new Promise((resolve, reject) => {
-      const sql = `INSERT INTO otp_verifications (id, email, otp, expires_at, age_confirmed, registration_ip) VALUES (?, ?, ?, ?, ?, ?)`;
+      const sql = `INSERT INTO otp_verifications (id, email, otp, expires_at, age_confirmed, registration_ip, type) VALUES (?, ?, ?, ?, ?, ?, ?)`;
       this.db.run(
         sql,
-        [id, email, otp, expiresAt.toISOString(), ageConfirmed ? 1 : 0, registrationIp || null],
+        [id, email, otp, expiresAt.toISOString(), ageConfirmed ? 1 : 0, registrationIp || null, type],
         function (err) {
           if (err) return reject(err);
-          resolve({ id, email, otp, expiresAt, ageConfirmed, registrationIp });
+          resolve({ id, email, otp, expiresAt, ageConfirmed, registrationIp, type });
         }
       );
     });
   }
 
-  async getOTPByEmail(email) {
+  async getOTPByEmail(email, type = null) {
     return new Promise((resolve, reject) => {
-      const sql = `SELECT * FROM otp_verifications WHERE email = ? AND verified = 0 AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1`;
-      this.db.get(sql, [email], (err, row) =>
+      let sql = `SELECT * FROM otp_verifications WHERE email = ? AND verified = 0 AND expires_at > datetime('now')`;
+      const params = [email];
+
+      if (type) {
+        sql += ` AND type = ?`;
+        params.push(type);
+      }
+
+      sql += ` ORDER BY created_at DESC LIMIT 1`;
+
+      this.db.get(sql, params, (err, row) =>
         err ? reject(err) : resolve(row || null)
       );
     });
@@ -1124,6 +1134,26 @@ class Database {
         if (err) return reject(err);
         resolve(this.changes);
       });
+    });
+  }
+
+  async resetUserPassword(email, newPassword) {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?`;
+      this.db.run(sql, [hashedPassword, email], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes > 0);
+      });
+    });
+  }
+
+  async getUserByEmail(email) {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM users WHERE email = ?`;
+      this.db.get(sql, [email], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
     });
   }
 
