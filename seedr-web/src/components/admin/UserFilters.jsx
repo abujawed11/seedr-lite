@@ -5,6 +5,8 @@ export default function UserFilters({ onFilterChange, totalUsers, filteredCount,
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [ipFilter, setIpFilter] = useState('all');
+  const [ipSearchTerm, setIpSearchTerm] = useState('');
+  const [showIpDropdown, setShowIpDropdown] = useState(false);
   const [uniqueIPs, setUniqueIPs] = useState([]);
   const [ipCounts, setIpCounts] = useState({});
 
@@ -39,7 +41,24 @@ export default function UserFilters({ onFilterChange, totalUsers, filteredCount,
 
   const handleIpChange = (value) => {
     setIpFilter(value);
+    setIpSearchTerm(value === 'all' ? '' : value);
+    setShowIpDropdown(false);
     onFilterChange({ search: searchTerm, plan: planFilter, status: statusFilter, ip: value });
+  };
+
+  const handleIpSearchChange = (value) => {
+    setIpSearchTerm(value);
+    setShowIpDropdown(value.length > 0);
+
+    // If input is cleared, reset filter
+    if (value === '') {
+      setIpFilter('all');
+      onFilterChange({ search: searchTerm, plan: planFilter, status: statusFilter, ip: 'all' });
+    }
+  };
+
+  const handleSelectIp = (ip) => {
+    handleIpChange(ip);
   };
 
   const handleReset = () => {
@@ -47,8 +66,15 @@ export default function UserFilters({ onFilterChange, totalUsers, filteredCount,
     setPlanFilter('all');
     setStatusFilter('all');
     setIpFilter('all');
+    setIpSearchTerm('');
+    setShowIpDropdown(false);
     onFilterChange({ search: '', plan: 'all', status: 'all', ip: 'all' });
   };
+
+  // Filter IPs based on search term
+  const filteredIPs = uniqueIPs.filter(ip =>
+    ip.toLowerCase().includes(ipSearchTerm.toLowerCase())
+  );
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
@@ -104,23 +130,62 @@ export default function UserFilters({ onFilterChange, totalUsers, filteredCount,
           </select>
         </div>
 
-        {/* IP Address Filter */}
-        <div className="flex-1">
+        {/* IP Address Filter - Searchable */}
+        <div className="flex-1 relative">
           <label className="block text-sm font-medium text-gray-400 mb-2">
             IP Address
           </label>
-          <select
-            value={ipFilter}
-            onChange={(e) => handleIpChange(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
-          >
-            <option value="all">All IPs</option>
-            {uniqueIPs.map(ip => (
-              <option key={ip} value={ip}>
-                {ip} ({ipCounts[ip]} {ipCounts[ip] === 1 ? 'user' : 'users'})
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <input
+              type="text"
+              value={ipSearchTerm}
+              onChange={(e) => handleIpSearchChange(e.target.value)}
+              onFocus={() => ipSearchTerm && setShowIpDropdown(true)}
+              onBlur={() => setTimeout(() => setShowIpDropdown(false), 200)}
+              placeholder="Type IP address to search..."
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            {ipSearchTerm && (
+              <button
+                onClick={() => {
+                  setIpSearchTerm('');
+                  setIpFilter('all');
+                  setShowIpDropdown(false);
+                  onFilterChange({ search: searchTerm, plan: planFilter, status: statusFilter, ip: 'all' });
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            )}
+
+            {/* Dropdown with matching IPs */}
+            {showIpDropdown && filteredIPs.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                {filteredIPs.map(ip => (
+                  <button
+                    key={ip}
+                    onClick={() => handleSelectIp(ip)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors border-b border-gray-800 last:border-b-0"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-mono text-sm">{ip}</span>
+                      <span className="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
+                        {ipCounts[ip]} {ipCounts[ip] === 1 ? 'user' : 'users'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* No results message */}
+            {showIpDropdown && filteredIPs.length === 0 && ipSearchTerm && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-4 text-center text-gray-400 text-sm">
+                No matching IP addresses found
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Reset Button */}
