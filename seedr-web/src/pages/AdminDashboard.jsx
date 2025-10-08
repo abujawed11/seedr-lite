@@ -8,7 +8,10 @@ import {
   updateUserQuota,
   updateUserStatus,
   deleteUser,
-  clearUserStorage
+  clearUserStorage,
+  getAllDMCAReports,
+  processDMCAReport,
+  deleteDMCAReport
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import AdminActivityLogs from './AdminActivityLogs';
@@ -19,6 +22,7 @@ export default function AdminDashboard({ onBackToMain }) {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [dmcaReports, setDmcaReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [editModal, setEditModal] = useState(false);
@@ -34,14 +38,16 @@ export default function AdminDashboard({ onBackToMain }) {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [statsData, usersData, requestsData] = await Promise.all([
+      const [statsData, usersData, requestsData, dmcaData] = await Promise.all([
         getAdminStats(),
         getAllUsers(),
-        getAllUpgradeRequests()
+        getAllUpgradeRequests(),
+        getAllDMCAReports()
       ]);
       setStats(statsData.stats);
       setUsers(usersData.users);
       setRequests(requestsData.requests);
+      setDmcaReports(dmcaData.reports || []);
     } catch (error) {
       console.error('Failed to fetch admin data:', error);
       alert('Failed to load admin data');
@@ -144,6 +150,30 @@ export default function AdminDashboard({ onBackToMain }) {
     return new Date(dateString).toLocaleString();
   };
 
+  const handleProcessDMCA = async (reportId, action, notes = '') => {
+    try {
+      await processDMCAReport(reportId, action, notes);
+      alert(`DMCA report ${action} successfully`);
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Failed to process DMCA report:', error);
+      alert('Failed to process DMCA report');
+    }
+  };
+
+  const handleDeleteDMCA = async (reportId) => {
+    if (!confirm('Are you sure you want to delete this DMCA report?')) return;
+
+    try {
+      await deleteDMCAReport(reportId);
+      alert('DMCA report deleted successfully');
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Failed to delete DMCA report:', error);
+      alert('Failed to delete DMCA report');
+    }
+  };
+
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -234,6 +264,16 @@ export default function AdminDashboard({ onBackToMain }) {
               }`}
             >
               📋 Activity Logs
+            </button>
+            <button
+              onClick={() => setActiveTab('dmca')}
+              className={`py-4 px-2 border-b-2 font-medium transition-colors ${
+                activeTab === 'dmca'
+                  ? 'border-red-500 text-red-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              ⚖️ DMCA Reports ({dmcaReports.filter(r => r.status === 'pending').length})
             </button>
           </div>
         </div>
@@ -352,6 +392,9 @@ export default function AdminDashboard({ onBackToMain }) {
                         Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Joined
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -377,13 +420,19 @@ export default function AdminDashboard({ onBackToMain }) {
                           <div className="text-sm text-white">
                             {formatBytes(u.storage_used)} / {formatBytes(u.storage_quota)}
                           </div>
-                          <div className={`text-xs ${u.effective_available < 0 ? 'text-red-400 font-semibold' : 'text-gray-400'}`}>
-                            {u.effective_available < 0 ? (
-                              <>⚠️ Quota over-used ({formatBytes(Math.abs(u.effective_available))} over)</>
-                            ) : (
-                              <>{formatBytes(u.effective_available)} available</>
-                            )}
-                          </div>
+                          {u.reserved_bytes > 0 ? (
+                            <div className="text-xs text-blue-400">
+                              📥 {formatBytes(u.reserved_bytes)} downloading
+                            </div>
+                          ) : (
+                            <div className={`text-xs ${u.storage_used > u.storage_quota ? 'text-red-400 font-semibold' : 'text-gray-400'}`}>
+                              {u.storage_used > u.storage_quota ? (
+                                <>⚠️ Over quota ({formatBytes(u.storage_used - u.storage_quota)} over)</>
+                              ) : (
+                                <>{formatBytes(u.storage_quota - u.storage_used)} available</>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-white">
                           {u.max_concurrent_downloads}
@@ -394,6 +443,13 @@ export default function AdminDashboard({ onBackToMain }) {
                           }`}>
                             {u.is_active ? 'Active' : 'Disabled'}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-400">
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          }) : 'N/A'}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2">
@@ -581,6 +637,123 @@ export default function AdminDashboard({ onBackToMain }) {
 
         {!loading && activeTab === 'activity' && (
           <AdminActivityLogs />
+        )}
+
+        {/* DMCA Reports Tab */}
+        {!loading && activeTab === 'dmca' && (
+          <div className="space-y-6">
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 p-6">
+              <h3 className="text-xl font-bold text-white mb-4">DMCA Takedown Reports</h3>
+
+              {dmcaReports.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">No DMCA reports submitted yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {dmcaReports.map((report) => (
+                    <div key={report.id} className="bg-gray-700/30 border border-gray-600 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center space-x-3">
+                            <h4 className="text-lg font-semibold text-white">Report #{report.id}</h4>
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              report.status === 'pending' ? 'bg-yellow-900/30 text-yellow-400' :
+                              report.status === 'approved' ? 'bg-green-900/30 text-green-400' :
+                              report.status === 'rejected' ? 'bg-red-900/30 text-red-400' :
+                              'bg-gray-900/30 text-gray-400'
+                            }`}>
+                              {report.status}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            Submitted: {new Date(report.submitted_at).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <div className="text-xs text-gray-400 mb-1">Reporter</div>
+                          <div className="text-sm text-white">{report.reporter_name}</div>
+                          <div className="text-xs text-gray-400">{report.reporter_email}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-400 mb-1">Contact</div>
+                          <div className="text-sm text-white">{report.reporter_phone || 'N/A'}</div>
+                          <div className="text-xs text-gray-400">{report.client_ip || 'Unknown IP'}</div>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="text-xs text-gray-400 mb-1">Copyrighted Work</div>
+                        <div className="text-sm text-white bg-gray-800/50 p-3 rounded border border-gray-600">
+                          {report.copyrighted_work}
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="text-xs text-gray-400 mb-1">Infringing Content</div>
+                        <div className="text-sm text-white bg-gray-800/50 p-3 rounded border border-gray-600 break-all">
+                          {report.infringing_content}
+                        </div>
+                      </div>
+
+                      {report.admin_notes && (
+                        <div className="mb-4">
+                          <div className="text-xs text-gray-400 mb-1">Admin Notes</div>
+                          <div className="text-sm text-gray-300 bg-blue-900/20 p-3 rounded border border-blue-700/50">
+                            {report.admin_notes}
+                          </div>
+                        </div>
+                      )}
+
+                      {report.status === 'pending' && (
+                        <div className="flex space-x-2 pt-3 border-t border-gray-600">
+                          <button
+                            onClick={() => {
+                              const notes = prompt('Add admin notes (optional):');
+                              handleProcessDMCA(report.id, 'approved', notes || '');
+                            }}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                          >
+                            ✓ Approve & Remove Content
+                          </button>
+                          <button
+                            onClick={() => {
+                              const notes = prompt('Add reason for rejection:');
+                              if (notes) handleProcessDMCA(report.id, 'rejected', notes);
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                          >
+                            ✗ Reject
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDMCA(report.id)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium ml-auto"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      )}
+
+                      {report.status !== 'pending' && (
+                        <div className="flex justify-between items-center pt-3 border-t border-gray-600">
+                          <div className="text-sm text-gray-400">
+                            Processed: {report.processed_at ? new Date(report.processed_at).toLocaleString() : 'N/A'}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteDMCA(report.id)}
+                            className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </main>
 

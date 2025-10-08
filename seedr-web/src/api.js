@@ -220,3 +220,27 @@ export async function deleteUserFile(userId, filePath) {
   });
   return res.data;
 }
+
+// DMCA Management
+export async function getAllDMCAReports() {
+  const res = await api.get('/dmca/reports');
+  return res.data;
+}
+
+export async function getDMCAReport(reportId) {
+  const res = await api.get(`/dmca/reports/${reportId}`);
+  return res.data;
+}
+
+export async function processDMCAReport(reportId, action, notes) {
+  const res = await api.post(`/dmca/reports/${reportId}/action`, {
+    action,
+    notes
+  });
+  return res.data;
+}
+
+export async function deleteDMCAReport(reportId) {
+  const res = await api.delete(`/dmca/reports/${reportId}`);
+  return res.data;
+}
