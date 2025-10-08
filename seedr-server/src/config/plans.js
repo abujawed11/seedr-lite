@@ -26,9 +26,9 @@ const PLANS = {
       '25 GB storage',
       'Priority support',
       'Faster download speed',
-      'Up to 5 concurrent downloads'
+      'Up to 3 concurrent downloads'
     ],
-    maxConcurrentDownloads: 5,
+    maxConcurrentDownloads: 3,
     color: 'blue'
   },
   pro: {
@@ -40,10 +40,10 @@ const PLANS = {
       '100 GB storage',
       'Priority support',
       'Maximum download speed',
-      'Up to 10 concurrent downloads',
+      'Up to 5 concurrent downloads',
       'Advanced features'
     ],
-    maxConcurrentDownloads: 10,
+    maxConcurrentDownloads: 5,
     color: 'purple'
   },
   premium: {
@@ -55,11 +55,11 @@ const PLANS = {
       '500 GB storage',
       '24/7 Priority support',
       'Maximum download speed',
-      'Unlimited concurrent downloads',
+      'Up to 8 concurrent downloads',
       'All advanced features',
       'Custom integrations'
     ],
-    maxConcurrentDownloads: -1, // unlimited
+    maxConcurrentDownloads: 8,
     color: 'gold'
   }
 };

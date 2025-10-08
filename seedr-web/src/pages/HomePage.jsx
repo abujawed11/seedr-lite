@@ -73,7 +73,7 @@ export default function HomePage({ onNavigate }) {
       name: 'Basic',
       priceUSD: 4.99,
       storage: '25 GB',
-      downloads: '5',
+      downloads: '3',
       color: 'from-blue-600 to-blue-700',
       popular: true
     },
@@ -81,14 +81,14 @@ export default function HomePage({ onNavigate }) {
       name: 'Pro',
       priceUSD: 9.99,
       storage: '100 GB',
-      downloads: '10',
+      downloads: '5',
       color: 'from-purple-600 to-purple-700'
     },
     {
       name: 'Premium',
       priceUSD: 19.99,
       storage: '500 GB',
-      downloads: 'Unlimited',
+      downloads: '8',
       color: 'from-yellow-500 to-orange-500'
     }
   ];
