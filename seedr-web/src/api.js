@@ -221,6 +221,22 @@ export async function deleteUserFile(userId, filePath) {
   return res.data;
 }
 
+// Get users with their files (paginated)
+export async function getUsersWithFiles(page = 1, limit = 20) {
+  const res = await api.get('/admin/users-files', {
+    params: { page, limit }
+  });
+  return res.data;
+}
+
+// Get files inside a specific folder for a user
+export async function getFolderContents(userId, folderPath) {
+  const res = await api.get(`/admin/users/${userId}/folder-contents`, {
+    params: { folderPath }
+  });
+  return res.data;
+}
+
 // DMCA Management
 export async function getAllDMCAReports() {
   const res = await api.get('/dmca/reports');

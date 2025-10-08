@@ -12,7 +12,10 @@ import {
   getAllDMCAReports,
   processDMCAReport,
   deleteDMCAReport,
-  getUserSubscription
+  getUserSubscription,
+  getUsersWithFiles,
+  deleteUserFile,
+  getFolderContents
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import AdminActivityLogs from './AdminActivityLogs';
@@ -29,6 +32,12 @@ export default function AdminDashboard({ onBackToMain }) {
   const [editModal, setEditModal] = useState(false);
   const [subscriptionModal, setSubscriptionModal] = useState(false);
   const [subscriptionData, setSubscriptionData] = useState(null);
+  const [usersFiles, setUsersFiles] = useState([]);
+  const [filesPage, setFilesPage] = useState(1);
+  const [filesPagination, setFilesPagination] = useState(null);
+  const [expandedUserId, setExpandedUserId] = useState(null);
+  const [expandedFolders, setExpandedFolders] = useState({});
+  const [folderContents, setFolderContents] = useState({});
 
   useEffect(() => {
     if (user?.role !== 'admin') {
@@ -188,6 +197,96 @@ export default function AdminDashboard({ onBackToMain }) {
     }
   };
 
+  const fetchUsersFiles = async (page = 1) => {
+    setLoading(true);
+    try {
+      const data = await getUsersWithFiles(page, 20);
+      setUsersFiles(data.users);
+      setFilesPagination(data.pagination);
+      setFilesPage(page);
+    } catch (error) {
+      console.error('Failed to fetch users files:', error);
+      alert('Failed to load user files');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteFile = async (userId, filePath) => {
+    if (!confirm(`Are you sure you want to delete this file?\n\n${filePath}`)) return;
+
+    try {
+      await deleteUserFile(userId, filePath);
+      alert('File deleted successfully');
+      // Clear cached folder contents and expanded folders
+      setFolderContents({});
+      setExpandedFolders({});
+      // Refresh the current page
+      await fetchUsersFiles(filesPage);
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert(error.response?.data?.error || 'Failed to delete file');
+    }
+  };
+
+  const handleToggleFolder = async (userId, folderPath) => {
+    const folderKey = `${userId}-${folderPath}`;
+
+    // If folder is already expanded, collapse it
+    if (expandedFolders[folderKey]) {
+      setExpandedFolders(prev => {
+        const newState = { ...prev };
+        delete newState[folderKey];
+        return newState;
+      });
+      return;
+    }
+
+    // Expand folder and fetch contents if not already loaded
+    if (!folderContents[folderKey]) {
+      try {
+        const data = await getFolderContents(userId, folderPath);
+        setFolderContents(prev => ({
+          ...prev,
+          [folderKey]: data.files
+        }));
+      } catch (error) {
+        console.error('Failed to fetch folder contents:', error);
+        alert('Failed to load folder contents');
+        return;
+      }
+    }
+
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderKey]: true
+    }));
+  };
+
+  const handleDeleteFolder = async (userId, folderPath, folderName) => {
+    if (!confirm(`Are you sure you want to delete the entire folder?\n\nFolder: ${folderName}\n\nThis will delete all files inside this folder. This action cannot be undone.`)) return;
+
+    try {
+      await deleteUserFile(userId, folderPath);
+      alert('Folder deleted successfully');
+      // Clear cached folder contents and expanded folders
+      setFolderContents({});
+      setExpandedFolders({});
+      // Refresh the current page
+      await fetchUsersFiles(filesPage);
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      alert(error.response?.data?.error || 'Failed to delete folder');
+    }
+  };
+
+  // Fetch user files when switching to files tab
+  useEffect(() => {
+    if (activeTab === 'files' && usersFiles.length === 0) {
+      fetchUsersFiles(1);
+    }
+  }, [activeTab]);
+
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -288,6 +387,16 @@ export default function AdminDashboard({ onBackToMain }) {
               }`}
             >
               ⚖️ DMCA Reports ({dmcaReports.filter(r => r.status === 'pending').length})
+            </button>
+            <button
+              onClick={() => setActiveTab('files')}
+              className={`py-4 px-2 border-b-2 font-medium transition-colors ${
+                activeTab === 'files'
+                  ? 'border-red-500 text-red-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              📁 User Files
             </button>
           </div>
         </div>
@@ -771,6 +880,243 @@ export default function AdminDashboard({ onBackToMain }) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* User Files Tab */}
+        {!loading && activeTab === 'files' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white">User Files Management</h2>
+              <button
+                onClick={() => {
+                  setFolderContents({});
+                  setExpandedFolders({});
+                  fetchUsersFiles(filesPage);
+                }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                🔄 Refresh
+              </button>
+            </div>
+
+            {/* Users List with Files */}
+            <div className="space-y-4">
+              {usersFiles.map((user) => (
+                <div key={user.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  {/* User Header */}
+                  <div
+                    className="p-4 bg-gray-800/50 flex justify-between items-center cursor-pointer hover:bg-gray-700/30 transition-colors"
+                    onClick={() => setExpandedUserId(expandedUserId === user.id ? null : user.id)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <div className="text-lg font-semibold text-white">{user.username}</div>
+                        <div className="text-sm text-gray-400">{user.email}</div>
+                      </div>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        user.plan === 'free' ? 'bg-gray-700 text-gray-300' :
+                        user.plan === 'basic' ? 'bg-blue-900/30 text-blue-400' :
+                        user.plan === 'pro' ? 'bg-purple-900/30 text-purple-400' :
+                        'bg-yellow-900/30 text-yellow-400'
+                      }`}>
+                        {user.plan}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-6">
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Storage</div>
+                        <div className="text-white font-medium">
+                          {formatBytes(user.storage_used)} / {formatBytes(user.storage_quota)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Folders</div>
+                        <div className="text-white font-medium">{user.folder_count}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Files</div>
+                        <div className="text-white font-medium">{user.file_count}</div>
+                      </div>
+                      <div className="text-gray-400">
+                        {expandedUserId === user.id ? '▼' : '▶'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Folders and Root Files List (Expandable) */}
+                  {expandedUserId === user.id && (
+                    <div className="border-t border-gray-700">
+                      {user.folders.length === 0 && (!user.root_files || user.root_files.length === 0) ? (
+                        <div className="p-6 text-center text-gray-400">
+                          No folders/downloads yet
+                        </div>
+                      ) : (
+                        <div className="p-4 space-y-2">
+                          {/* Root-level files (if any) */}
+                          {user.root_files && user.root_files.length > 0 && (
+                            <div className="bg-blue-900/20 rounded-lg border border-blue-700/50 p-3 mb-3">
+                              <div className="text-sm text-blue-400 font-medium mb-2">📄 Root Files ({user.root_files.length})</div>
+                              <div className="space-y-1">
+                                {user.root_files.map((file, idx) => (
+                                  <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded p-2 hover:bg-gray-700/50 transition-colors">
+                                    <div className="flex items-center space-x-3 flex-1">
+                                      <span className="text-lg">📄</span>
+                                      <div className="flex-1">
+                                        <div className="text-sm text-white">{file.name}</div>
+                                        <div className="text-xs text-gray-400">
+                                          {formatBytes(file.size)} • {new Date(file.modified).toLocaleDateString()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => handleDeleteFile(user.id, file.path)}
+                                      className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Folders */}
+                          {user.folders.map((folder, idx) => {
+                            const folderKey = `${user.id}-${folder.path}`;
+                            const isExpanded = expandedFolders[folderKey];
+                            const files = folderContents[folderKey] || [];
+
+                            return (
+                              <div key={idx} className="bg-gray-900/50 rounded-lg border border-gray-700 overflow-hidden">
+                                {/* Folder Header */}
+                                <div className="flex items-center justify-between p-3 bg-gray-800/50">
+                                  <div
+                                    className="flex items-center space-x-3 flex-1 cursor-pointer hover:bg-gray-700/30 -m-3 p-3 rounded-l-lg transition-colors"
+                                    onClick={() => handleToggleFolder(user.id, folder.path)}
+                                  >
+                                    <div className="text-yellow-400 text-xl">
+                                      {isExpanded ? '📂' : '📁'}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="text-white font-medium">{folder.name}</div>
+                                      <div className="text-xs text-gray-400">
+                                        {folder.file_count} files • {formatBytes(folder.size)}
+                                      </div>
+                                    </div>
+                                    <div className="text-gray-400 text-sm">
+                                      {isExpanded ? '▼' : '▶'}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteFolder(user.id, folder.path, folder.name)}
+                                    className="px-3 py-1.5 ml-3 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                  >
+                                    🗑️ Delete Folder
+                                  </button>
+                                </div>
+
+                                {/* Files inside folder (when expanded) */}
+                                {isExpanded && (
+                                  <div className="border-t border-gray-700">
+                                    {files.length === 0 ? (
+                                      <div className="p-4 text-center text-gray-500 text-sm">
+                                        Loading files...
+                                      </div>
+                                    ) : (
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                          <thead className="bg-gray-900/30">
+                                            <tr>
+                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">File Name</th>
+                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Modified</th>
+                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-gray-700/50">
+                                            {files.map((file, fileIdx) => (
+                                              <tr key={fileIdx} className="hover:bg-gray-700/20 transition-colors">
+                                                <td className="px-4 py-2 text-sm text-gray-300" title={file.path}>
+                                                  <div className="flex items-center space-x-2">
+                                                    <span>📄</span>
+                                                    <span>{file.name}</span>
+                                                  </div>
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-gray-400">{formatBytes(file.size)}</td>
+                                                <td className="px-4 py-2 text-sm text-gray-500">
+                                                  {new Date(file.modified).toLocaleDateString('en-US', {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                  })}
+                                                </td>
+                                                <td className="px-4 py-2">
+                                                  <button
+                                                    onClick={() => handleDeleteFile(user.id, `${folder.path}/${file.path}`)}
+                                                    className="px-2 py-1 text-xs bg-red-600/80 hover:bg-red-600 text-white rounded transition-colors"
+                                                  >
+                                                    Delete
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {filesPagination && filesPagination.total_pages > 1 && (
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-400">
+                    Page {filesPagination.current_page} of {filesPagination.total_pages}
+                    <span className="ml-2">
+                      ({filesPagination.total_users} total users)
+                    </span>
+                  </div>
+
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => fetchUsersFiles(filesPage - 1)}
+                      disabled={!filesPagination.has_prev}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        filesPagination.has_prev
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      ← Previous
+                    </button>
+                    <button
+                      onClick={() => fetchUsersFiles(filesPage + 1)}
+                      disabled={!filesPagination.has_next}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        filesPagination.has_next
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

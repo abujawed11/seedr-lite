@@ -202,6 +202,244 @@ router.delete('/users/:userId', asyncHandler(async (req, res) => {
   res.json({ message: 'User deleted successfully', deletedUserId: userId });
 }));
 
+// Get users with their files (paginated) - organized by folders
+router.get('/users-files', asyncHandler(async (req, res) => {
+  const { page = 1, limit = 20 } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  const fs = require('fs');
+  const path = require('path');
+  const { getUserStorageDir } = require('../utils/storage');
+
+  // Get total users count
+  const allUsers = await database.getAllUsers();
+  const totalUsers = allUsers.length;
+  const totalPages = Math.ceil(totalUsers / parseInt(limit));
+
+  // Get paginated users
+  const paginatedUsers = allUsers.slice(offset, offset + parseInt(limit));
+
+  // Helper function to get folder structure and root files
+  const getFolderStructure = (dirPath) => {
+    try {
+      if (!fs.existsSync(dirPath)) {
+        return { folders: [], rootFiles: [] };
+      }
+
+      const items = fs.readdirSync(dirPath);
+      const folders = [];
+      const rootFiles = [];
+
+      items.forEach((item) => {
+        const itemPath = path.join(dirPath, item);
+        try {
+          const stat = fs.statSync(itemPath);
+
+          if (stat.isDirectory()) {
+            // Count files recursively in this folder
+            const fileCount = countFilesInFolder(itemPath);
+            const folderSize = getFolderSize(itemPath);
+
+            folders.push({
+              name: item,
+              path: item, // relative to user storage root
+              type: 'folder',
+              size: folderSize,
+              file_count: fileCount,
+              modified: stat.mtime
+            });
+          } else {
+            // It's a root-level file
+            rootFiles.push({
+              name: item,
+              path: item, // relative to user storage root
+              type: 'file',
+              size: stat.size,
+              modified: stat.mtime
+            });
+          }
+        } catch (err) {
+          console.error(`Error accessing ${itemPath}:`, err.message);
+        }
+      });
+
+      return {
+        folders: folders.sort((a, b) => b.modified - a.modified),
+        rootFiles: rootFiles.sort((a, b) => b.modified - a.modified)
+      };
+    } catch (err) {
+      console.error(`Error reading directory ${dirPath}:`, err.message);
+      return { folders: [], rootFiles: [] };
+    }
+  };
+
+  // Helper to count files in folder recursively
+  const countFilesInFolder = (dirPath) => {
+    let count = 0;
+    try {
+      const items = fs.readdirSync(dirPath);
+      items.forEach((item) => {
+        const itemPath = path.join(dirPath, item);
+        try {
+          const stat = fs.statSync(itemPath);
+          if (stat.isDirectory()) {
+            count += countFilesInFolder(itemPath);
+          } else {
+            count++;
+          }
+        } catch (err) {
+          // Skip
+        }
+      });
+    } catch (err) {
+      // Skip
+    }
+    return count;
+  };
+
+  // Helper to get folder size recursively
+  const getFolderSize = (dirPath) => {
+    let totalSize = 0;
+    try {
+      const items = fs.readdirSync(dirPath);
+      items.forEach((item) => {
+        const itemPath = path.join(dirPath, item);
+        try {
+          const stat = fs.statSync(itemPath);
+          if (stat.isDirectory()) {
+            totalSize += getFolderSize(itemPath);
+          } else {
+            totalSize += stat.size;
+          }
+        } catch (err) {
+          // Skip
+        }
+      });
+    } catch (err) {
+      // Skip
+    }
+    return totalSize;
+  };
+
+  // Get folder structure for each user
+  const usersWithFiles = paginatedUsers.map((user) => {
+    const userStorageDir = getUserStorageDir(user.id);
+    const { folders, rootFiles } = getFolderStructure(userStorageDir);
+    const totalFiles = folders.reduce((sum, folder) => sum + folder.file_count, 0) + rootFiles.length;
+
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      plan: user.plan,
+      storage_used: user.storage_used,
+      storage_quota: user.storage_quota,
+      is_active: user.is_active,
+      folders: folders,
+      root_files: rootFiles,
+      folder_count: folders.length,
+      file_count: totalFiles
+    };
+  });
+
+  res.json({
+    users: usersWithFiles,
+    pagination: {
+      current_page: parseInt(page),
+      total_pages: totalPages,
+      total_users: totalUsers,
+      users_per_page: parseInt(limit),
+      has_next: parseInt(page) < totalPages,
+      has_prev: parseInt(page) > 1
+    }
+  });
+}));
+
+// Get files inside a specific folder for a user
+router.get('/users/:userId/folder-contents', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { folderPath } = req.query;
+
+  if (!folderPath) {
+    return res.status(400).json({ error: 'Missing folderPath parameter' });
+  }
+
+  const fs = require('fs');
+  const path = require('path');
+  const { getUserStorageDir } = require('../utils/storage');
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const userStorageDir = getUserStorageDir(userId);
+
+  // Validate path to prevent directory traversal
+  const normalized = path.normalize(folderPath).replace(/^(\.\.(\/|\\|$))+/, '');
+  const fullPath = path.resolve(userStorageDir, normalized);
+  const resolvedRoot = path.resolve(userStorageDir);
+
+  if (!fullPath.startsWith(resolvedRoot)) {
+    return res.status(400).json({ error: 'Invalid folder path' });
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+
+  const stat = fs.statSync(fullPath);
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: 'Path is not a folder' });
+  }
+
+  // Get all files in this folder (recursively)
+  const getAllFilesInFolder = (dirPath, baseDir, arrayOfFiles = []) => {
+    try {
+      const items = fs.readdirSync(dirPath);
+
+      items.forEach((item) => {
+        const itemPath = path.join(dirPath, item);
+        try {
+          const itemStat = fs.statSync(itemPath);
+
+          if (itemStat.isDirectory()) {
+            arrayOfFiles = getAllFilesInFolder(itemPath, baseDir, arrayOfFiles);
+          } else {
+            // Get relative path from the folder we're browsing
+            const relativePath = path.relative(baseDir, itemPath);
+            arrayOfFiles.push({
+              path: relativePath,
+              name: item,
+              size: itemStat.size,
+              modified: itemStat.mtime,
+              type: 'file'
+            });
+          }
+        } catch (err) {
+          console.error(`Error accessing ${itemPath}:`, err.message);
+        }
+      });
+
+      return arrayOfFiles;
+    } catch (err) {
+      console.error(`Error reading directory ${dirPath}:`, err.message);
+      return arrayOfFiles;
+    }
+  };
+
+  const files = getAllFilesInFolder(fullPath, fullPath);
+
+  res.json({
+    folder: {
+      path: normalized,
+      name: path.basename(fullPath),
+      file_count: files.length
+    },
+    files: files.sort((a, b) => a.name.localeCompare(b.name))
+  });
+}));
+
 // Clear/Empty user storage
 router.delete('/users/:userId/storage', asyncHandler(async (req, res) => {
   const { userId } = req.params;
