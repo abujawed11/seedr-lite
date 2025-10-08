@@ -772,7 +772,7 @@ class Database {
     return new Promise((resolve, reject) => {
       const sql = `
         SELECT id, username, email, storage_quota, storage_used, plan, role,
-               max_concurrent_downloads, is_active, created_at, updated_at
+               max_concurrent_downloads, is_active, created_at, updated_at, registration_ip
         FROM users
         ORDER BY created_at DESC
       `;

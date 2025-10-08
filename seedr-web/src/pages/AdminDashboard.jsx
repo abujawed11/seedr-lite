@@ -19,6 +19,7 @@ import {
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import AdminActivityLogs from './AdminActivityLogs';
+import UserFilters from '../components/admin/UserFilters';
 
 export default function AdminDashboard({ onBackToMain }) {
   const { user, logout } = useAuth();
@@ -38,6 +39,8 @@ export default function AdminDashboard({ onBackToMain }) {
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [folderContents, setFolderContents] = useState({});
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [filterCriteria, setFilterCriteria] = useState({ search: '', plan: 'all', status: 'all', ip: 'all' });
 
   useEffect(() => {
     if (user?.role !== 'admin') {
@@ -287,6 +290,43 @@ export default function AdminDashboard({ onBackToMain }) {
     }
   }, [activeTab]);
 
+  // Apply filters whenever users or filter criteria changes
+  useEffect(() => {
+    let filtered = [...users];
+
+    // Apply search filter
+    if (filterCriteria.search) {
+      const searchLower = filterCriteria.search.toLowerCase();
+      filtered = filtered.filter(
+        (u) =>
+          u.username.toLowerCase().includes(searchLower) ||
+          u.email.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply plan filter
+    if (filterCriteria.plan !== 'all') {
+      filtered = filtered.filter((u) => u.plan === filterCriteria.plan);
+    }
+
+    // Apply status filter
+    if (filterCriteria.status !== 'all') {
+      const isActive = filterCriteria.status === 'active';
+      filtered = filtered.filter((u) => u.is_active === (isActive ? 1 : 0));
+    }
+
+    // Apply IP filter
+    if (filterCriteria.ip !== 'all') {
+      filtered = filtered.filter((u) => (u.registration_ip || 'Unknown') === filterCriteria.ip);
+    }
+
+    setFilteredUsers(filtered);
+  }, [users, filterCriteria]);
+
+  const handleFilterChange = (newFilters) => {
+    setFilterCriteria(newFilters);
+  };
+
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -493,6 +533,14 @@ export default function AdminDashboard({ onBackToMain }) {
               </button>
             </div>
 
+            {/* Filters */}
+            <UserFilters
+              onFilterChange={handleFilterChange}
+              totalUsers={users.length}
+              filteredCount={filteredUsers.length}
+              users={users}
+            />
+
             {/* Users Table */}
             <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
@@ -518,12 +566,15 @@ export default function AdminDashboard({ onBackToMain }) {
                         Joined
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        IP Address
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
-                    {users.map((u) => (
+                    {filteredUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-gray-700/30 transition-colors">
                         <td className="px-6 py-4">
                           <div className="text-sm font-medium text-white">{u.username}</div>
@@ -577,6 +628,11 @@ export default function AdminDashboard({ onBackToMain }) {
                             month: 'short',
                             day: 'numeric'
                           }) : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-300 font-mono">
+                            {u.registration_ip || 'N/A'}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2">
