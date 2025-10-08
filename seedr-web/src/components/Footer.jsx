@@ -36,13 +36,6 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <p className="text-gray-400 mb-4 max-w-md">
               Fast, secure, and reliable cloud-based torrent downloading service. Download to the cloud and stream from anywhere.
             </p>
-            <div className="text-sm text-gray-500 space-y-1">
-              <p><strong className="text-gray-400">MyPeerCloud Technologies Pvt. Ltd.</strong></p>
-              <p>123 Tech Park, Electronic City</p>
-              <p>Bangalore, Karnataka 560100, India</p>
-              {/* <p className="mt-2">CIN: U72900KA2024PTC123456</p> */}
-              {/* <p>GST: 29AABCS1234F1Z5</p> */}
-            </div>
           </div>
 
           {/* Product Links */}
@@ -103,18 +96,8 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 </button>
               </li>
               <li>
-                <a href="mailto:support@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:support@mypeercloud.in" className="text-gray-400 hover:text-white transition-colors">
                   Support
-                </a>
-              </li>
-              <li>
-                <a href="mailto:careers@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
-                  Careers
-                </a>
-              </li>
-              <li>
-                <a href="mailto:partners@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
-                  Partnerships
                 </a>
               </li>
             </ul>
@@ -157,7 +140,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 </button>
               </li>
               <li>
-                <a href="mailto:legal@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
+                <a href="mailto:legal@mypeercloud.in" className="text-gray-400 hover:text-white transition-colors">
                   Legal Inquiries
                 </a>
               </li>
@@ -172,23 +155,15 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
-              <a href="mailto:support@mypeercloud.com" className="text-gray-400 hover:text-white transition-colors">
-                support@mypeercloud.com
-              </a>
-            </div>
-            <div className="flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
-              <a href="tel:+911234567890" className="text-gray-400 hover:text-white transition-colors">
-                +91 123 456 7890
+              <a href="mailto:support@mypeercloud.in" className="text-gray-400 hover:text-white transition-colors">
+                support@mypeercloud.in
               </a>
             </div>
             <div className="flex items-center justify-center md:justify-end text-gray-400">
               <svg className="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Mon-Fri, 9 AM - 6 PM IST
+              24/7 Support Available
             </div>
           </div>
         </div>
@@ -197,7 +172,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
         <div className="mt-8 pt-8 border-t border-gray-800">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="text-gray-400 text-sm mb-4 md:mb-0">
-              <p>&copy; {currentYear} MyPeerCloud Technologies Pvt. Ltd. All rights reserved.</p>
+              <p>&copy; {currentYear} MyPeerCloud. All rights reserved.</p>
             </div>
 
             {/* Social Media Icons */}
@@ -254,7 +229,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <p>
               MyPeerCloud is committed to protecting copyrights. We comply with the Digital Millennium Copyright Act (DMCA).
               <br />
-              For copyright concerns, please contact: <a href="mailto:dmca@mypeercloud.com" className="text-blue-400 hover:text-blue-300">dmca@mypeercloud.com</a>
+              For copyright concerns, please contact: <a href="mailto:dmca@mypeercloud.in" className="text-blue-400 hover:text-blue-300">dmca@mypeercloud.in</a>
             </p>
             <p className="mt-2">
               Payments secured by <span className="text-blue-400">Razorpay</span> | SSL Certified | ISO 27001 Compliant

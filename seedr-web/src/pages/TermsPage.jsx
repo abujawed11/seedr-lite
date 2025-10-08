@@ -163,7 +163,7 @@ export default function TermsPage({ onNavigate }) {
                 If you have any questions about these Terms, please contact us:
               </p>
               <ul className="space-y-1 ml-4">
-                <li>Email: legal@mypeercloud.com</li>
+                <li>Email: legal@mypeercloud.in</li>
                 <li>Address: [Your Business Address]</li>
                 <li>Phone: [Your Business Phone]</li>
               </ul>

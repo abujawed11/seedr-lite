@@ -37,7 +37,7 @@ export default function RefundPage({ onNavigate }) {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Your Account Settings → Subscription → Cancel Subscription</li>
-                <li>Contacting our support team at support@mypeercloud.com</li>
+                <li>Contacting our support team at support@mypeercloud.in</li>
               </ul>
 
               <h3 className="text-xl font-semibold text-white mb-3 mt-4">2.2 Effect of Cancellation</h3>
@@ -103,7 +103,7 @@ export default function RefundPage({ onNavigate }) {
                 To request a refund within the 7-day guarantee period:
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
-                <li>Email us at <strong className="text-blue-400">refunds@mypeercloud.com</strong></li>
+                <li>Email us at <strong className="text-blue-400">refunds@mypeercloud.in</strong></li>
                 <li>Include your account email and transaction ID</li>
                 <li>Briefly explain your reason for the refund request</li>
                 <li>Our team will review and respond within 24-48 hours</li>
@@ -163,7 +163,7 @@ export default function RefundPage({ onNavigate }) {
                 If you notice an incorrect charge or billing issue:
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
-                <li>Contact us immediately at billing@mypeercloud.com</li>
+                <li>Contact us immediately at billing@mypeercloud.in</li>
                 <li>Provide transaction details and description of the issue</li>
                 <li>We will investigate within 48 hours</li>
                 <li>Legitimate billing errors will be corrected and refunded promptly</li>
@@ -209,9 +209,9 @@ export default function RefundPage({ onNavigate }) {
                 For questions about refunds, cancellations, or billing:
               </p>
               <ul className="space-y-1 ml-4">
-                <li><strong>Refunds:</strong> refunds@mypeercloud.com</li>
-                <li><strong>Billing Issues:</strong> billing@mypeercloud.com</li>
-                <li><strong>General Support:</strong> support@mypeercloud.com</li>
+                <li><strong>Refunds:</strong> refunds@mypeercloud.in</li>
+                <li><strong>Billing Issues:</strong> billing@mypeercloud.in</li>
+                <li><strong>General Support:</strong> support@mypeercloud.in</li>
                 <li><strong>Phone:</strong> [Your Business Phone] (Mon-Fri, 9 AM - 6 PM IST)</li>
                 <li><strong>Address:</strong> [Your Business Address]</li>
               </ul>

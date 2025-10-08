@@ -144,7 +144,7 @@ export default function PrivacyPage({ onNavigate }) {
                 <li><strong>Objection:</strong> Object to certain data processing activities</li>
               </ul>
               <p className="mt-4">
-                To exercise these rights, contact us at privacy@mypeercloud.com
+                To exercise these rights, contact us at privacy@mypeercloud.in
               </p>
             </section>
 
@@ -198,8 +198,8 @@ export default function PrivacyPage({ onNavigate }) {
                 If you have questions or concerns about this Privacy Policy or our data practices, please contact:
               </p>
               <ul className="space-y-1 ml-4">
-                <li><strong>Email:</strong> privacy@mypeercloud.com</li>
-                <li><strong>Data Protection Officer:</strong> dpo@mypeercloud.com</li>
+                <li><strong>Email:</strong> privacy@mypeercloud.in</li>
+                <li><strong>Data Protection Officer:</strong> dpo@mypeercloud.in</li>
                 <li><strong>Address:</strong> [Your Business Address]</li>
                 <li><strong>Phone:</strong> [Your Business Phone]</li>
               </ul>

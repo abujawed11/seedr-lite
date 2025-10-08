@@ -106,7 +106,7 @@ export default function TermsContent() {
           <strong>Last Updated:</strong> January 2025
         </p>
         <p className="text-xs text-gray-400 mt-2">
-          For questions, contact: <a href="mailto:legal@mypeercloud.com" className="text-blue-400 hover:underline">legal@mypeercloud.com</a>
+          For questions, contact: <a href="mailto:legal@mypeercloud.in" className="text-blue-400 hover:underline">legal@mypeercloud.in</a>
         </p>
       </section>
     </div>

@@ -45,7 +45,7 @@ async function initServer() {
     // Start server
     require('./server');
 
-    logger.info('Seedr server booting…');
+    logger.info('MyPeerCloud server booting…');
   } catch (error) {
     logger.error('Failed to initialize server:', error);
     process.exit(1);
