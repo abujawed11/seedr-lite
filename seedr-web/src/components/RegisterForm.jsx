@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getRecaptchaToken } from '../utils/recaptcha';
 import OTPVerification from './OTPVerification';
 import LegalModal from './LegalModal';
 import TermsContent from './TermsContent';
@@ -34,16 +33,6 @@ export default function RegisterForm({ onSwitchToLogin }) {
   // const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
   const API_URL = import.meta.env.VITE_API_BASE || '';
 
-  // Load reCAPTCHA script on mount
-  useEffect(() => {
-    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-    if (siteKey && !window.grecaptcha) {
-      const script = document.createElement('script');
-      script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
-      script.async = true;
-      document.head.appendChild(script);
-    }
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -83,15 +72,11 @@ export default function RegisterForm({ onSwitchToLogin }) {
     }
 
     try {
-      // Get reCAPTCHA token
-      const recaptchaToken = await getRecaptchaToken('register');
-
       // Send registration request
       const response = await axios.post(`${API_URL}/api/auth/register`, {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        recaptchaToken,
         ageConfirmed,
         termsAccepted,
         privacyAccepted

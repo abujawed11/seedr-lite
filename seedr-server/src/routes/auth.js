@@ -11,7 +11,7 @@ const router = express.Router();
 
 // Register new user - Step 1: Send OTP
 router.post('/register', asyncHandler(async (req, res) => {
-  const { username, email, password, recaptchaToken, ageConfirmed, termsAccepted, privacyAccepted } = req.body;
+  const { username, email, password, ageConfirmed, termsAccepted, privacyAccepted } = req.body;
 
   // Validation
   if (!username || !email || !password) {
@@ -38,25 +38,6 @@ router.post('/register', asyncHandler(async (req, res) => {
   // Prevent registration with reserved admin username
   if (username.toLowerCase() === 'admin') {
     return res.status(400).json({ error: 'This username is reserved. Please choose a different username.' });
-  }
-
-  // Verify reCAPTCHA if token is provided
-  if (recaptchaToken) {
-    const recaptchaSecret = process.env.RECAPTCHA_SECRET_KEY;
-    if (recaptchaSecret) {
-      try {
-        const recaptchaResponse = await axios.post(
-          `https://www.google.com/recaptcha/api/siteverify?secret=${recaptchaSecret}&response=${recaptchaToken}`
-        );
-
-        if (!recaptchaResponse.data.success || recaptchaResponse.data.score < 0.5) {
-          return res.status(400).json({ error: 'reCAPTCHA verification failed. Please try again.' });
-        }
-      } catch (error) {
-        console.error('reCAPTCHA verification error:', error);
-        return res.status(500).json({ error: 'Failed to verify reCAPTCHA' });
-      }
-    }
   }
 
   // Check if user already exists
