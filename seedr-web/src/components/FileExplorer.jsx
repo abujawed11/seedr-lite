@@ -4,8 +4,9 @@ import Breadcrumb from "./Breadcrumb";
 import FolderItem from "./FolderItem";
 import FileItem from "./FileItem";
 
-export default function FileExplorer({ browseData, currentPath, onNavigate, formatFileSize, onFileDeleted }) {
+export default function FileExplorer({ browseData, currentPath, onNavigate, formatFileSize, onFileDeleted, onRefresh }) {
   const [viewMode, setViewMode] = useState("list"); // list or grid
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const isEmpty = browseData.dirs.length === 0 && browseData.files.length === 0;
 
@@ -26,6 +27,18 @@ export default function FileExplorer({ browseData, currentPath, onNavigate, form
     }
   };
 
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      // Keep spinning for a moment to show user something happened
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -41,6 +54,23 @@ export default function FileExplorer({ browseData, currentPath, onNavigate, form
             {browseData.dirs.length > 0 && browseData.files.length > 0 && " • "}
             {browseData.files.length > 0 && `${browseData.files.length} files`}
           </div>
+
+          {/* Refresh Button */}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className={`px-4 py-2 rounded-lg font-medium transition-all shadow-lg ${
+              isRefreshing
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-gray-900'
+            }`}
+            title="Refresh files"
+          >
+            <span className={`inline-block ${isRefreshing ? 'animate-spin' : ''}`}>
+              🔄
+            </span>
+            <span className="ml-2">Refresh</span>
+          </button>
 
           {/* View Toggle */}
           <div className="flex bg-gray-800 rounded-lg p-1 border border-gray-700">
