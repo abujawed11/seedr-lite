@@ -56,6 +56,23 @@ router.get('/users/:userId', asyncHandler(async (req, res) => {
   });
 }));
 
+// Get user subscription details
+router.get('/users/:userId/subscription', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const [activeSubscription, subscriptionHistory, subscriptionLogs] = await Promise.all([
+    database.getUserActiveSubscription(userId),
+    database.getUserSubscriptionHistory(userId),
+    database.getUserSubscriptionHistoryLog(userId)
+  ]);
+
+  res.json({
+    active_subscription: activeSubscription,
+    subscription_history: subscriptionHistory,
+    subscription_logs: subscriptionLogs
+  });
+}));
+
 // Update user quota and plan
 router.put('/users/:userId/quota', asyncHandler(async (req, res) => {
   const { userId } = req.params;

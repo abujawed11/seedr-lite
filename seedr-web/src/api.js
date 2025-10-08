@@ -91,8 +91,8 @@ export async function getQuotaInfo() {
   return res.data;
 }
 
-// Get user subscription details
-export async function getUserSubscription() {
+// Get current user's subscription details
+export async function getMySubscription() {
   const res = await api.get('/auth/subscription');
   return res.data;
 }
@@ -242,5 +242,11 @@ export async function processDMCAReport(reportId, action, notes) {
 
 export async function deleteDMCAReport(reportId) {
   const res = await api.delete(`/dmca/reports/${reportId}`);
+  return res.data;
+}
+
+// User Subscription Details
+export async function getUserSubscription(userId) {
+  const res = await api.get(`/admin/users/${userId}/subscription`);
   return res.data;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getUserSubscription } from '../api';
+import { getMySubscription } from '../api';
 
 export default function MyAccount({ isOpen, onClose }) {
   const { user, getStorageInfo } = useAuth();
@@ -17,7 +17,7 @@ export default function MyAccount({ isOpen, onClose }) {
     setLoading(true);
     try {
       // Fetch real subscription data from backend
-      const subscriptionData = await getUserSubscription();
+      const subscriptionData = await getMySubscription();
       const storageInfo = getStorageInfo();
 
       setAccountDetails({

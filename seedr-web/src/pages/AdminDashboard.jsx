@@ -11,7 +11,8 @@ import {
   clearUserStorage,
   getAllDMCAReports,
   processDMCAReport,
-  deleteDMCAReport
+  deleteDMCAReport,
+  getUserSubscription
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import AdminActivityLogs from './AdminActivityLogs';
@@ -26,6 +27,8 @@ export default function AdminDashboard({ onBackToMain }) {
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [editModal, setEditModal] = useState(false);
+  const [subscriptionModal, setSubscriptionModal] = useState(false);
+  const [subscriptionData, setSubscriptionData] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'admin') {
@@ -171,6 +174,17 @@ export default function AdminDashboard({ onBackToMain }) {
     } catch (error) {
       console.error('Failed to delete DMCA report:', error);
       alert('Failed to delete DMCA report');
+    }
+  };
+
+  const handleViewSubscription = async (userId) => {
+    try {
+      const data = await getUserSubscription(userId);
+      setSubscriptionData(data);
+      setSubscriptionModal(true);
+    } catch (error) {
+      console.error('Failed to fetch subscription data:', error);
+      alert('Failed to load subscription information');
     }
   };
 
@@ -407,14 +421,18 @@ export default function AdminDashboard({ onBackToMain }) {
                           <div className="text-xs text-gray-400">{u.email}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            u.plan === 'free' ? 'bg-gray-700 text-gray-300' :
-                            u.plan === 'basic' ? 'bg-blue-900/30 text-blue-400' :
-                            u.plan === 'pro' ? 'bg-purple-900/30 text-purple-400' :
-                            'bg-yellow-900/30 text-yellow-400'
-                          }`}>
-                            {u.plan}
-                          </span>
+                          <button
+                            onClick={() => handleViewSubscription(u.id)}
+                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full cursor-pointer transition-all hover:scale-105 hover:shadow-lg ${
+                              u.plan === 'free' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' :
+                              u.plan === 'basic' ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50' :
+                              u.plan === 'pro' ? 'bg-purple-900/30 text-purple-400 hover:bg-purple-900/50' :
+                              'bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50'
+                            }`}
+                            title="Click to view subscription details"
+                          >
+                            {u.plan} 📊
+                          </button>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-white">
@@ -771,6 +789,202 @@ export default function AdminDashboard({ onBackToMain }) {
             setSelectedUser(null);
           }}
         />
+      )}
+
+      {/* Subscription Details Modal */}
+      {subscriptionModal && subscriptionData && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            {/* Header */}
+            <div className="sticky top-0 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 p-6 flex justify-between items-center">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                📊 Subscription Details
+              </h2>
+              <button
+                onClick={() => {
+                  setSubscriptionModal(false);
+                  setSubscriptionData(null);
+                }}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Active Subscription */}
+              {subscriptionData.active_subscription ? (
+                <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-700/50 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-green-400 flex items-center">
+                      <span className="mr-2">✓</span> Active Subscription
+                    </h3>
+                    <span className="px-3 py-1 bg-green-600 text-white text-sm font-semibold rounded-full">
+                      {subscriptionData.active_subscription.status}
+                    </span>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Plan</div>
+                      <div className="text-lg font-bold text-white uppercase">
+                        {subscriptionData.active_subscription.plan}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Duration</div>
+                      <div className="text-lg font-semibold text-white capitalize">
+                        {subscriptionData.active_subscription.duration}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Started</div>
+                      <div className="text-sm text-white">
+                        {new Date(subscriptionData.active_subscription.started_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Expires</div>
+                      <div className="text-sm text-white font-medium">
+                        {new Date(subscriptionData.active_subscription.expires_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Auto-Renew</div>
+                      <div className="text-sm text-white">
+                        {subscriptionData.active_subscription.auto_renew ? 'Yes ✓' : 'No ✗'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-green-300/70 mb-1">Activated By</div>
+                      <div className="text-sm text-white">
+                        {subscriptionData.active_subscription.created_by || 'User'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 text-center">
+                  <div className="text-gray-400 text-lg">No active subscription</div>
+                  <div className="text-sm text-gray-500 mt-2">User is on Free plan</div>
+                </div>
+              )}
+
+              {/* Subscription History */}
+              {subscriptionData.subscription_history && subscriptionData.subscription_history.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center">
+                    <span className="mr-2">📜</span> Subscription History
+                  </h3>
+                  <div className="space-y-3">
+                    {subscriptionData.subscription_history.map((sub, idx) => (
+                      <div
+                        key={sub.id}
+                        className={`p-4 rounded-lg border ${
+                          sub.status === 'active'
+                            ? 'bg-green-900/20 border-green-700/50'
+                            : sub.status === 'expired'
+                            ? 'bg-orange-900/20 border-orange-700/50'
+                            : 'bg-gray-800/50 border-gray-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <span className={`px-2 py-1 text-xs font-bold rounded uppercase ${
+                                sub.status === 'active' ? 'bg-green-600 text-white' :
+                                sub.status === 'expired' ? 'bg-orange-600 text-white' :
+                                'bg-gray-600 text-white'
+                              }`}>
+                                {sub.plan}
+                              </span>
+                              <span className="text-xs text-gray-400 capitalize">{sub.duration}</span>
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                sub.status === 'active' ? 'bg-green-900/50 text-green-300' :
+                                sub.status === 'expired' ? 'bg-orange-900/50 text-orange-300' :
+                                'bg-gray-700 text-gray-300'
+                              }`}>
+                                {sub.status}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-gray-400">Started:</span>{' '}
+                                <span className="text-white">{new Date(sub.started_at).toLocaleDateString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Expires:</span>{' '}
+                                <span className="text-white">{new Date(sub.expires_at).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Activity Logs */}
+              {subscriptionData.subscription_logs && subscriptionData.subscription_logs.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center">
+                    <span className="mr-2">📋</span> Activity Logs
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {subscriptionData.subscription_logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg text-sm"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                            log.action === 'created' ? 'bg-blue-600 text-white' :
+                            log.action === 'renewed' ? 'bg-green-600 text-white' :
+                            log.action === 'expired' ? 'bg-orange-600 text-white' :
+                            log.action === 'cancelled' ? 'bg-red-600 text-white' :
+                            'bg-gray-600 text-white'
+                          }`}>
+                            {log.action}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(log.performed_at).toLocaleString()}
+                          </span>
+                        </div>
+                        {(log.plan_from || log.plan_to) && (
+                          <div className="text-gray-300">
+                            {log.plan_from && log.plan_to ? (
+                              <>{log.plan_from} → {log.plan_to}</>
+                            ) : (
+                              <>{log.plan_to || log.plan_from}</>
+                            )}
+                            {log.duration && <span className="text-gray-400"> ({log.duration})</span>}
+                          </div>
+                        )}
+                        {log.reason && (
+                          <div className="text-xs text-gray-400 mt-1">Reason: {log.reason}</div>
+                        )}
+                        {log.performed_by && (
+                          <div className="text-xs text-gray-500">By: {log.performed_by}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
