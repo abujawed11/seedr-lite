@@ -1,0 +1,17 @@
+# robots.txt for MyPeerCloud
+
+User-agent: *
+Allow: /
+
+# Block private/auth and app areas
+Disallow: /api/
+Disallow: /admin/
+Disallow: /login
+Disallow: /register
+Disallow: /app
+
+# Static assets are allowed by default; explicit allows not needed
+Sitemap: https://mypeercloud.in/sitemap.xml
+
+# Google ignores crawl-delay; keep for other bots if you want
+Crawl-delay: 1
