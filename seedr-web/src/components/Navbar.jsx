@@ -37,7 +37,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
               {/* App Icon */}
               <div className="mr-3 transform group-hover:scale-110 transition-all duration-300">
                 <img
-                  src="/mypeercloud2.png"
+                  src="/mypeercloud.png"
                   alt="MyPeerCloud Logo"
                   width="90"
                   height="90"

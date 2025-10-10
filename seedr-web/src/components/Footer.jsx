@@ -23,10 +23,10 @@ export default function Footer({ onNavigate, isAuthenticated }) {
           <div className="lg:col-span-2">
             <div className="flex items-center mb-4">
               <img
-                src="/mypeercloud2.png"
+                src="/mypeercloud.png"
                 alt="MyPeerCloud"
-                width="40"
-                height="40"
+                width="50"
+                height="50"
                 className="mr-3"
               />
               <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
