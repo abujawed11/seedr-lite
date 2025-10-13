@@ -407,22 +407,34 @@ function humanBytes(bytes) {
 
 /**
  * POST /api/torrents
- * Body: { magnet: "magnet:?xt=urn:btih:..." }
+ * Body: { magnet: "magnet:?xt=urn:btih:..." } OR FormData with 'torrent' file
  *
  * Fast torrent adding with post-metadata quota validation.
  * Adds torrent immediately, validates quota when metadata arrives.
  */
 exports.create = async (req, res) => {
   const { magnet } = req.body || {};
-  if (!magnet) {
-    console.log('❌ Torrent add failed: No magnet link provided');
-    return res.status(400).json({ error: 'magnet is required' });
+  const torrentFile = req.file; // multer provides uploaded file here
+
+  // Validate input - need either magnet link or torrent file
+  if (!magnet && !torrentFile) {
+    console.log('❌ Torrent add failed: No magnet link or torrent file provided');
+    return res.status(400).json({
+      error: 'Either magnet link or torrent file is required',
+      acceptedFormats: 'magnet link (string) or .torrent file upload'
+    });
   }
 
   const userId = req.user.id;
   console.log('🚀 Starting fast torrent add...');
   console.log(`📋 User ID: ${userId}`);
-  console.log(`🔗 Magnet link: ${magnet.substring(0, 50)}...`);
+
+  if (magnet) {
+    console.log(`🔗 Magnet link: ${magnet.substring(0, 50)}...`);
+  }
+  if (torrentFile) {
+    console.log(`📁 Torrent file: ${torrentFile.originalname} (${torrentFile.size} bytes)`);
+  }
 
   try {
     // Check if user account is disabled
@@ -492,9 +504,51 @@ exports.create = async (req, res) => {
             if (updatedQuotaInfo.effectiveRemaining > 0) {
               console.log('✅ Auto-cleanup successful - retrying torrent add');
 
+              // Handle torrent file conversion to magnet URI if needed (for cleanup path)
+              let magnetForCleanup = magnet;
+              let torrentNameForCleanup = null;
+
+              if (torrentFile) {
+                try {
+                  const parseTorrentModule = await import('parse-torrent');
+                  const parseTorrent = parseTorrentModule.default;
+                  const toMagnetURI = parseTorrentModule.toMagnetURI || parseTorrentModule.default.toMagnetURI;
+
+                  const parsed = await parseTorrent(torrentFile.buffer);
+
+                  // Try different methods to get magnet URI
+                  if (typeof toMagnetURI === 'function') {
+                    magnetForCleanup = await toMagnetURI(parsed);
+                  } else if (parsed.magnetURI) {
+                    magnetForCleanup = parsed.magnetURI;
+                  } else {
+                    // Build magnet URI manually
+                    const infoHash = parsed.infoHash;
+                    const name = parsed.name || '';
+                    magnetForCleanup = `magnet:?xt=urn:btih:${infoHash}`;
+                    if (name) {
+                      magnetForCleanup += `&dn=${encodeURIComponent(name)}`;
+                    }
+                    if (parsed.announce && parsed.announce.length > 0) {
+                      parsed.announce.forEach(tracker => {
+                        magnetForCleanup += `&tr=${encodeURIComponent(tracker)}`;
+                      });
+                    }
+                  }
+
+                  torrentNameForCleanup = parsed.name || null;
+                } catch (error) {
+                  console.error('❌ Error processing torrent file in cleanup path:', error);
+                  return res.status(400).json({
+                    error: 'Invalid torrent file',
+                    details: error.message
+                  });
+                }
+              }
+
               // Continue with torrent add since we now have space
               console.log('⚡ Starting torrent immediately (quota will be validated on metadata)...');
-              addMagnet(magnet, userId).catch((e) => {
+              addMagnet(magnetForCleanup, userId).catch((e) => {
                 console.error('💥 CRITICAL: addMagnet failed:', e);
               });
 
@@ -507,11 +561,11 @@ exports.create = async (req, res) => {
                   userId,
                   username: req.user.username,
                   actionType: 'torrent_add',
-                  torrentName: null,
+                  torrentName: torrentNameForCleanup,
                   torrentHash: null,
-                  magnetLink: magnet,
-                  filePath: null,
-                  fileSize: null,
+                  magnetLink: magnetForCleanup,
+                  filePath: torrentFile ? torrentFile.originalname : null,
+                  fileSize: torrentFile ? torrentFile.size : null,
                   ipAddress: clientIp,
                   userAgent
                 });
@@ -577,51 +631,97 @@ exports.create = async (req, res) => {
       });
     }
 
-    // Extract torrent name from magnet link (dn parameter)
+    // Handle torrent file conversion to magnet URI if needed
+    let magnetToUse = magnet;
     let torrentNameFromMagnet = null;
-    try {
-      const dnMatch = magnet.match(/[?&]dn=([^&]+)/);
-      if (dnMatch) {
-        torrentNameFromMagnet = decodeURIComponent(dnMatch[1].replace(/\+/g, ' '));
-        console.log(`📋 Extracted name from magnet: ${torrentNameFromMagnet}`);
+
+    if (torrentFile) {
+      try {
+        console.log('📦 Quickly extracting infoHash from torrent file...');
+        const parseTorrentModule = await import('parse-torrent');
+        const parseTorrent = parseTorrentModule.default;
+        const toMagnetURI = parseTorrentModule.toMagnetURI || parseTorrentModule.default.toMagnetURI;
+
+        const parsed = await parseTorrent(torrentFile.buffer);
+
+        // Try different methods to get magnet URI
+        if (typeof toMagnetURI === 'function') {
+          magnetToUse = await toMagnetURI(parsed);
+        } else if (parsed.magnetURI) {
+          magnetToUse = parsed.magnetURI;
+        } else {
+          // Build magnet URI manually from parsed data
+          const infoHash = parsed.infoHash;
+          const name = parsed.name || '';
+          magnetToUse = `magnet:?xt=urn:btih:${infoHash}`;
+          if (name) {
+            magnetToUse += `&dn=${encodeURIComponent(name)}`;
+          }
+          if (parsed.announce && parsed.announce.length > 0) {
+            parsed.announce.forEach(tracker => {
+              magnetToUse += `&tr=${encodeURIComponent(tracker)}`;
+            });
+          }
+        }
+
+        torrentNameFromMagnet = parsed.name || null;
+        console.log(`📋 Extracted infoHash quickly: ${parsed.infoHash}`);
+        console.log(`📋 Name: ${torrentNameFromMagnet || 'Unknown'}`);
+      } catch (error) {
+        console.error('❌ Error processing torrent file:', error);
+        return res.status(400).json({
+          error: 'Invalid torrent file',
+          details: error.message
+        });
       }
-    } catch (e) {
-      console.log('⚠️ Could not extract name from magnet link');
+    } else{
+      // Extract torrent name from magnet link (dn parameter)
+      try {
+        const dnMatch = magnetToUse.match(/[?&]dn=([^&]+)/);
+        if (dnMatch) {
+          torrentNameFromMagnet = decodeURIComponent(dnMatch[1].replace(/\+/g, ' '));
+          console.log(`📋 Extracted name from magnet: ${torrentNameFromMagnet}`);
+        }
+      } catch (e) {
+        console.log('⚠️ Could not extract name from magnet link');
+      }
     }
 
-    // Start torrent in background
-    console.log('⚡ Starting torrent...');
-    addMagnet(magnet, userId).catch((e) => {
-      console.error('💥 CRITICAL: addMagnet failed:', e);
-      console.error('📊 Error details:', {
-        userId,
-        magnetPreview: magnet.substring(0, 50),
-        errorMessage: e.message,
-        errorStack: e.stack
-      });
-    });
+    // Start torrent in background (async - don't wait)
+    console.log('⚡ Starting torrent immediately in background...');
 
-    // Log activity: torrent addition with name from magnet link
+    // Activity logging setup
     const clientIp = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('user-agent') || 'Unknown';
 
-    try {
-      await database.logActivity({
+    // Start torrent and log activity in background (don't block response)
+    Promise.all([
+      addMagnet(magnetToUse, userId).catch((e) => {
+        console.error('💥 CRITICAL: addMagnet failed:', e);
+        console.error('📊 Error details:', {
+          userId,
+          magnetPreview: magnetToUse.substring(0, 50),
+          errorMessage: e.message,
+          errorStack: e.stack
+        });
+      }),
+      database.logActivity({
         userId,
         username: req.user.username,
         actionType: 'torrent_add',
-        torrentName: torrentNameFromMagnet, // Use name from magnet link!
+        torrentName: torrentNameFromMagnet, // Use name from magnet link or torrent file!
         torrentHash: null,
-        magnetLink: magnet,
-        filePath: null,
-        fileSize: null,
+        magnetLink: magnetToUse,
+        filePath: torrentFile ? torrentFile.originalname : null,
+        fileSize: torrentFile ? torrentFile.size : null,
         ipAddress: clientIp,
         userAgent
-      });
-      console.log(`📝 Activity logged: torrent_add by ${req.user.username} - ${torrentNameFromMagnet || 'Unknown'}`);
-    } catch (logError) {
-      console.error('⚠️ Failed to log activity:', logError);
-    }
+      }).catch(logError => {
+        console.error('⚠️ Failed to log activity:', logError);
+      })
+    ]).then(() => {
+      console.log(`✅ Torrent started and activity logged for ${req.user.username}`);
+    });
 
     console.log('✅ Torrent add started - quota will be validated when metadata arrives');
     return res.status(202).json({

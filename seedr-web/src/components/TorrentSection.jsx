@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   addTorrent,
+  addTorrentFile,
   stopTorrent,
   deleteTorrent,
   getNotifications,
@@ -27,6 +28,8 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   const [nextId, setNextId] = useState(2);
   const [notifications, setNotifications] = useState([]);
   const [showCopyrightWarning, setShowCopyrightWarning] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Fetch notifications on component mount and periodically
   useEffect(() => {
@@ -149,6 +152,52 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.torrent')) {
+      alert('Please select a valid .torrent file');
+      return;
+    }
+
+    setUploadingFile(true);
+
+    try {
+      console.log('[UPLOAD] Starting torrent file upload');
+      const response = await addTorrentFile(file);
+      console.log('[UPLOAD] Success:', response);
+
+      // Immediately refresh torrent list to show the new torrent
+      // (it will appear with "Loading..." name initially, just like magnet links)
+      onTorrentAdded();
+
+      console.log('[UPLOAD] Torrent added to UI, metadata will load in background');
+    } catch (err) {
+      console.error('[UPLOAD] Failed:', err);
+
+      let errorMessage = 'Failed to upload torrent file';
+
+      // Check for disabled account error
+      if (err.response?.data?.code === 'ACCOUNT_DISABLED') {
+        errorMessage = err.response.data.message || 'Your account has been disabled by an administrator. Please contact support for assistance.';
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      alert(errorMessage);
+    } finally {
+      setUploadingFile(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   // CRITICAL FIX: Filter notifications by type to prevent showing completion notifications as quota exceeded
   const quotaExceededNotifications = notifications.filter(n => n.type === 'quota_exceeded');
 
@@ -267,12 +316,33 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
             />
           ))}
 
-          <button
-            onClick={addNewMagnetField}
-            className="w-full py-2 px-4 border-2 border-dashed border-gray-600 hover:border-yellow-500 rounded-lg text-gray-400 hover:text-yellow-400 transition-colors"
-          >
-            + Add Another Magnet Link
-          </button>
+          <div className="relative">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".torrent"
+              onChange={handleFileUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={uploadingFile}
+            />
+            <button
+              className={`w-full py-2 px-4 border-2 border-dashed rounded-lg transition-colors ${
+                uploadingFile
+                  ? 'border-gray-600 text-gray-500 cursor-not-allowed'
+                  : 'border-gray-600 hover:border-yellow-500 text-gray-400 hover:text-yellow-400 cursor-pointer'
+              }`}
+              disabled={uploadingFile}
+            >
+              {uploadingFile ? (
+                <span className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400 mr-2"></div>
+                  Uploading Torrent File...
+                </span>
+              ) : (
+                '📁 Upload Torrent File (.torrent)'
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

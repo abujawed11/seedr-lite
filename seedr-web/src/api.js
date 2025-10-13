@@ -43,6 +43,16 @@ export async function addTorrent(magnet) {
   return api.post("/torrents", { magnet });
 }
 
+export async function addTorrentFile(file) {
+  const formData = new FormData();
+  formData.append('torrent', file);
+  return api.post("/torrents", formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+}
+
 export async function listTorrents() {
   const res = await api.get("/torrents");
   return res.data;

@@ -1,7 +1,23 @@
 const router = require('express').Router();
+const multer = require('multer');
 const asyncH = require('../middlewares/asyncHandler');
 const { authenticateToken } = require('../middlewares/auth');
 const c = require('../controllers/torrents.controller');
+
+// Configure multer for memory storage (file stored in memory as Buffer)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for torrent files
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.originalname.endsWith('.torrent')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .torrent files are allowed'));
+    }
+  }
+});
 
 // All torrent operations require authentication
 router.use(authenticateToken);
@@ -11,7 +27,7 @@ router.delete('/reservations/cleanup', asyncH(c.cleanupReservations)); // cleanu
 router.get('/notifications', asyncH(c.getNotifications));               // get quota exceeded notifications
 router.delete('/notifications/:id', asyncH(c.clearNotification));       // clear specific notification
 router.delete('/notifications', asyncH(c.clearAllNotifications));       // clear all notifications
-router.post('/', asyncH(c.create));                                     // add magnet link
+router.post('/', upload.single('torrent'), asyncH(c.create));           // add magnet link or torrent file
 router.get('/', asyncH(c.index));                                       // list torrents
 router.get('/:id', asyncH(c.show));                                     // files + URLs for one torrent
 router.put('/:id/stop', asyncH(c.stop));                                // stop torrent
