@@ -212,8 +212,8 @@ export default function RefundPage({ onNavigate }) {
                 <li><strong>Refunds:</strong> refunds@mypeercloud.in</li>
                 <li><strong>Billing Issues:</strong> billing@mypeercloud.in</li>
                 <li><strong>General Support:</strong> support@mypeercloud.in</li>
-                <li><strong>Phone:</strong> [Your Business Phone] (Mon-Fri, 9 AM - 6 PM IST)</li>
-                <li><strong>Address:</strong> [Your Business Address]</li>
+                {/* <li><strong>Phone:</strong> [Your Business Phone] (Mon-Fri, 9 AM - 6 PM IST)</li> */}
+                {/* <li><strong>Address:</strong> [Your Business Address]</li> */}
               </ul>
             </section>
           </div>

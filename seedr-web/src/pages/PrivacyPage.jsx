@@ -254,7 +254,7 @@ export default function PrivacyPage({ onNavigate }) {
               <ul className="list-disc list-inside ml-4">
                 <li>Email: privacy@mypeercloud.in</li>
                 <li>Grievance Officer (India): dpo@mypeercloud.in</li>
-                <li>Address: [Your Business Address]</li>
+                {/* <li>Address: [Your Business Address]</li> */}
               </ul>
             </section>
 
