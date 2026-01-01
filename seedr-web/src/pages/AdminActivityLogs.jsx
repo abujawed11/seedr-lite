@@ -7,10 +7,21 @@ export default function AdminActivityLogs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [limit, setLimit] = useState(100);
+  const [expandedLogs, setExpandedLogs] = useState(new Set());
 
   useEffect(() => {
     fetchLogs();
   }, [filterType, limit]);
+
+  const toggleExpand = (id) => {
+    const newExpanded = new Set(expandedLogs);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedLogs(newExpanded);
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -101,16 +112,15 @@ export default function AdminActivityLogs() {
   };
 
   const getActionBadgeColor = (actionType) => {
-    switch (actionType) {
-      case 'torrent_add':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'file_download':
-        return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'file_stream':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      default:
-        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-    }
+    if (!actionType) return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    
+    if (actionType.startsWith('torrent_')) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    if (actionType.startsWith('file_') || actionType.startsWith('folder_') || actionType === 'direct_link_access') return 'bg-green-500/20 text-green-400 border-green-500/30';
+    if (actionType.startsWith('admin_')) return 'bg-red-500/20 text-red-400 border-red-500/30';
+    if (actionType.startsWith('security_') || actionType.includes('dmca')) return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+    if (actionType.includes('login') || actionType.includes('register') || actionType.includes('otp') || actionType === 'logout') return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+    
+    return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
   return (
@@ -159,9 +169,60 @@ export default function AdminActivityLogs() {
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
             >
               <option value="all">All Actions</option>
-              <option value="torrent_add">Torrent Add</option>
-              <option value="file_download">File Download</option>
-              <option value="file_stream">File Stream</option>
+              
+              <optgroup label="Authentication">
+                <option value="login_success">Login Success</option>
+                <option value="login_failure">Login Failure</option>
+                <option value="logout">Logout</option>
+                <option value="register_success">Register Success</option>
+                <option value="register_failure">Register Failure</option>
+                <option value="otp_verify_success">OTP Verify Success</option>
+                <option value="otp_verify_failure">OTP Verify Failure</option>
+                <option value="password_reset_request">Pass Reset Request</option>
+                <option value="password_reset_complete">Pass Reset Complete</option>
+              </optgroup>
+
+              <optgroup label="Torrent Operations">
+                <option value="torrent_add">Torrent Add</option>
+                <option value="torrent_complete">Torrent Complete</option>
+                <option value="torrent_stop">Torrent Stop</option>
+                <option value="torrent_delete">Torrent Delete</option>
+                <option value="torrent_error">Torrent Error</option>
+                <option value="reservation_cleanup">Reservation Cleanup</option>
+              </optgroup>
+
+              <optgroup label="File Operations">
+                <option value="file_download">File Download</option>
+                <option value="file_stream">File Stream</option>
+                <option value="file_delete">File Delete</option>
+                <option value="folder_download">Folder Download</option>
+                <option value="direct_link_access">Direct Link Access</option>
+              </optgroup>
+
+              <optgroup label="Security Events">
+                <option value="security_quota_exceeded">Quota Exceeded</option>
+                <option value="security_concurrent_limit_exceeded">Concurrent Limit Exceeded</option>
+                <option value="security_path_traversal_attempt">Path Traversal Attempt</option>
+                <option value="dmca_report_submit">DMCA Report Submit</option>
+              </optgroup>
+
+              <optgroup label="Admin Actions">
+                <option value="admin_login">Admin Login</option>
+                <option value="admin_quota_update">Quota Update</option>
+                <option value="admin_status_update">Status Update</option>
+                <option value="admin_user_delete">User Delete</option>
+                <option value="admin_storage_clear">Storage Clear</option>
+                <option value="admin_upgrade_approve">Upgrade Approve</option>
+                <option value="admin_upgrade_reject">Upgrade Reject</option>
+                <option value="admin_subscription_activate">Sub Activate</option>
+                <option value="admin_subscription_cancel">Sub Cancel</option>
+                <option value="admin_dmca_action">DMCA Action</option>
+              </optgroup>
+
+              <optgroup label="Plans">
+                <option value="upgrade_request_submit">Upgrade Request</option>
+                <option value="current_plan_view">Plan View</option>
+              </optgroup>
             </select>
           </div>
 
@@ -226,23 +287,45 @@ export default function AdminActivityLogs() {
                         {log.action_type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 max-w-md">
-                      {log.action_type === 'torrent_add' && (
-                        <div className="text-sm">
-                          <div className="text-gray-400 truncate">
-                            {log.torrent_name || 'Metadata pending...'}
-                          </div>
-                          <div className="text-xs text-gray-600 truncate mt-1">
-                            {log.magnet_link?.substring(0, 60)}...
-                          </div>
+                    <td className="px-4 py-3 max-w-md text-sm">
+                      {/* Generic Detail Renderer */}
+                      {log.torrent_name && (
+                        <div className="text-gray-300 font-medium truncate" title={log.torrent_name}>
+                          {log.torrent_name}
                         </div>
                       )}
-                      {(log.action_type === 'file_download' || log.action_type === 'file_stream') && (
-                        <div className="text-sm">
-                          <div className="text-gray-400 font-medium">{log.torrent_name}</div>
-                          <div className="text-xs text-gray-500 truncate mt-1">{log.file_path}</div>
-                          <div className="text-xs text-gray-600 mt-1">{formatBytes(log.file_size)}</div>
+                      
+                      {log.file_path && (
+                        <div className="text-xs text-gray-500 truncate mt-0.5" title={log.file_path}>
+                          <span className="text-gray-600 mr-1">File:</span> {log.file_path}
                         </div>
+                      )}
+
+                      {log.file_size > 0 && (
+                        <div className="text-xs text-gray-600 mt-0.5">
+                          Size: {formatBytes(log.file_size)}
+                        </div>
+                      )}
+
+                      {log.magnet_link && log.action_type !== 'torrent_add' && (
+                        <div 
+                          className={`text-xs text-gray-600 mt-0.5 cursor-pointer hover:text-gray-400 transition-colors ${expandedLogs.has(log.id) ? 'whitespace-normal break-all' : 'truncate'}`}
+                          title="Click to expand/collapse"
+                          onClick={() => toggleExpand(log.id)}
+                        >
+                          Note: {log.magnet_link}
+                        </div>
+                      )}
+
+                      {/* Fallback for specific complex types if needed in future */}
+                      {log.action_type === 'torrent_add' && log.magnet_link && (
+                         <div 
+                           className={`text-xs text-gray-600 mt-0.5 cursor-pointer hover:text-gray-400 transition-colors ${expandedLogs.has(log.id) ? 'whitespace-normal break-all' : 'truncate'}`}
+                           onClick={() => toggleExpand(log.id)}
+                           title="Click to expand/collapse"
+                         >
+                           Magnet: {log.magnet_link}
+                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-400">
@@ -250,7 +333,8 @@ export default function AdminActivityLogs() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        {(log.action_type === 'file_download' || log.action_type === 'file_stream') && log.file_path && (
+                        {/* Show delete file button for file-related actions if path exists */}
+                        {['file_download', 'file_stream', 'file_delete', 'folder_download', 'admin_file_delete'].includes(log.action_type) && log.file_path && (
                           <button
                             onClick={() => handleDeleteFile(log)}
                             className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 rounded text-xs transition-colors"
