@@ -30,8 +30,8 @@ export default function RegisterForm({ onSwitchToLogin }) {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // const API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
-  const API_URL = import.meta.env.VITE_API_BASE || '';
+  // const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 
   const handleSubmit = async (e) => {

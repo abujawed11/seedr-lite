@@ -18,7 +18,7 @@ export default function DMCAPage({ onNavigate }) {
   const [error, setError] = useState('');
   const [reportId, setReportId] = useState('');
 
-  const API_URL = import.meta.env.VITE_API_BASE || '';
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;

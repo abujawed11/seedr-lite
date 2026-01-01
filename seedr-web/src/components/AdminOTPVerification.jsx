@@ -9,7 +9,7 @@ export default function AdminOTPVerification({ username, email, onSuccess, onBac
   const [resendSuccess, setResendSuccess] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  const API_URL = import.meta.env.VITE_API_BASE || '';
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
   // Countdown timer for resend button
   useEffect(() => {

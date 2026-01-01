@@ -2,7 +2,7 @@ import axios from "axios";
 
 // 👇 Change this to your server domain or IP
 // const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
