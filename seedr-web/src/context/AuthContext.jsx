@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { login as apiLogin, register as apiRegister, getUserProfile, getQuotaInfo } from '../api';
+import { login as apiLogin, register as apiRegister, logout as apiLogout, getUserProfile, getQuotaInfo } from '../api';
 
 const AuthContext = createContext();
 
@@ -107,10 +107,18 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('seedr_token');
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    try {
+      if (token) {
+        await apiLogout();
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('seedr_token');
+      setToken(null);
+      setUser(null);
+    }
   };
 
   // Direct login with token and user data (for OTP verification)

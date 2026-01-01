@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const { errorHandler } = require('./middlewares/errorHandler');
+const database = require('./models/database');
+const ActivityLogger = require('./utils/activityLogger');
 
 const torrentsRoutes = require('./routes/torrents.routes');
 const streamRoutes = require('./routes/stream.routes');
@@ -20,6 +22,12 @@ app.set('trust proxy', true);
 // Debug middleware: Log all incoming requests immediately
 app.use((req, res, next) => {
   console.log(`[DEBUG] Incoming request: ${req.method} ${req.url} from Origin: ${req.headers.origin}`);
+  next();
+});
+
+// Activity Logger Middleware
+app.use((req, res, next) => {
+  req.activityLogger = new ActivityLogger(database);
   next();
 });
 

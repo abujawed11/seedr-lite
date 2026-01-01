@@ -65,6 +65,13 @@ router.post('/report', asyncHandler(async (req, res) => {
 
   console.log(`[DMCA] New report submitted: ${reportId} from ${reporterEmail}`);
 
+  // Log DMCA submission (Security Critical)
+  await req.activityLogger.logSecurity(req, 'dmca_report_submit', {
+    torrentHash: `report_id:${reportId}`,
+    torrentName: `email:${reporterEmail}`,
+    magnetLink: `content:${infringingContent.substring(0, 100)}`
+  });
+
   // TODO: Send email notification to admin
   // await emailService.sendDMCAAlert(reportId, reporterEmail, infringingContent);
 
@@ -115,6 +122,13 @@ router.post('/reports/:reportId/action', authenticateAdmin, asyncHandler(async (
 
   console.log(`[DMCA] Report ${reportId} ${action} by admin ${req.user.username}`);
 
+  // Log DMCA action
+  await req.activityLogger.logAdmin(req, 'dmca_action', req.user.id, req.user.username, {
+    torrentHash: `report_id:${reportId}`,
+    magnetLink: `action:${action}`,
+    filePath: `notes:${notes || 'none'}`
+  });
+
   // TODO: If action is 'approved' or 'removed', remove the infringing content
   // This would require parsing the infringing_content field and taking action
   // e.g., deleting files, removing torrents, etc.
@@ -136,6 +150,11 @@ router.delete('/reports/:reportId', authenticateAdmin, asyncHandler(async (req, 
   }
 
   console.log(`[DMCA] Report ${reportId} deleted by admin ${req.user.username}`);
+
+  // Log DMCA report deletion
+  await req.activityLogger.logAdmin(req, 'dmca_delete', req.user.id, req.user.username, {
+    torrentHash: `report_id:${reportId}`
+  });
 
   res.json({ success: true, message: 'DMCA report deleted' });
 }));

@@ -91,6 +91,11 @@ export async function register(username, email, password) {
   return res.data;
 }
 
+export async function logout() {
+  const res = await api.post('/auth/logout');
+  return res.data;
+}
+
 export async function getUserProfile() {
   const res = await api.get('/auth/profile');
   return res.data;

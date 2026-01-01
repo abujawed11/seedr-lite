@@ -9,6 +9,19 @@ const router = express.Router();
 // Get all available plans
 router.get('/plans', asyncHandler(async (req, res) => {
   const plans = getAllPlans();
+  
+  // Log plans view (low priority)
+  // Check if req.activityLogger exists (it should via middleware)
+  if (req.activityLogger) {
+    // User might be anonymous here if route is public?
+    // Route definition: app.use('/api', plansRoutes);
+    // plansRoutes: router.get('/plans', ...);
+    // It does NOT use authenticateToken. So user might be null.
+    await req.activityLogger.log(req, 'plans_view', {
+      fileSize: plans.length
+    });
+  }
+
   res.json({ plans });
 }));
 
@@ -16,6 +29,11 @@ router.get('/plans', asyncHandler(async (req, res) => {
 router.get('/plans/current', authenticateToken, asyncHandler(async (req, res) => {
   const user = await database.getUserById(req.user.id);
   const currentPlan = getPlan(user.plan);
+
+  // Log current plan view
+  await req.activityLogger.log(req, 'current_plan_view', {
+    torrentName: currentPlan.name
+  });
 
   res.json({
     plan: currentPlan,
@@ -98,6 +116,13 @@ router.post('/plans/upgrade-request', authenticateToken, asyncHandler(async (req
 
   console.log(`📝 Upgrade request created: ${user.username} → ${targetPlan.name} (${requestDuration})`);
 
+  // Log upgrade request
+  await req.activityLogger.log(req, 'upgrade_request_submit', {
+    torrentName: targetPlan.name,
+    magnetLink: `duration:${requestDuration}`,
+    filePath: `request_id:${request.id}`
+  });
+
   res.json({
     message: 'Upgrade request submitted successfully',
     request: {
@@ -120,6 +145,11 @@ router.get('/plans/my-requests', authenticateToken, asyncHandler(async (req, res
     ...r,
     plan_details: getPlan(r.target_plan)
   }));
+
+  // Log requests view
+  await req.activityLogger.log(req, 'upgrade_requests_view', {
+    fileSize: requests.length
+  });
 
   res.json({ requests: enrichedRequests });
 }));

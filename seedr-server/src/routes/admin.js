@@ -114,7 +114,19 @@ router.put('/users/:userId/quota', asyncHandler(async (req, res) => {
     console.log(`⚠️ FORCE DOWNGRADE: User ${user.username} (${userId}) will be ${formatBytes(user.storage_used - quota)} over quota`);
   }
 
+  // Capture old values for logging
+  const oldQuota = user.storage_quota;
+  const oldPlan = user.plan;
+
   await database.adminUpdateUserQuotaAndPlan(userId, quota, plan, maxDownloads);
+
+  // Log quota update
+  await req.activityLogger.logAdmin(req, 'quota_update', userId, user.username, {
+    torrentHash: `old_quota:${oldQuota}`,
+    magnetLink: `new_quota:${quota}`,
+    filePath: `old_plan:${oldPlan}`,
+    fileSize: quota
+  });
 
   const updatedUser = await database.getUserById(userId);
   const isOverQuota = updatedUser.storage_used > updatedUser.storage_quota;
@@ -153,7 +165,16 @@ router.put('/users/:userId/status', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  // Capture old status
+  const oldStatus = user.is_active;
+
   await database.updateUserStatus(userId, isActive);
+
+  // Log status update
+  await req.activityLogger.logAdmin(req, 'status_update', userId, user.username, {
+    torrentHash: `old_status:${oldStatus}`,
+    magnetLink: `new_status:${isActive ? 1 : 0}`
+  });
 
   res.json({
     message: `User ${isActive ? 'enabled' : 'disabled'} successfully`,
@@ -175,7 +196,16 @@ router.put('/users/:userId/max-downloads', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  // Capture old limit
+  const oldLimit = user.max_concurrent_downloads;
+
   await database.updateUserMaxDownloads(userId, maxDownloads);
+
+  // Log max downloads update
+  await req.activityLogger.logAdmin(req, 'max_downloads_update', userId, user.username, {
+    torrentHash: `old_limit:${oldLimit}`,
+    magnetLink: `new_limit:${maxDownloads}`
+  });
 
   res.json({
     message: 'User max concurrent downloads updated successfully',
@@ -196,6 +226,12 @@ router.delete('/users/:userId', asyncHandler(async (req, res) => {
   if (user.role === 'admin') {
     return res.status(403).json({ error: 'Cannot delete admin users' });
   }
+
+  // Log BEFORE deletion (capture user data while it still exists)
+  await req.activityLogger.logAdmin(req, 'user_delete', userId, user.username, {
+    torrentHash: `target_email:${user.email}`,
+    fileSize: user.storage_used || 0
+  });
 
   await database.deleteUser(userId);
 
@@ -499,6 +535,13 @@ router.delete('/users/:userId/storage', asyncHandler(async (req, res) => {
 
     console.log(`✅ Admin ${req.user.username} cleared storage for user ${user.username} (${userId})`);
 
+    // Log storage clear
+    await req.activityLogger.logAdmin(req, 'storage_clear', userId, user.username, {
+      fileSize: result.clearedBytes,
+      torrentHash: `files_deleted:${result.clearedFiles}`,
+      magnetLink: `torrents_removed:${userTorrents.length}`
+    });
+
     res.json({
       message: 'User storage cleared successfully',
       user: {
@@ -605,6 +648,12 @@ router.post('/upgrade-requests/:requestId/approve', asyncHandler(async (req, res
   // Mark request as approved
   await database.updateUpgradeRequestStatus(requestId, 'approved', req.user.id, adminNotes);
 
+  // Log approval
+  await req.activityLogger.logAdmin(req, 'upgrade_approve', request.user_id, user.username, {
+    torrentHash: `request_id:${requestId}`,
+    magnetLink: `plan:${request.target_plan}`
+  });
+
   res.json({
     message: 'Upgrade request approved successfully',
     request: await database.getUpgradeRequestById(requestId),
@@ -629,6 +678,15 @@ router.post('/upgrade-requests/:requestId/reject', asyncHandler(async (req, res)
 
   // Mark request as rejected
   await database.updateUpgradeRequestStatus(requestId, 'rejected', req.user.id, adminNotes);
+
+  const user = await database.getUserById(request.user_id);
+  const username = user ? user.username : 'unknown';
+
+  // Log rejection
+  await req.activityLogger.logAdmin(req, 'upgrade_reject', request.user_id, username, {
+    torrentHash: `request_id:${requestId}`,
+    magnetLink: `reason:${adminNotes || 'No notes'}`
+  });
 
   res.json({
     message: 'Upgrade request rejected successfully',
@@ -728,6 +786,13 @@ router.post('/subscriptions/activate', asyncHandler(async (req, res) => {
 
   console.log(`👑 Admin ${req.user.username} manually activated ${plan} (${duration}) for ${user.username}`);
 
+  // Log activation
+  await req.activityLogger.logAdmin(req, 'subscription_activate', userId, user.username, {
+    torrentHash: `plan:${plan}`,
+    magnetLink: `duration:${duration}`,
+    fileSize: subscription.id ? 1 : 0
+  });
+
   res.json({
     message: 'Subscription activated successfully',
     subscription,
@@ -762,6 +827,16 @@ router.post('/subscriptions/:subscriptionId/cancel', asyncHandler(async (req, re
   // Downgrade user to free plan
   await database.updateUserPlan(subscription.user_id, 'free');
 
+  // Log cancellation
+  // Fetch user details for logging
+  const user = await database.getUserById(subscription.user_id);
+  const username = user ? user.username : 'unknown';
+
+  await req.activityLogger.logAdmin(req, 'subscription_cancel', subscription.user_id, username, {
+    torrentHash: `subscription_id:${subscriptionId}`,
+    magnetLink: `reason:${reason || 'Admin cancellation'}`
+  });
+
   res.json({
     message: 'Subscription cancelled successfully',
     subscriptionId
@@ -784,6 +859,15 @@ router.post('/subscriptions/process-expired', asyncHandler(async (req, res) => {
 
   const successful = results.filter(r => r.success);
   const failed = results.filter(r => !r.success);
+
+  // Log batch processing
+  if (results.length > 0) {
+    await req.activityLogger.log(req, 'admin_subscriptions_process', {
+      fileSize: results.length,
+      torrentHash: `success:${successful.length}`,
+      magnetLink: `failed:${failed.length}`
+    });
+  }
 
   res.json({
     message: 'Expired subscriptions processing completed',
@@ -885,6 +969,12 @@ router.post('/activity-logs/cleanup', asyncHandler(async (req, res) => {
 
   console.log(`🧹 Admin ${req.user.username} cleared ${deletedCount} old activity logs (older than ${daysToKeep} days)`);
 
+  // Log the cleanup action itself
+  await req.activityLogger.log(req, 'admin_log_cleanup', {
+    fileSize: deletedCount,
+    torrentName: `days_kept:${daysToKeep}`
+  });
+
   res.json({
     message: `Cleared ${deletedCount} activity logs older than ${daysToKeep} days`,
     deletedCount,
@@ -941,6 +1031,13 @@ router.delete('/files/:userId', asyncHandler(async (req, res) => {
     await updateUserStorageUsage(userId, true);
 
     console.log(`🗑️ Admin ${req.user.username} deleted file for user ${user.username}: ${filePath}`);
+
+    // Log file deletion
+    await req.activityLogger.logAdmin(req, 'file_delete', userId, user.username, {
+      filePath: filePath,
+      fileSize: sizeBefore,
+      torrentName: stat.isDirectory() ? 'directory' : 'file'
+    });
 
     res.json({
       success: true,

@@ -169,6 +169,13 @@ exports.browse = async (req, res) => {
       files
     });
   } catch (err) {
+    if (err.message === "Path traversal attempt detected") {
+      await req.activityLogger.logSecurity(req, 'path_traversal_attempt', {
+        filePath: req.query.path || 'unknown',
+        torrentName: 'browse_operation'
+      });
+      return res.status(403).json({ error: "Invalid path" });
+    }
     console.error("Error browsing files:", err);
     res.status(500).json({ error: "Failed to browse directory" });
   }
@@ -239,6 +246,20 @@ async function streamFileFromDisk(req, res, { filePath, asAttachment = false, us
 
     stream.pipe(res);
   } catch (err) {
+    if (err.message === "Path traversal attempt detected") {
+      // req might not have activityLogger attached if called directly? 
+      // Actually it's passed from controller methods which have it via middleware
+      if (req.activityLogger) {
+        await req.activityLogger.logSecurity(req, 'path_traversal_attempt', {
+          filePath: filePath || 'unknown',
+          torrentName: asAttachment ? 'download_operation' : 'stream_operation'
+        });
+      }
+      if (!res.headersSent) {
+        return res.status(403).json({ error: "Invalid path" });
+      }
+    }
+
     console.error("Error streaming file:", err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to stream file" });
@@ -339,7 +360,28 @@ exports.direct = async (req, res) => {
       asAttachment: payload.asAttachment || false,
       userId: payload.userId  // Use userId from token
     });
+
+    // Log direct link access
+    if (req.activityLogger) {
+      // Simulate user context for logger since this is a public route
+      const mockReq = { ...req, user: { id: payload.userId, username: 'direct_link_user' } };
+      await req.activityLogger.log(mockReq, 'direct_link_access', {
+        filePath: payload.path,
+        torrentName: 'direct_link'
+      });
+    }
   } catch (err) {
+    if (err.message === "Path traversal attempt detected") {
+      // req.activityLogger might not be available or fully populated for public links
+      // but we try anyway
+      if (req.activityLogger) {
+        await req.activityLogger.logSecurity(req, 'path_traversal_attempt', {
+          filePath: req.params.token || 'unknown_token',
+          torrentName: 'direct_link_operation'
+        });
+      }
+      return res.status(403).json({ error: "Invalid path" });
+    }
     console.error("Direct link error:", err);
     return res.status(401).json({ error: "Invalid or expired link" });
   }
@@ -379,18 +421,28 @@ exports.deleteFile = async (req, res) => {
       console.error("Error updating storage usage after deletion:", error);
     }
 
+    // Log file deletion
+    await req.activityLogger.logFile(req, 'delete', safePath, 0); // 0 size as we don't calculate it before delete here
+
     res.json({
       deleted: true,
       path: safePath,
       type: stat.isDirectory() ? 'directory' : 'file'
     });
   } catch (err) {
+    if (err.message === "Path traversal attempt detected") {
+      await req.activityLogger.logSecurity(req, 'path_traversal_attempt', {
+        filePath: req.body.path || 'unknown',
+        torrentName: 'delete_operation'
+      });
+      return res.status(403).json({ error: "Invalid path" });
+    }
     console.error("Error deleting file:", err);
     res.status(500).json({ error: "Failed to delete file or directory" });
   }
 };
 
-exports.listFiles = (req, res) => {
+exports.listFiles = async (req, res) => {
   try {
     const userId = req.user.id;
     const userRoot = getUserStorageDir(userId);
@@ -421,6 +473,12 @@ exports.listFiles = (req, res) => {
     }
 
     const files = walk(userRoot, userRoot);
+
+    // Log file list view (low priority)
+    await req.activityLogger.log(req, 'file_list_view', {
+      fileSize: files.length
+    });
+
     res.json(files);
   } catch (err) {
     console.error("Error listing files:", err);
@@ -488,7 +546,26 @@ exports.downloadFolder = async (req, res) => {
 
     console.log(`📦 Folder download completed: ${folderName} (${zipFilename})`);
 
+    // Log folder download
+    if (req.activityLogger) { // Might be null if direct link context doesn't have it initialized? No, middleware is global.
+        // Wait, verifyLink calls direct download which is public. Middleware is on app level.
+        // But req.user is mocked in direct().
+        // For downloadFolder(), it is protected route, so req.user is real.
+        // Wait, downloadFolder has :token, but also authenticateToken middleware?
+        // Routes: router.get("/download/folder/:token", authenticateToken, downloadFolder);
+        // Yes, it is authenticated.
+        
+        await req.activityLogger.logFile(req, 'folder_download', relativePath, 0); // Size unknown at log time
+    }
+
   } catch (error) {
+    if (error.message === "Path traversal attempt detected") {
+      await req.activityLogger.logSecurity(req, 'path_traversal_attempt', {
+        filePath: req.params.token || 'unknown_token',
+        torrentName: 'folder_download_operation'
+      });
+      return res.status(403).json({ error: "Invalid path" });
+    }
     console.error("Error downloading folder:", error);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to download folder" });

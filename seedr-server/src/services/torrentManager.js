@@ -63,6 +63,16 @@ async function initializeManager() {
 
       const cleanedCount = await database.reservations.cleanupStaleReservations(allActiveTorrentHashes);
       console.log(`✅ SMART CLEANUP: Released ${cleanedCount} stale reservations`);
+
+      if (cleanedCount > 0) {
+        await database.logActivity({
+          userId: null,
+          username: 'system',
+          actionType: 'reservation_cleanup',
+          fileSize: cleanedCount,
+          torrentName: 'smart_cleanup_startup'
+        });
+      }
     } catch (error) {
       console.error('❌ SMART CLEANUP ERROR:', error);
     }
@@ -315,6 +325,15 @@ async function addMagnet(magnet, userId) {
 
         torrent.on('error', (err) => {
           console.error(`💥 Torrent error for user ${userId}:`, err);
+          // Log torrent error
+          database.logActivity({
+            userId,
+            username: 'system',
+            actionType: 'torrent_error',
+            torrentName: torrent.name || 'Unknown',
+            torrentHash: torrent.infoHash,
+            magnetLink: `error:${err.message}`
+          }).catch(e => console.error('Failed to log torrent error:', e));
         });
 
         torrent.on('noPeers', (type) => {
@@ -426,6 +445,22 @@ async function addMagnet(magnet, userId) {
             infoHash: torrent.infoHash,
             timestamp: new Date().toISOString()
           });
+
+          // Log torrent completion
+          try {
+            await database.logActivity({
+              userId,
+              username: 'system', // or get user details if available, but torrent.userId is all we have
+              actionType: 'torrent_complete',
+              torrentName: torrent.name,
+              torrentHash: torrent.infoHash,
+              fileSize: torrent.length,
+              filePath: 'download_complete'
+            });
+            console.log(`📝 Activity logged: torrent_complete for ${torrent.name}`);
+          } catch (logError) {
+            console.error('⚠️ Failed to log torrent completion:', logError);
+          }
 
           c.remove(torrent.infoHash, { destroyStore: false }, (err) => {
             if (err) {

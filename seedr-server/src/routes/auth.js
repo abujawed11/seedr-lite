@@ -43,6 +43,12 @@ router.post('/register', asyncHandler(async (req, res) => {
   // Check if user already exists
   const existingUser = await database.getUserByEmail(email);
   if (existingUser) {
+    // Log failed registration - duplicate email
+    await req.activityLogger.log(req, 'register_failure', {
+      username,
+      torrentName: `email:${email}`,
+      magnetLink: 'reason:email_exists'
+    });
     return res.status(409).json({ error: 'User with this email already exists' });
   }
 
@@ -58,6 +64,13 @@ router.post('/register', asyncHandler(async (req, res) => {
 
     // Send OTP email
     await emailService.sendOTPEmail(email, otp);
+
+    // Log registration attempt (OTP sent)
+    await req.activityLogger.log(req, 'register_attempt', {
+      username,
+      torrentName: `email:${email}`,
+      fileSize: ageConfirmed ? 1 : 0
+    });
 
     res.status(200).json({
       message: 'OTP sent to your email. Please verify to complete registration.',
@@ -91,6 +104,11 @@ router.post('/verify-otp', asyncHandler(async (req, res) => {
 
     // Verify OTP
     if (storedOTP.otp !== otp) {
+      await req.activityLogger.log(req, 'otp_verify_failure', {
+        username,
+        torrentName: `email:${email}`,
+        magnetLink: 'reason:invalid_otp'
+      });
       return res.status(400).json({ error: 'Invalid OTP code' });
     }
 
@@ -117,6 +135,14 @@ router.post('/verify-otp', asyncHandler(async (req, res) => {
 
     // Generate token
     const token = generateToken(user.id);
+
+    // Log successful registration
+    await req.activityLogger.log(req, 'register_success', {
+      userId: user.id,
+      username: user.username,
+      torrentName: `email:${user.email}`,
+      fileSize: storedOTP.age_confirmed === 1 ? 1 : 0
+    });
 
     res.status(201).json({
       message: 'Registration completed successfully',
@@ -163,6 +189,10 @@ router.post('/verify-admin-otp', asyncHandler(async (req, res) => {
 
     // Verify OTP
     if (storedOTP.otp !== otp) {
+      await req.activityLogger.log(req, 'admin_otp_verify_failure', {
+        username,
+        magnetLink: 'reason:invalid_otp'
+      });
       return res.status(400).json({ error: 'Invalid OTP code' });
     }
 
@@ -171,6 +201,9 @@ router.post('/verify-admin-otp', asyncHandler(async (req, res) => {
 
     // Generate token and complete login
     const token = generateToken(user.id);
+
+    // Log successful admin login
+    await req.activityLogger.logAuth(req, 'admin_login', user.id, user.username, true);
 
     // Clear quota notifications
     try {
@@ -267,6 +300,14 @@ router.post('/resend-otp', asyncHandler(async (req, res) => {
   }
 }));
 
+// Logout user (log event)
+router.post('/logout', authenticateToken, asyncHandler(async (req, res) => {
+  // Log logout event
+  await req.activityLogger.logAuth(req, 'logout', req.user.id, req.user.username, true);
+  
+  res.json({ message: 'Logout successful' });
+}));
+
 // Login user
 router.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body;
@@ -277,12 +318,30 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const user = await database.getUserByUsername(username);
   if (!user) {
+    await req.activityLogger.log(req, 'login_failure', {
+      username,
+      torrentName: 'reason:user_not_found'
+    });
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   const isValidPassword = await database.verifyPassword(password, user.password);
   if (!isValidPassword) {
+    await req.activityLogger.log(req, 'login_failure', {
+      userId: user.id,
+      username: user.username,
+      torrentName: 'reason:invalid_password'
+    });
     return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  // Check if account is disabled
+  if (user.is_active === 0) {
+    await req.activityLogger.logSecurity(req, 'disabled_account_access', {
+      userId: user.id,
+      username: user.username
+    });
+    return res.status(403).json({ error: 'Account is disabled. Please contact support.' });
   }
 
   // For admin users, send OTP instead of immediate login
@@ -313,6 +372,9 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // Regular user login (no OTP)
   const token = generateToken(user.id);
+
+  // Log successful login
+  await req.activityLogger.logAuth(req, 'login', user.id, user.username, true);
 
   // CRITICAL FIX: Clear any stale quota notifications from previous sessions
   // These notifications might have been created with outdated quota information
@@ -428,6 +490,11 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
     await emailService.sendPasswordResetOTP(email, otp);
     console.log("OTP for reset pass: ",otp);
 
+    // Log password reset request
+    await req.activityLogger.log(req, 'password_reset_request', {
+      torrentName: `email:${email}`
+    });
+
     res.status(200).json({
       message: 'Password reset code sent to your email.',
       email: email
@@ -459,11 +526,20 @@ router.post('/verify-reset-otp', asyncHandler(async (req, res) => {
 
     // Verify OTP
     if (storedOTP.otp !== otp) {
+      await req.activityLogger.log(req, 'password_reset_otp_failure', {
+        torrentName: `email:${email}`,
+        magnetLink: 'reason:invalid_otp'
+      });
       return res.status(400).json({ error: 'Invalid OTP code' });
     }
 
     // Mark OTP as verified
     await database.markOTPAsVerified(storedOTP.id);
+
+    // Log successful reset OTP verification
+    await req.activityLogger.log(req, 'password_reset_otp_success', {
+      torrentName: `email:${email}`
+    });
 
     res.status(200).json({
       message: 'OTP verified successfully. You can now reset your password.',
@@ -505,6 +581,12 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
     // Delete the OTP after successful password reset to prevent reuse
     await database.deleteOTP(storedOTP.id);
 
+    // Log password reset completion
+    // We don't have user ID easily here without extra query, so just log email
+    await req.activityLogger.log(req, 'password_reset_complete', {
+      torrentName: `email:${email}`
+    });
+
     res.status(200).json({
       message: 'Password reset successfully. You can now login with your new password.'
     });
@@ -544,6 +626,12 @@ router.get('/subscription', authenticateToken, asyncHandler(async (req, res) => 
     daysUntilExpiry = Math.ceil(timeDiff / (1000 * 3600 * 24));
     isExpired = daysUntilExpiry <= 0;
   }
+
+  // Log subscription view
+  await req.activityLogger.log(req, 'subscription_view', {
+    torrentName: activeSubscription ? activeSubscription.plan : 'none',
+    fileSize: daysUntilExpiry || 0
+  });
 
   res.json({
     user: {
