@@ -313,6 +313,9 @@ class Database {
 
     // Add email_verified column to existing users table
     await this.addEmailVerifiedColumnSafely();
+
+    // Add country_code column to activity_logs table
+    await this.addActivityLogsCountryColumnSafely();
   }
 
   // ---- Legacy column support (do not use it for enforcement decisions) ----
@@ -447,6 +450,31 @@ class Database {
       )
     );
     console.log('email_verified column added to users table successfully');
+  }
+
+  // Add country_code column to activity_logs table
+  async addActivityLogsCountryColumnSafely() {
+    const getCols = () =>
+      new Promise((resolve, reject) =>
+        this.db.all('PRAGMA table_info(activity_logs);', [], (err, rows) =>
+          err ? reject(err) : resolve(rows || [])
+        )
+      );
+
+    const cols = await getCols();
+    const hasCountry = cols.some((c) => c.name === 'country_code');
+    if (hasCountry) {
+      console.log('country_code column already exists in activity_logs');
+      return;
+    }
+
+    await new Promise((resolve, reject) =>
+      this.db.run(
+        'ALTER TABLE activity_logs ADD COLUMN country_code TEXT',
+        (err) => (err ? reject(err) : resolve())
+      )
+    );
+    console.log('country_code column added to activity_logs table successfully');
   }
 
   // Create default admin user if it doesn't exist
@@ -1310,7 +1338,8 @@ class Database {
       filePath,
       fileSize,
       ipAddress,
-      userAgent
+      userAgent,
+      countryCode
     } = activityData;
 
     // Generate unique ID if not provided
@@ -1320,9 +1349,9 @@ class Database {
       const sql = `
         INSERT INTO activity_logs (
           id, user_id, username, action_type, torrent_name, torrent_hash,
-          magnet_link, file_path, file_size, ip_address, user_agent
+          magnet_link, file_path, file_size, ip_address, user_agent, country_code
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       this.db.run(
@@ -1338,7 +1367,8 @@ class Database {
           filePath || null,
           fileSize || null,
           ipAddress || null,
-          userAgent || null
+          userAgent || null,
+          countryCode || null
         ],
         function (err) {
           if (err) return reject(err);

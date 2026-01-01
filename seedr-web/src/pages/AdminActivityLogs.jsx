@@ -442,13 +442,20 @@ export default function AdminActivityLogs() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-400">
-                      <button 
-                        onClick={() => { setSearchTerm(log.ip_address); handleSearch(); }}
-                        className="hover:text-blue-400 hover:underline transition-colors"
-                        title="Filter by this IP"
-                      >
-                        {log.ip_address}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => { setSearchTerm(log.ip_address); handleSearch(); }}
+                          className="hover:text-blue-400 hover:underline transition-colors"
+                          title="Filter by this IP"
+                        >
+                          {log.ip_address}
+                        </button>
+                        {log.country_code && (
+                          <span className="text-xs bg-gray-700 px-1.5 py-0.5 rounded text-gray-300 font-mono" title="Country">
+                            {log.country_code}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
