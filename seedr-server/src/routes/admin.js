@@ -583,6 +583,13 @@ router.get('/upgrade-requests', asyncHandler(async (req, res) => {
   res.json({ requests });
 }));
 
+// Get all payment orders (Transactions)
+router.get('/payments', asyncHandler(async (req, res) => {
+  const { limit = 100, offset = 0 } = req.query;
+  const payments = await database.getAllPaymentOrders(parseInt(limit), parseInt(offset));
+  res.json({ payments });
+}));
+
 // Get single upgrade request
 router.get('/upgrade-requests/:requestId', asyncHandler(async (req, res) => {
   const { requestId } = req.params;

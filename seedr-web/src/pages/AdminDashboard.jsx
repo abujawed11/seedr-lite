@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   getAdminStats,
   getAllUsers,
-  getAllUpgradeRequests,
-  approveUpgradeRequest,
-  rejectUpgradeRequest,
+  getAllPayments,
   updateUserQuota,
   updateUserStatus,
   deleteUser,
@@ -26,7 +24,7 @@ export default function AdminDashboard({ onBackToMain }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
-  const [requests, setRequests] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [dmcaReports, setDmcaReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -53,48 +51,21 @@ export default function AdminDashboard({ onBackToMain }) {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [statsData, usersData, requestsData, dmcaData] = await Promise.all([
+      const [statsData, usersData, paymentsData, dmcaData] = await Promise.all([
         getAdminStats(),
         getAllUsers(),
-        getAllUpgradeRequests(),
+        getAllPayments(),
         getAllDMCAReports()
       ]);
       setStats(statsData.stats);
       setUsers(usersData.users);
-      setRequests(requestsData.requests);
+      setPayments(paymentsData.payments);
       setDmcaReports(dmcaData.reports || []);
     } catch (error) {
       console.error('Failed to fetch admin data:', error);
       alert('Failed to load admin data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleApproveRequest = async (requestId) => {
-    if (!confirm('Approve this upgrade request?')) return;
-
-    try {
-      await approveUpgradeRequest(requestId, 'Approved by admin');
-      alert('Request approved successfully');
-      fetchDashboardData();
-    } catch (error) {
-      console.error('Failed to approve request:', error);
-      alert(error.response?.data?.error || 'Failed to approve request');
-    }
-  };
-
-  const handleRejectRequest = async (requestId) => {
-    const reason = prompt('Enter rejection reason:');
-    if (!reason) return;
-
-    try {
-      await rejectUpgradeRequest(requestId, reason);
-      alert('Request rejected successfully');
-      fetchDashboardData();
-    } catch (error) {
-      console.error('Failed to reject request:', error);
-      alert('Failed to reject request');
     }
   };
 
@@ -399,14 +370,14 @@ export default function AdminDashboard({ onBackToMain }) {
               👥 Users ({users.length})
             </button>
             <button
-              onClick={() => setActiveTab('requests')}
+              onClick={() => setActiveTab('transactions')}
               className={`py-4 px-2 border-b-2 font-medium transition-colors ${
-                activeTab === 'requests'
+                activeTab === 'transactions'
                   ? 'border-red-500 text-red-400'
                   : 'border-transparent text-gray-400 hover:text-gray-300'
               }`}
             >
-              📝 Upgrade Requests ({requests.filter(r => r.status === 'pending').length})
+              💳 Transactions
             </button>
             <button
               onClick={() => setActiveTab('activity')}
@@ -683,10 +654,10 @@ export default function AdminDashboard({ onBackToMain }) {
           </div>
         )}
 
-        {!loading && activeTab === 'requests' && (
+        {!loading && activeTab === 'transactions' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">Upgrade Requests</h2>
+              <h2 className="text-2xl font-bold text-white">Payment Transactions</h2>
               <button
                 onClick={fetchDashboardData}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
@@ -695,125 +666,65 @@ export default function AdminDashboard({ onBackToMain }) {
               </button>
             </div>
 
-            {/* Requests Grid */}
-            <div className="grid grid-cols-1 gap-6">
-              {requests.filter(r => r.status === 'pending').length === 0 && (
-                <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
-                  <p className="text-gray-400">No pending upgrade requests</p>
-                </div>
-              )}
-
-              {requests.filter(r => r.status === 'pending').map((request) => (
-                <div key={request.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-white">{request.username}</h3>
-                      <p className="text-sm text-gray-400">{request.user_email}</p>
-                    </div>
-                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                      request.status === 'pending' ? 'bg-yellow-900/30 text-yellow-400' :
-                      request.status === 'approved' ? 'bg-green-900/30 text-green-400' :
-                      'bg-red-900/30 text-red-400'
-                    }`}>
-                      {request.status}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Current Plan</div>
-                      <div className="text-sm text-white font-medium">{request.current_plan}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Requested Plan</div>
-                      <div className="text-sm text-yellow-400 font-medium">{request.target_plan}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Duration</div>
-                      <div className={`text-sm font-medium ${request.duration === 'yearly' ? 'text-green-400' : 'text-blue-400'}`}>
-                        {request.duration === 'yearly' ? 'Yearly (20% off)' : 'Monthly'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Full Name</div>
-                      <div className="text-sm text-white">{request.full_name}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Email</div>
-                      <div className="text-sm text-white">{request.email}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Phone</div>
-                      <div className="text-sm text-white">{request.phone}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">Requested At</div>
-                      <div className="text-sm text-white">{formatDate(request.requested_at)}</div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-400 mb-1">Address</div>
-                    <div className="text-sm text-white">{request.address}</div>
-                  </div>
-
-                  {request.status === 'pending' && (
-                    <div className="flex space-x-4">
-                      <button
-                        onClick={() => handleApproveRequest(request.id)}
-                        className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors"
-                      >
-                        ✅ Approve
-                      </button>
-                      <button
-                        onClick={() => handleRejectRequest(request.id)}
-                        className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
-                      >
-                        ❌ Reject
-                      </button>
-                    </div>
-                  )}
-
-                  {request.status !== 'pending' && (
-                    <div className="bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-xs text-gray-400 mb-1">Admin Notes</div>
-                      <div className="text-sm text-white">{request.admin_notes || 'No notes'}</div>
-                      <div className="text-xs text-gray-400 mt-2">
-                        Processed at: {formatDate(request.processed_at)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Show processed requests */}
-              {requests.filter(r => r.status !== 'pending').length > 0 && (
-                <>
-                  <h3 className="text-xl font-bold text-white mt-8">Processed Requests</h3>
-                  {requests.filter(r => r.status !== 'pending').map((request) => (
-                    <div key={request.id} className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h3 className="text-lg font-bold text-gray-400">{request.username}</h3>
-                          <p className="text-sm text-gray-500">{request.user_email}</p>
-                        </div>
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                          request.status === 'approved' ? 'bg-green-900/30 text-green-400' :
-                          'bg-red-900/30 text-red-400'
-                        }`}>
-                          {request.status}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-400">
-                        {request.current_plan} → {request.target_plan} ({request.duration || 'monthly'})
-                      </div>
-                      <div className="text-xs text-gray-500 mt-2">
-                        Processed: {formatDate(request.processed_at)}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-900/50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Plan</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Amount</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Order ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Payment ID</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {payments.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-400">
+                          No transactions found
+                        </td>
+                      </tr>
+                    ) : (
+                      payments.map((payment) => (
+                        <tr key={payment.order_id} className="hover:bg-gray-700/30 transition-colors">
+                          <td className="px-6 py-4 text-sm text-gray-300">
+                            {new Date(payment.created_at).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-white">{payment.username || 'Unknown'}</div>
+                            <div className="text-xs text-gray-400">{payment.email || 'N/A'}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-white capitalize">{payment.plan_id}</span>
+                            <span className="text-xs text-gray-400 ml-1">({payment.duration})</span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-white font-mono">
+                            {payment.currency} {(payment.amount / 100).toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              payment.status === 'completed' ? 'bg-green-900/30 text-green-400' :
+                              payment.status === 'created' ? 'bg-yellow-900/30 text-yellow-400' :
+                              'bg-red-900/30 text-red-400'
+                            }`}>
+                              {payment.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                            {payment.order_id}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                            {payment.payment_id || '-'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

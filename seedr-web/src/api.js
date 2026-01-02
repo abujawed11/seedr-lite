@@ -170,6 +170,13 @@ export async function getAllUpgradeRequests(status = null) {
   return res.data;
 }
 
+export async function getAllPayments(limit = 100, offset = 0) {
+  const res = await api.get('/admin/payments', {
+    params: { limit, offset }
+  });
+  return res.data;
+}
+
 export async function approveUpgradeRequest(requestId, adminNotes) {
   const res = await api.post(`/admin/upgrade-requests/${requestId}/approve`, { adminNotes });
   return res.data;

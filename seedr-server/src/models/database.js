@@ -1576,6 +1576,21 @@ class Database {
     });
   }
 
+  async getAllPaymentOrders(limit = 100, offset = 0) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT p.*, u.username, u.email
+        FROM payment_orders p
+        LEFT JOIN users u ON p.user_id = u.id
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      this.db.all(sql, [limit, offset], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
 }
 
 // Singleton
