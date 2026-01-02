@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getPlans, submitUpgradeRequest } from '../api';
+import { getPlans, createPaymentOrder, verifyPayment } from '../api';
 
 export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSuccess }) {
   const [plans, setPlans] = useState([]);
@@ -10,13 +10,6 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   const [currency, setCurrency] = useState(() => {
     // Load currency preference from localStorage
     return localStorage.getItem('preferredCurrency') || 'USD';
-  });
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    address: ''
   });
 
   // Currency conversion rate (approximate - you can update this)
@@ -38,41 +31,81 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
     }
   };
 
-  const handleSelectPlan = (planId, duration) => {
-    setSelectedPlan(planId);
-    setSelectedDuration(duration);
-    setShowForm(true);
-    setError('');
-  };
+  // Load Razorpay script
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
 
-  const handleFormChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
-  const handleSubmitRequest = async (e) => {
-    e.preventDefault();
+  const handleSelectPlan = async (planId, duration) => {
     setLoading(true);
     setError('');
 
     try {
-      const requestData = {
-        ...formData,
-        duration: selectedDuration
+      // Create Razorpay order
+      const orderData = await createPaymentOrder(planId, duration, currency);
+
+      // Open Razorpay checkout
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.order.amount,
+        currency: orderData.order.currency,
+        name: 'MyPeerCloud',
+        description: `${plans.find(p => p.id === planId)?.name} Plan - ${duration === 'yearly' ? 'Yearly' : 'Monthly'}`,
+        image: '/mypeercloud.png', // Your logo
+        order_id: orderData.order.id,
+        prefill: {
+          name: orderData.user.name,
+          email: orderData.user.email
+        },
+        theme: {
+          color: '#F59E0B' // Orange/yellow color matching your theme
+        },
+        handler: async function (response) {
+          // Payment successful - verify on backend
+          try {
+            setLoading(true);
+            const verifyData = await verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            });
+
+            console.log('Payment verified:', verifyData);
+            alert('🎉 Payment successful! Your plan has been upgraded.');
+
+            // Call success callback to refresh user data
+            if (onUpgradeSuccess) {
+              onUpgradeSuccess(verifyData);
+            }
+
+            onClose();
+          } catch (err) {
+            console.error('Payment verification failed:', err);
+            setError(err.response?.data?.error || 'Payment verification failed. Please contact support.');
+          } finally {
+            setLoading(false);
+          }
+        },
+        modal: {
+          ondismiss: function() {
+            setLoading(false);
+            console.log('Payment cancelled by user');
+          }
+        }
       };
-      const response = await submitUpgradeRequest(selectedPlan, requestData);
-      alert('Upgrade request submitted successfully! Admin will review your request soon.');
-      onUpgradeSuccess(response);
-      setShowForm(false);
-      setSelectedPlan(null);
-      setSelectedDuration('monthly');
-      setFormData({ fullName: '', email: '', phone: '', address: '' });
-      onClose();
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Request submission failed');
-      console.error('Upgrade request error:', err);
+      setError(err.response?.data?.error || 'Failed to initiate payment');
+      console.error('Payment initiation error:', err);
     } finally {
       setLoading(false);
     }
@@ -122,145 +155,6 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   };
 
   if (!isOpen) return null;
-
-  // If form is shown, render the form modal
-  if (showForm) {
-    const selectedPlanDetails = plans.find(p => p.id === selectedPlan);
-
-    return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800 rounded-2xl max-w-2xl w-full max-h-[95vh] border border-gray-700 shadow-2xl flex flex-col">
-          {/* Form Header */}
-          <div className="bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center rounded-t-2xl flex-shrink-0">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Upgrade Request Form</h2>
-              <p className="text-gray-400 mt-1">
-                Requesting: <span className="text-yellow-400 font-semibold">{selectedPlanDetails?.name} Plan</span>
-                {' '} • <span className="text-blue-400 font-semibold">{selectedDuration === 'yearly' ? 'Yearly' : 'Monthly'} Subscription</span>
-              </p>
-              <p className="text-gray-500 text-sm mt-1">
-                Price: <span className="text-green-400 font-medium">{getPriceLabel(selectedPlanDetails?.price, selectedDuration)}</span>
-                {selectedDuration === 'yearly' && (
-                  <span className="text-yellow-400 ml-2 text-xs">(20% off yearly discount!)</span>
-                )}
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setShowForm(false);
-                setSelectedPlan(null);
-                setError('');
-              }}
-              className="text-gray-400 hover:text-white transition-colors p-2"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Scrollable Form Content */}
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            {/* Error Message */}
-            {error && (
-              <div className="mx-6 mt-6 bg-red-900/20 border border-red-700/50 rounded-lg p-4">
-                <p className="text-red-300">{error}</p>
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={handleSubmitRequest} className="p-6 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Full Name *
-              </label>
-              <input
-                type="text"
-                name="fullName"
-                value={formData.fullName}
-                onChange={handleFormChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="Enter your full name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email Address *
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleFormChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="Enter your email"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleFormChange}
-                required
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="Enter your phone number"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Address *
-              </label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleFormChange}
-                required
-                rows={3}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
-                placeholder="Enter your complete address"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex space-x-4 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setSelectedPlan(null);
-                  setError('');
-                }}
-                className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Submitting...' : 'Submit Request'}
-              </button>
-            </div>
-
-            <p className="text-sm text-gray-400 text-center pt-2">
-              Your request will be reviewed by an administrator. You'll be notified once processed.
-            </p>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -422,7 +316,9 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                       ? 'Current Plan'
                       : isDowngrade
                       ? 'Downgrades Not Available'
-                      : `Request ${plan.name} (${selectedDuration === 'yearly' ? 'Yearly' : 'Monthly'})`}
+                      : loading
+                      ? 'Processing...'
+                      : `Upgrade to ${plan.name}`}
                   </button>
                 </div>
               </div>
@@ -433,8 +329,13 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
           {/* Footer Note */}
           <div className="border-t border-gray-700 p-6 bg-gray-800/30">
             <p className="text-sm text-gray-400 text-center">
-              📝 Submit an upgrade request with your details. Admin will review and approve your request.
+              💳 Secure payment powered by <span className="text-blue-400 font-semibold">Razorpay</span> • Instant activation after successful payment
             </p>
+            {error && (
+              <div className="mt-4 bg-red-900/20 border border-red-700/50 rounded-lg p-3">
+                <p className="text-red-300 text-sm text-center">{error}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

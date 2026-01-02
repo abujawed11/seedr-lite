@@ -281,3 +281,35 @@ export async function getUserSubscription(userId) {
   const res = await api.get(`/admin/users/${userId}/subscription`);
   return res.data;
 }
+
+// ==================== Razorpay Payment API ====================
+
+// Create Razorpay order
+export async function createPaymentOrder(planId, duration, currency = 'INR') {
+  const res = await api.post('/payment/create-order', {
+    planId,
+    duration,
+    currency
+  });
+  return res.data;
+}
+
+// Verify Razorpay payment
+export async function verifyPayment(paymentData) {
+  const res = await api.post('/payment/verify', paymentData);
+  return res.data;
+}
+
+// Get payment order status
+export async function getPaymentOrder(orderId) {
+  const res = await api.get(`/payment/order/${orderId}`);
+  return res.data;
+}
+
+// Get user's payment history
+export async function getPaymentHistory(limit = 20) {
+  const res = await api.get('/payment/history', {
+    params: { limit }
+  });
+  return res.data;
+}

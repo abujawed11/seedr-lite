@@ -160,6 +160,29 @@ class Database {
 
     console.log('Subscription history table created or verified');
 
+    // Create payment orders table
+    const createPaymentOrdersTable = `
+      CREATE TABLE IF NOT EXISTS payment_orders (
+        order_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        duration TEXT NOT NULL,  -- 'monthly' or 'yearly'
+        amount INTEGER NOT NULL,  -- in smallest currency unit (paise/cents)
+        currency TEXT DEFAULT 'INR',  -- 'INR' or 'USD'
+        status TEXT DEFAULT 'created',  -- 'created', 'completed', 'failed'
+        payment_id TEXT,  -- Razorpay payment ID
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createPaymentOrdersTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Payment orders table created or verified');
+
     // Create OTP verification table
     const createOtpTable = `
       CREATE TABLE IF NOT EXISTS otp_verifications (
@@ -1498,6 +1521,58 @@ class Database {
         if (err) return reject(err);
         resolve(this.changes);
       });
+    });
+  }
+
+  // ==================== Payment Orders Management ====================
+
+  async createPaymentOrder({ orderId, userId, planId, duration, amount, currency, status = 'created' }) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO payment_orders (order_id, user_id, plan_id, duration, amount, currency, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+      this.db.run(sql, [orderId, userId, planId, duration, amount, currency, status], function (err) {
+        if (err) return reject(err);
+        resolve({ orderId });
+      });
+    });
+  }
+
+  async getPaymentOrderByOrderId(orderId) {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM payment_orders WHERE order_id = ?`;
+      this.db.get(sql, [orderId], (err, row) =>
+        err ? reject(err) : resolve(row || null)
+      );
+    });
+  }
+
+  async updatePaymentOrderStatus(orderId, status, paymentId = null) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE payment_orders
+        SET status = ?, payment_id = ?, completed_at = CURRENT_TIMESTAMP
+        WHERE order_id = ?
+      `;
+      this.db.run(sql, [status, paymentId, orderId], function (err) {
+        if (err) return reject(err);
+        resolve(this.changes);
+      });
+    });
+  }
+
+  async getUserPaymentHistory(userId, limit = 20) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM payment_orders
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      this.db.all(sql, [userId, limit], (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
     });
   }
 
