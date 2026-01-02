@@ -10,7 +10,11 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
   const scrollToSection = (sectionId) => {
     // First navigate to home if not already there
     if (currentPage !== 'home') {
-      navigate('/');
+      if (isAuthenticated) {
+        navigate('/');
+      } else {
+        onNavigate('home');
+      }
       // Wait for navigation to complete before scrolling
       setTimeout(() => {
         const element = document.getElementById(sectionId);
@@ -33,7 +37,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
           {/* Logo */}
           <div className="flex items-center">
             <div
-              onClick={() => isAuthenticated ? onNavigate('dashboard') : navigate('/')}
+              onClick={() => isAuthenticated ? navigate('/') : onNavigate('home')}
               className="flex items-center cursor-pointer group"
             >
               {/* App Icon */}
@@ -59,7 +63,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
           {!isAuthenticated ? (
             <div className="flex items-center space-x-6">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => onNavigate('home')}
                 className={`text-sm font-medium transition-colors ${
                   currentPage === 'home'
                     ? 'text-yellow-400'
