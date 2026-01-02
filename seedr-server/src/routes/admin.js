@@ -898,21 +898,16 @@ router.post('/subscriptions/monitor/trigger', asyncHandler(async (req, res) => {
 router.get('/activity-logs', asyncHandler(async (req, res) => {
   const { limit = 100, offset = 0, userId, actionType, search } = req.query;
 
-  let logs;
-
-  if (search) {
-    // Search across all fields
-    logs = await database.searchActivityLogs(search, parseInt(limit));
-  } else if (userId) {
-    // Filter by specific user
-    logs = await database.getActivityLogsByUser(userId, parseInt(limit));
-  } else if (actionType) {
-    // Filter by action type
-    logs = await database.getActivityLogsByActionType(actionType, parseInt(limit));
-  } else {
-    // Get all logs
-    logs = await database.getAllActivityLogs(parseInt(limit), parseInt(offset));
-  }
+  // Use the new combined filtering function that supports multiple filters at once
+  const logs = await database.getActivityLogsFiltered(
+    {
+      search,
+      actionType,
+      userId
+    },
+    parseInt(limit),
+    parseInt(offset)
+  );
 
   res.json({
     logs,

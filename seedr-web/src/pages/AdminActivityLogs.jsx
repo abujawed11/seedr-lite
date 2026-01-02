@@ -175,13 +175,13 @@ export default function AdminActivityLogs() {
 
   const getActionBadgeColor = (actionType) => {
     if (!actionType) return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-    
+
     if (actionType.startsWith('torrent_')) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
     if (actionType.startsWith('file_') || actionType.startsWith('folder_') || actionType === 'direct_link_access') return 'bg-green-500/20 text-green-400 border-green-500/30';
     if (actionType.startsWith('admin_')) return 'bg-red-500/20 text-red-400 border-red-500/30';
     if (actionType.startsWith('security_') || actionType.includes('dmca')) return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-    if (actionType.includes('login') || actionType.includes('register') || actionType.includes('otp') || actionType === 'logout') return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-    
+    if (actionType.includes('login') || actionType.includes('register') || actionType.includes('otp') || actionType.includes('logout') || actionType.includes('password_reset')) return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+
     return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
@@ -280,7 +280,7 @@ export default function AdminActivityLogs() {
               <optgroup label="Authentication">
                 <option value="login_success">Login Success</option>
                 <option value="login_failure">Login Failure</option>
-                <option value="logout">Logout</option>
+                <option value="logout_success">Logout</option>
                 <option value="register_success">Register Success</option>
                 <option value="register_failure">Register Failure</option>
                 <option value="otp_verify_success">OTP Verify Success</option>
@@ -314,7 +314,7 @@ export default function AdminActivityLogs() {
               </optgroup>
 
               <optgroup label="Admin Actions">
-                <option value="admin_login">Admin Login</option>
+                <option value="admin_login_success">Admin Login</option>
                 <option value="admin_quota_update">Quota Update</option>
                 <option value="admin_status_update">Status Update</option>
                 <option value="admin_user_delete">User Delete</option>

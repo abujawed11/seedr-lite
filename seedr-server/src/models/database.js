@@ -1434,6 +1434,50 @@ class Database {
     });
   }
 
+  async getActivityLogsFiltered(filters = {}, limit = 100, offset = 0) {
+    return new Promise((resolve, reject) => {
+      const { search, actionType, userId } = filters;
+      const whereClauses = [];
+      const params = [];
+
+      // Add search filter (IP address, username, torrent name, file path)
+      if (search && search.trim()) {
+        whereClauses.push('(ip_address LIKE ? OR username LIKE ? OR torrent_name LIKE ? OR file_path LIKE ?)');
+        const searchPattern = `%${search.trim()}%`;
+        params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      }
+
+      // Add action type filter
+      if (actionType && actionType !== 'all') {
+        whereClauses.push('action_type = ?');
+        params.push(actionType);
+      }
+
+      // Add user ID filter
+      if (userId) {
+        whereClauses.push('user_id = ?');
+        params.push(userId);
+      }
+
+      const whereClause = whereClauses.length > 0
+        ? `WHERE ${whereClauses.join(' AND ')}`
+        : '';
+
+      const sql = `
+        SELECT * FROM activity_logs
+        ${whereClause}
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+
+      params.push(limit, offset);
+
+      this.db.all(sql, params, (err, rows) =>
+        err ? reject(err) : resolve(rows || [])
+      );
+    });
+  }
+
   async deleteActivityLog(logId) {
     return new Promise((resolve, reject) => {
       const sql = `DELETE FROM activity_logs WHERE id = ?`;
