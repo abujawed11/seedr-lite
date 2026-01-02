@@ -15,6 +15,8 @@ import RefundPage from '../pages/RefundPage';
 import ContactPage from '../pages/ContactPage';
 import Disclaimer from './Disclaimer';
 import DMCAPage from '../pages/DMCAPage';
+import ShippingDeliveryPage from '../pages/ShippingDeliveryPage';
+import AboutUsPage from '../pages/AboutUsPage';
 
 export default function AuthWrapper({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -177,6 +179,8 @@ export default function AuthWrapper({ children }) {
       {currentPage === 'terms' && <TermsPage onNavigate={handleNavigate} />}
       {currentPage === 'privacy' && <PrivacyPage onNavigate={handleNavigate} />}
       {currentPage === 'refund' && <RefundPage onNavigate={handleNavigate} />}
+      {currentPage === 'shipping' && <ShippingDeliveryPage onNavigate={handleNavigate} />}
+      {currentPage === 'about' && <AboutUsPage onNavigate={handleNavigate} />}
       {currentPage === 'contact' && <ContactPage onNavigate={handleNavigate} />}
       {currentPage === 'disclaimer' && <Disclaimer onNavigate={handleNavigate} />}
       {currentPage === 'dmca' && <DMCAPage onNavigate={handleNavigate} />}

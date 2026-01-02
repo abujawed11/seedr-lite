@@ -89,6 +89,14 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <ul className="space-y-2">
               <li>
                 <button
+                  onClick={() => onNavigate && onNavigate('about')}
+                  className="text-gray-400 hover:text-white transition-colors text-left"
+                >
+                  About Us
+                </button>
+              </li>
+              <li>
+                <button
                   onClick={() => onNavigate && onNavigate('contact')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
@@ -129,6 +137,14 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Refund Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate && onNavigate('shipping')}
+                  className="text-gray-400 hover:text-white transition-colors text-left"
+                >
+                  Shipping & Delivery
                 </button>
               </li>
               <li>
