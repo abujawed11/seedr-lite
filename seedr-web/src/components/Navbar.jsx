@@ -1,14 +1,16 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onShowAdminPanel, onShowMyAccount }) {
+  const navigate = useNavigate();
   const { isAuthenticated, user, logout, getStorageInfo } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const scrollToSection = (sectionId) => {
     // First navigate to home if not already there
     if (currentPage !== 'home') {
-      onNavigate('home');
+      navigate('/');
       // Wait for navigation to complete before scrolling
       setTimeout(() => {
         const element = document.getElementById(sectionId);
@@ -31,7 +33,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
           {/* Logo */}
           <div className="flex items-center">
             <div
-              onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'home')}
+              onClick={() => isAuthenticated ? onNavigate('dashboard') : navigate('/')}
               className="flex items-center cursor-pointer group"
             >
               {/* App Icon */}
@@ -57,7 +59,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
           {!isAuthenticated ? (
             <div className="flex items-center space-x-6">
               <button
-                onClick={() => onNavigate('home')}
+                onClick={() => navigate('/')}
                 className={`text-sm font-medium transition-colors ${
                   currentPage === 'home'
                     ? 'text-yellow-400'
@@ -288,7 +290,7 @@ export default function Navbar({ onNavigate, currentPage, onShowPlansModal, onSh
                         onClick={() => {
                           logout();
                           setShowUserMenu(false);
-                          onNavigate('home');
+                          navigate('/');
                         }}
                         className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700/50 hover:text-red-300 transition-all duration-200 transform hover:translate-x-1"
                       >

@@ -108,8 +108,10 @@
 
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-const Disclaimer = ({ onNavigate }) => {
+const Disclaimer = () => {
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 p-8">
       <div className="max-w-4xl mx-auto bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-gray-700">
@@ -264,9 +266,7 @@ const Disclaimer = ({ onNavigate }) => {
 
         <div className="mt-8 text-center">
           <button
-            onClick={() =>
-              onNavigate ? onNavigate('home') : (window.location.href = '/')
-            }
+            onClick={() => navigate('/')}
             className="px-6 py-3 bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 text-white rounded-lg hover:from-yellow-500 hover:via-orange-600 hover:to-red-600 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
           >
             Back to Home

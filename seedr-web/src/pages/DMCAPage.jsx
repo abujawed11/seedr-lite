@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
-export default function DMCAPage({ onNavigate }) {
+export default function DMCAPage() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     reporterName: '',
     reporterEmail: '',
@@ -95,7 +97,7 @@ export default function DMCAPage({ onNavigate }) {
               Please save this report ID for your records. You may use it to inquire about the status of your request.
             </p>
             <button
-              onClick={() => onNavigate ? onNavigate('home') : window.location.href = '/'}
+              onClick={() => navigate('/')}
               className="px-6 py-3 bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 text-white rounded-lg
                        hover:from-yellow-500 hover:via-orange-600 hover:to-red-600 transition-all font-semibold"
             >
@@ -113,7 +115,7 @@ export default function DMCAPage({ onNavigate }) {
         {/* Header */}
         <div className="mb-8">
           <button
-            onClick={() => onNavigate ? onNavigate('home') : window.location.href = '/'}
+            onClick={() => navigate('/')}
             className="mb-6 flex items-center text-gray-400 hover:text-white transition-colors"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

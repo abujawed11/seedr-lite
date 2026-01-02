@@ -1,4 +1,7 @@
+import { useNavigate } from 'react-router-dom';
+
 export default function Footer({ onNavigate, isAuthenticated }) {
+  const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
 
   const scrollToTop = () => {
@@ -97,7 +100,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('contact')}
+                  onClick={() => navigate('/contact-us')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Contact Us
@@ -117,7 +120,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <ul className="space-y-2">
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('terms')}
+                  onClick={() => navigate('/terms-and-conditions')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Terms & Conditions
@@ -125,7 +128,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('privacy')}
+                  onClick={() => navigate('/privacy-policy')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Privacy Policy
@@ -133,7 +136,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('refund')}
+                  onClick={() => navigate('/cancellation-refund')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Refund Policy
@@ -141,7 +144,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('shipping')}
+                  onClick={() => navigate('/shipping-policy')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   Shipping & Delivery
@@ -149,7 +152,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate && onNavigate('dmca')}
+                  onClick={() => navigate('/dmca')}
                   className="text-gray-400 hover:text-white transition-colors text-left"
                 >
                   DMCA Takedown
@@ -265,21 +268,21 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </p>
               <div className="flex justify-center gap-6 text-xs">
                 <button
-                  onClick={() => onNavigate && onNavigate('disclaimer')}
+                  onClick={() => navigate('/disclaimer')}
                   className="text-yellow-300 hover:text-yellow-200 transition-colors underline font-medium"
                 >
                   Read Full Disclaimer
                 </button>
                 <span className="text-gray-600">•</span>
                 <button
-                  onClick={() => onNavigate && onNavigate('terms')}
+                  onClick={() => navigate('/terms-and-conditions')}
                   className="text-gray-400 hover:text-white transition-colors underline"
                 >
                   Terms of Service
                 </button>
                 <span className="text-gray-600">•</span>
                 <button
-                  onClick={() => onNavigate && onNavigate('privacy')}
+                  onClick={() => navigate('/privacy-policy')}
                   className="text-gray-400 hover:text-white transition-colors underline"
                 >
                   Privacy Policy

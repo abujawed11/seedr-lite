@@ -1,10 +1,14 @@
-export default function ShippingDeliveryPage({ onNavigate }) {
+import { useNavigate } from 'react-router-dom';
+
+export default function ShippingDeliveryPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Back Button */}
         <button
-          onClick={() => onNavigate('home')}
+          onClick={() => navigate('/')}
           className="mb-8 flex items-center text-gray-400 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -120,7 +124,7 @@ export default function ShippingDeliveryPage({ onNavigate }) {
               </p>
               <ul className="list-disc list-inside ml-4 space-y-2">
                 <li><strong>Automatic Retry:</strong> Our system automatically retries activation for technical failures</li>
-                <li><strong>Payment Refund:</strong> If activation cannot be completed, full refund will be processed per our <button onClick={() => onNavigate('refund')} className="text-blue-400 hover:underline">Refund Policy</button></li>
+                <li><strong>Payment Refund:</strong> If activation cannot be completed, full refund will be processed per our <button onClick={() => navigate('/cancellation-refund')} className="text-blue-400 hover:underline">Refund Policy</button></li>
                 <li><strong>Alternative Solutions:</strong> Our support team will work with you to resolve activation issues</li>
                 <li><strong>Guaranteed Resolution:</strong> We guarantee activation within 48 hours or full refund</li>
               </ul>
@@ -238,9 +242,9 @@ export default function ShippingDeliveryPage({ onNavigate }) {
           <div className="mt-12 pt-8 border-t border-gray-700">
             <p className="text-sm text-gray-400 text-center">
               For additional information, please review our{' '}
-              <button onClick={() => onNavigate('terms')} className="text-blue-400 hover:underline">Terms & Conditions</button>,{' '}
-              <button onClick={() => onNavigate('refund')} className="text-blue-400 hover:underline">Refund Policy</button>, and{' '}
-              <button onClick={() => onNavigate('privacy')} className="text-blue-400 hover:underline">Privacy Policy</button>.
+              <button onClick={() => navigate('/terms-and-conditions')} className="text-blue-400 hover:underline">Terms & Conditions</button>,{' '}
+              <button onClick={() => navigate('/cancellation-refund')} className="text-blue-400 hover:underline">Refund Policy</button>, and{' '}
+              <button onClick={() => navigate('/privacy-policy')} className="text-blue-400 hover:underline">Privacy Policy</button>.
             </p>
           </div>
         </div>

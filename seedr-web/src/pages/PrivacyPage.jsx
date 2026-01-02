@@ -221,13 +221,17 @@
 
 
 
-export default function PrivacyPage({ onNavigate }) {
+import { useNavigate } from 'react-router-dom';
+
+export default function PrivacyPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Back Button */}
         <button
-          onClick={() => onNavigate('home')}
+          onClick={() => navigate('/')}
           className="mb-8 flex items-center text-gray-400 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
