@@ -2,7 +2,7 @@ const express = require('express');
 const database = require('../models/database');
 const { generateToken, authenticateToken } = require('../middlewares/auth');
 const asyncHandler = require('../middlewares/asyncHandler');
-const { updateUserStorageUsage } = require('../utils/storage');
+const { updateUserStorageUsage, ensureUserStorageDir } = require('../utils/storage');
 const emailService = require('../services/emailService');
 const { generateOTP } = require('../utils/otpGenerator');
 const axios = require('axios');
@@ -126,6 +126,10 @@ router.post('/verify-otp', asyncHandler(async (req, res) => {
       ageConfirmed: storedOTP.age_confirmed === 1,
       registrationIp: storedOTP.registration_ip
     });
+
+    // Create user's storage directory
+    ensureUserStorageDir(user.id);
+    console.log(`📁 Created storage directory for user: ${user.username} (${user.id})`);
 
     // Mark email as verified
     await database.markEmailAsVerified(email);

@@ -386,6 +386,14 @@ class ActivityLogger {
    */
   async log(req, actionType, details = {}) {
     try {
+      const userId = req.user?.id || details.userId || null;
+
+      // Skip logging if no user (public routes)
+      if (!userId) {
+        // Silently skip logging for anonymous/public requests
+        return;
+      }
+
       const ipAddress = this.getClientIp(req);
       const normalizedIp = this.normalizeIp(ipAddress) || 'unknown';
 
@@ -393,8 +401,8 @@ class ActivityLogger {
       const countryCode = await this.getCountryCode(normalizedIp);
 
       await this.database.logActivity({
-        userId: req.user?.id || details.userId || null,
-        username: req.user?.username || details.username || 'anonymous',
+        userId: userId,
+        username: req.user?.username || details.username || 'unknown',
         actionType,
         torrentName: details.torrentName || null,
         torrentHash: details.torrentHash || null,
