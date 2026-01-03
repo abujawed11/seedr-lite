@@ -3,7 +3,7 @@ import { getPlans, createPaymentOrder, verifyPayment } from '../api';
 
 export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSuccess }) {
   const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [processingPlanId, setProcessingPlanId] = useState(null);
   const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedDuration, setSelectedDuration] = useState('monthly'); // 'monthly' or 'yearly'
@@ -44,7 +44,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
   }, []);
 
   const handleSelectPlan = async (planId, duration) => {
-    setLoading(true);
+    setProcessingPlanId(planId);
     setError('');
 
     try {
@@ -70,7 +70,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
         handler: async function (response) {
           // Payment successful - verify on backend
           try {
-            setLoading(true);
+            setProcessingPlanId(planId);
             const verifyData = await verifyPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -90,12 +90,12 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
             console.error('Payment verification failed:', err);
             setError(err.response?.data?.error || 'Payment verification failed. Please contact support.');
           } finally {
-            setLoading(false);
+            setProcessingPlanId(null);
           }
         },
         modal: {
           ondismiss: function() {
-            setLoading(false);
+            setProcessingPlanId(null);
             console.log('Payment cancelled by user');
           }
         }
@@ -107,7 +107,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
       setError(err.response?.data?.error || 'Failed to initiate payment');
       console.error('Payment initiation error:', err);
     } finally {
-      setLoading(false);
+      setProcessingPlanId(null);
     }
   };
 
@@ -303,7 +303,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                   {/* Action Button */}
                   <button
                     onClick={() => handleSelectPlan(plan.id, selectedDuration)}
-                    disabled={isCurrent || isDowngrade || loading}
+                    disabled={isCurrent || isDowngrade || !!processingPlanId}
                     className={`w-full mt-6 py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
                       isCurrent
                         ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
@@ -316,7 +316,7 @@ export default function PlansModal({ isOpen, onClose, currentPlan, onUpgradeSucc
                       ? 'Current Plan'
                       : isDowngrade
                       ? 'Downgrades Not Available'
-                      : loading
+                      : processingPlanId === plan.id
                       ? 'Processing...'
                       : `Upgrade to ${plan.name}`}
                   </button>
