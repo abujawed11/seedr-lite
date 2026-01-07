@@ -1014,11 +1014,13 @@ exports.getNotifications = async (req, res) => {
     });
 
     // Log notification view (low priority)
+    /*
     if (notifications.length > 0) {
       await req.activityLogger.log(req, 'notification_view', {
         fileSize: notifications.length
       });
     }
+    */
 
     res.json({ notifications });
   } catch (error) {
