@@ -108,15 +108,18 @@ export default function HomePage({ onNavigate }) {
             {/* Hero Title */}
             <h1 className="text-5xl md:text-7xl font-bold mb-6">
               <span className="bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
-                Download Torrents
+                Download Files
               </span>
               <br />
               <span className="text-white">To The Cloud</span>
             </h1>
 
             {/* Hero Description */}
-            <p className="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
+            {/* <p className="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
               Fast, secure, and reliable torrent downloads. Stream or download files from anywhere, anytime.
+            </p> */}
+            <p className="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
+              Fast, secure cloud-based file downloads. Stream or access your files from anywhere, anytime.
             </p>
 
             {/* CTA Buttons */}

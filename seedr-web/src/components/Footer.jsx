@@ -36,8 +36,11 @@ export default function Footer({ onNavigate, isAuthenticated }) {
                 MyPeerCloud
               </h3>
             </div>
-            <p className="text-gray-400 mb-4 max-w-md">
+            {/* <p className="text-gray-400 mb-4 max-w-md">
               Fast, secure, and reliable cloud-based torrent downloading service. Download to the cloud and stream from anywhere.
+            </p> */}
+            <p className="text-gray-400 mb-4 max-w-md">
+              Fast, secure, and reliable cloud-based file management platform. Download, store, and stream your personal files from anywhere.
             </p>
           </div>
 
@@ -248,7 +251,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
           {/* Additional Legal Info */}
           <div className="mt-6 text-center text-xs text-gray-500">
             <p>
-              MyPeerCloud is committed to protecting copyrights. We comply with the Digital Millennium Copyright Act (DMCA).
+              MyPeerCloud respects intellectual property rights and complies with applicable copyright laws.
               <br />
               For copyright concerns, please contact: <a href="mailto:dmca@mypeercloud.in" className="text-blue-400 hover:text-blue-300">dmca@mypeercloud.in</a>
             </p>
@@ -264,9 +267,8 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <div className="text-center space-y-3">
               <p className="text-sm text-gray-300 leading-relaxed">
                 <span className="text-yellow-400 text-lg mr-2">⚠️</span>
-                <strong className="text-yellow-300">Disclaimer:</strong> This service acts as a user-controlled cloud-based download client.
-                We do not host, store, or distribute copyrighted content. Users are solely responsible for ensuring their
-                downloads comply with applicable copyright laws and intellectual property rights.
+                <strong className="text-yellow-300">Disclaimer:</strong> MyPeerCloud provides a user-controlled cloud file management platform. 
+                Users are solely responsible for ensuring their content complies with applicable laws.
               </p>
               <div className="flex justify-center gap-6 text-xs">
                 <button
