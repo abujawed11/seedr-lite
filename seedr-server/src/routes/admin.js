@@ -1067,6 +1067,176 @@ router.get('/cache/user-links/:userId', asyncHandler(async (req, res) => {
   });
 }));
 
+// ==================== R2 Cloud Storage Management ====================
+
+// Get R2 storage statistics
+router.get('/r2/stats', asyncHandler(async (req, res) => {
+  const r2Storage = require('../services/r2Storage');
+
+  // Initialize if not already
+  r2Storage.initialize();
+
+  const stats = await r2Storage.getStats();
+
+  res.json(stats);
+}));
+
+// List files in R2 for a torrent
+router.get('/r2/torrents/:infoHash', asyncHandler(async (req, res) => {
+  const { infoHash } = req.params;
+  const r2Storage = require('../services/r2Storage');
+
+  const files = await r2Storage.getTorrentR2Files(infoHash);
+
+  res.json({
+    infoHash,
+    files: files.map(f => ({
+      ...f,
+      formatted_size: formatBytes(f.file_size || 0)
+    })),
+    count: files.length,
+    totalSize: files.reduce((sum, f) => sum + (f.file_size || 0), 0),
+    formatted_total: formatBytes(files.reduce((sum, f) => sum + (f.file_size || 0), 0))
+  });
+}));
+
+// Generate presigned URL for a file
+router.get('/r2/presign', asyncHandler(async (req, res) => {
+  const { key, expiresIn = 3600 } = req.query;
+  const r2Storage = require('../services/r2Storage');
+
+  if (!key) {
+    return res.status(400).json({ error: 'Missing key parameter' });
+  }
+
+  if (!r2Storage.isAvailable()) {
+    return res.status(503).json({ error: 'R2 Storage is not available' });
+  }
+
+  try {
+    const url = await r2Storage.getPresignedUrl(key, parseInt(expiresIn));
+    res.json({ url, expiresIn: parseInt(expiresIn) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}));
+
+// Manually upload a torrent to R2
+router.post('/r2/upload/:infoHash', asyncHandler(async (req, res) => {
+  const { infoHash } = req.params;
+  const { deleteLocal = false } = req.body;
+  const r2Storage = require('../services/r2Storage');
+  const cacheManager = require('../services/cacheManager');
+
+  if (!r2Storage.isAvailable()) {
+    return res.status(503).json({ error: 'R2 Storage is not available' });
+  }
+
+  // Get cache entry
+  const cache = await cacheManager.getCacheEntry(infoHash);
+  if (!cache) {
+    return res.status(404).json({ error: 'Cache entry not found' });
+  }
+
+  if (!cache.cache_path) {
+    return res.status(400).json({ error: 'No local cache path found' });
+  }
+
+  // Check if already uploaded
+  if (cache.r2_uploaded === 1) {
+    return res.status(400).json({ error: 'Already uploaded to R2' });
+  }
+
+  const result = await r2Storage.migrateToR2(infoHash, cache.cache_path, deleteLocal);
+
+  if (result.success) {
+    await req.activityLogger.log(req, 'admin_r2_upload', {
+      torrentName: cache.name,
+      torrentHash: infoHash,
+      fileSize: cache.total_size
+    });
+  }
+
+  res.json(result);
+}));
+
+// Delete a torrent from R2
+router.delete('/r2/torrents/:infoHash', asyncHandler(async (req, res) => {
+  const { infoHash } = req.params;
+  const r2Storage = require('../services/r2Storage');
+  const cacheManager = require('../services/cacheManager');
+
+  if (!r2Storage.isAvailable()) {
+    return res.status(503).json({ error: 'R2 Storage is not available' });
+  }
+
+  const cache = await cacheManager.getCacheEntry(infoHash);
+  const result = await r2Storage.deleteTorrent(infoHash);
+
+  if (result.success) {
+    // Update cache entry
+    await cacheManager.updateCacheStatus(infoHash, 'completed', { r2Uploaded: false });
+
+    await req.activityLogger.log(req, 'admin_r2_delete', {
+      torrentName: cache?.name || infoHash,
+      torrentHash: infoHash,
+      fileSize: result.deleted
+    });
+  }
+
+  res.json(result);
+}));
+
+// List all objects in R2 bucket (with prefix filter)
+router.get('/r2/list', asyncHandler(async (req, res) => {
+  const { prefix = '', maxKeys = 100 } = req.query;
+  const r2Storage = require('../services/r2Storage');
+
+  if (!r2Storage.isAvailable()) {
+    return res.status(503).json({ error: 'R2 Storage is not available' });
+  }
+
+  try {
+    const result = await r2Storage.listObjects(prefix, parseInt(maxKeys));
+    res.json({
+      ...result,
+      contents: result.contents.map(obj => ({
+        key: obj.Key,
+        size: obj.Size,
+        formatted_size: formatBytes(obj.Size || 0),
+        lastModified: obj.LastModified
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}));
+
+// Check R2 availability
+router.get('/r2/status', asyncHandler(async (req, res) => {
+  const r2Storage = require('../services/r2Storage');
+
+  res.json({
+    enabled: r2Storage.enabled,
+    initialized: r2Storage.initialized,
+    available: r2Storage.isAvailable(),
+    bucket: r2Storage.bucket,
+    publicDomain: r2Storage.publicDomain
+  });
+}));
+
+// Initialize R2 (if not auto-initialized)
+router.post('/r2/initialize', asyncHandler(async (req, res) => {
+  const r2Storage = require('../services/r2Storage');
+
+  const result = r2Storage.initialize();
+
+  res.json({
+    success: result,
+    available: r2Storage.isAvailable()
+  });
+}));
+
 // ==================== Subscription Management ====================
 
 // Get user's subscription details
