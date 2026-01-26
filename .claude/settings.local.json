@@ -28,7 +28,9 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(netsh advfirewall firewall show rule:*)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(ls:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

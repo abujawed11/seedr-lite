@@ -325,6 +325,177 @@ class Database {
     // Create reservations table + indexes via manager
     await this.reservations.createReservationsTable();
 
+    // ==================== STORAGE OPTIMIZATION TABLES ====================
+    // Phase 1: Tables for SSD management, R2 storage, torrent cache, and BullMQ queue
+
+    // 1. Torrent Cache - Global cache for deduplication
+    const createTorrentCacheTable = `
+      CREATE TABLE IF NOT EXISTS torrent_cache (
+        info_hash TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        total_size INTEGER NOT NULL,
+        files_count INTEGER DEFAULT 0,
+        cache_path TEXT NOT NULL,
+        r2_uploaded INTEGER DEFAULT 0,
+        reference_count INTEGER DEFAULT 0,
+        download_status TEXT DEFAULT 'downloading' CHECK (download_status IN ('downloading', 'completed', 'error', 'uploading')),
+        first_cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createTorrentCacheTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    // Create indexes for torrent_cache
+    const createTorrentCacheIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_cache_info_hash ON torrent_cache(info_hash);
+      CREATE INDEX IF NOT EXISTS idx_cache_ref_count ON torrent_cache(reference_count);
+      CREATE INDEX IF NOT EXISTS idx_cache_status ON torrent_cache(download_status);
+      CREATE INDEX IF NOT EXISTS idx_cache_r2_uploaded ON torrent_cache(r2_uploaded);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createTorrentCacheIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Torrent cache table created or verified');
+
+    // 2. User Torrent Links - Maps users to cached torrents
+    const createUserTorrentLinksTable = `
+      CREATE TABLE IF NOT EXISTS user_torrent_links (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        info_hash TEXT NOT NULL,
+        user_folder_name TEXT NOT NULL,
+        symlink_path TEXT,
+        is_cached INTEGER DEFAULT 0,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (info_hash) REFERENCES torrent_cache(info_hash) ON DELETE CASCADE
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createUserTorrentLinksTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    // Create indexes for user_torrent_links
+    const createUserLinksIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_user_links_user_id ON user_torrent_links(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_links_info_hash ON user_torrent_links(info_hash);
+      CREATE INDEX IF NOT EXISTS idx_user_links_cached ON user_torrent_links(is_cached);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createUserLinksIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('User torrent links table created or verified');
+
+    // 3. R2 Files - Tracks files uploaded to Cloudflare R2
+    const createR2FilesTable = `
+      CREATE TABLE IF NOT EXISTS r2_files (
+        id TEXT PRIMARY KEY,
+        info_hash TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        r2_object_key TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        mime_type TEXT,
+        uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (info_hash) REFERENCES torrent_cache(info_hash) ON DELETE CASCADE
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createR2FilesTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    // Create indexes for r2_files
+    const createR2FilesIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_r2_files_info_hash ON r2_files(info_hash);
+      CREATE INDEX IF NOT EXISTS idx_r2_files_object_key ON r2_files(r2_object_key);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createR2FilesIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('R2 files table created or verified');
+
+    // 4. SSD Reservations - Global SSD space management
+    const createSSDReservationsTable = `
+      CREATE TABLE IF NOT EXISTS ssd_reservations (
+        id TEXT PRIMARY KEY,
+        info_hash TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'released', 'finalized')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createSSDReservationsTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    // Create indexes for ssd_reservations
+    const createSSDReservationsIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_ssd_reservations_status ON ssd_reservations(status);
+      CREATE INDEX IF NOT EXISTS idx_ssd_reservations_user ON ssd_reservations(user_id);
+      CREATE INDEX IF NOT EXISTS idx_ssd_reservations_info_hash ON ssd_reservations(info_hash);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createSSDReservationsIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('SSD reservations table created or verified');
+
+    // 5. Download Queue - BullMQ job tracking
+    const createDownloadQueueTable = `
+      CREATE TABLE IF NOT EXISTS download_queue (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        magnet_link TEXT NOT NULL,
+        info_hash TEXT,
+        estimated_size INTEGER DEFAULT 0,
+        priority INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'failed', 'cancelled')),
+        bullmq_job_id TEXT,
+        requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        started_at DATETIME,
+        completed_at DATETIME,
+        error_message TEXT,
+        retry_count INTEGER DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createDownloadQueueTable, (err) => (err ? reject(err) : resolve()))
+    );
+
+    // Create indexes for download_queue
+    const createDownloadQueueIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_queue_status ON download_queue(status);
+      CREATE INDEX IF NOT EXISTS idx_queue_priority ON download_queue(priority DESC, requested_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_queue_user ON download_queue(user_id);
+      CREATE INDEX IF NOT EXISTS idx_queue_bullmq_job ON download_queue(bullmq_job_id);
+    `;
+
+    await new Promise((resolve, reject) =>
+      this.db.exec(createDownloadQueueIndexes, (err) => (err ? reject(err) : resolve()))
+    );
+
+    console.log('Download queue table created or verified');
+
+    // ==================== END STORAGE OPTIMIZATION TABLES ====================
+
     // Optional legacy column (safe no-op if already exists)
     await this.addRemainingQuotaColumnSafely();
 

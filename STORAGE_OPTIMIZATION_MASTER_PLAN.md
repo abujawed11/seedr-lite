@@ -98,6 +98,57 @@ Benefits:
 
 ---
 
+## 🐳 Docker + Redis + BullMQ Architecture
+
+### Why Redis + BullMQ?
+
+| Feature | Simple Queue (SQLite + setInterval) | Redis + BullMQ |
+|---------|-------------------------------------|----------------|
+| **Reliability** | Basic polling every 30s | Event-driven, real-time |
+| **Retry Logic** | Manual implementation | Built-in with exponential backoff |
+| **Concurrency** | Manual tracking | Built-in limiter |
+| **Job Priority** | Manual sorting | Native priority queues |
+| **Progress Tracking** | Manual database updates | Built-in job progress |
+| **Scaling** | Single process only | Multiple workers across servers |
+| **Persistence** | SQLite (slower) | Redis (faster, in-memory) |
+| **Dashboard** | Build from scratch | Bull Board (free, ready-made) |
+| **Dead Jobs** | Manual cleanup | Auto-cleanup with TTL |
+| **Graceful Shutdown** | Manual | Built-in |
+
+### Quick Start with Docker
+
+```bash
+# Start all services (Redis, Bull Board, and your app)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Access services:
+# - Seedr Server: http://localhost:5000
+# - Bull Board Dashboard: http://localhost:3001
+
+# Stop all services
+docker-compose down
+```
+
+### Development without Docker
+
+```bash
+# Install Redis locally (Windows - use WSL or Docker)
+# macOS: brew install redis && brew services start redis
+# Linux: sudo apt install redis-server && sudo systemctl start redis
+
+# Install dependencies
+cd seedr-server
+npm install bullmq ioredis
+
+# Start the server
+npm run dev
+```
+
+---
+
 ## 🔍 Current System Analysis
 
 ### Current Architecture
@@ -500,7 +551,7 @@ CREATE INDEX idx_ssd_reservations_status ON ssd_reservations(status);
 CREATE INDEX idx_ssd_reservations_user ON ssd_reservations(user_id);
 ```
 
-#### 5. `download_queue` - Download Queue System
+#### 5. `download_queue` - Download Queue System (with BullMQ integration)
 ```sql
 CREATE TABLE IF NOT EXISTS download_queue (
   id TEXT PRIMARY KEY,
@@ -510,16 +561,19 @@ CREATE TABLE IF NOT EXISTS download_queue (
   estimated_size INTEGER DEFAULT 0,
   priority INTEGER DEFAULT 0,
   status TEXT CHECK (status IN ('queued','downloading','completed','failed','cancelled')) DEFAULT 'queued',
+  bullmq_job_id TEXT,                       -- BullMQ job reference
   requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   started_at DATETIME,
   completed_at DATETIME,
   error_message TEXT,
+  retry_count INTEGER DEFAULT 0,            -- Track retry attempts
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_queue_status ON download_queue(status);
 CREATE INDEX idx_queue_priority ON download_queue(priority DESC, requested_at ASC);
 CREATE INDEX idx_queue_user ON download_queue(user_id);
+CREATE INDEX idx_queue_bullmq_job ON download_queue(bullmq_job_id);
 ```
 
 ### Modified Tables
@@ -552,10 +606,18 @@ SSD_RESERVED_FOR_SYSTEM=5368709120        # 5GB reserved for OS
 SSD_MAX_DOWNLOAD_SPACE=102005473280       # 95GB max for torrents
 SSD_CHECK_INTERVAL=30000                  # Check every 30 seconds
 
-# Queue System
+# Redis + BullMQ Configuration (Docker)
+REDIS_HOST=localhost                      # Redis host (use 'redis' for Docker network)
+REDIS_PORT=6379                           # Redis port
+REDIS_PASSWORD=                           # Redis password (optional)
+REDIS_DB=0                                # Redis database number
+
+# Queue System (BullMQ)
 QUEUE_ENABLED=true
-QUEUE_PROCESS_INTERVAL=30000              # Process queue every 30 seconds
 QUEUE_MAX_CONCURRENT_GLOBAL=10            # Max global concurrent downloads
+QUEUE_MAX_RETRIES=3                       # Max retry attempts for failed jobs
+QUEUE_RETRY_DELAY=60000                   # Delay between retries (1 minute)
+QUEUE_JOB_TIMEOUT=3600000                 # Job timeout (1 hour)
 
 # Cache System
 CACHE_CLEANUP_INTERVAL=86400000           # Cleanup every 24 hours
@@ -565,6 +627,88 @@ CACHE_MAX_SINGLE_TORRENT_SIZE=107374182400  # 100GB max per torrent
 # Storage Mode
 STORAGE_MODE=hybrid                       # local, r2, hybrid
 AUTO_MIGRATE_TO_R2=true                   # Auto-migrate completed to R2
+```
+
+### Docker Configuration
+
+#### File: `docker-compose.yml`
+```yaml
+version: '3.8'
+
+services:
+  # Redis for BullMQ job queue
+  redis:
+    image: redis:7-alpine
+    container_name: seedr-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Bull Board - Queue Dashboard (Optional but recommended)
+  bull-board:
+    image: deadly0/bull-board
+    container_name: seedr-bull-board
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USE_TLS: "false"
+      BULL_PREFIX: "bull"
+    depends_on:
+      - redis
+
+  # Seedr Server (your app)
+  seedr-server:
+    build:
+      context: ./seedr-server
+      dockerfile: Dockerfile
+    container_name: seedr-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./seedr-server/src/storage:/app/src/storage
+      - ./seedr-server/database:/app/database
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+    driver: local
+```
+
+#### File: `seedr-server/Dockerfile`
+```dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for native modules
+RUN apk add --no-cache python3 make g++
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["node", "src/index.js"]
 ```
 
 ---
@@ -577,20 +721,31 @@ AUTO_MIGRATE_TO_R2=true                   # Auto-migrate completed to R2
 - [ ] Create all new database tables
 - [ ] Add database migration scripts
 - [ ] Create `cache/` directory structure
-- [ ] Install dependencies: `@aws-sdk/client-s3`
+- [ ] Install dependencies:
+  - [ ] `@aws-sdk/client-s3` - R2 storage
+  - [ ] `bullmq` - Job queue
+  - [ ] `ioredis` - Redis client
+- [ ] Set up Docker environment:
+  - [ ] Create `docker-compose.yml`
+  - [ ] Create `Dockerfile` for seedr-server
+  - [ ] Configure Redis container
+  - [ ] Configure Bull Board dashboard (optional)
 - [ ] Add environment variables
 - [ ] Create R2 client initialization
+- [ ] Create Redis connection module
 - [ ] Add basic database helper functions
 
 **Deliverables:**
 - Database schema updated
 - R2 client configured
 - Cache directory created
+- Docker containers running (Redis + Bull Board)
+- Redis connection tested
 
 ---
 
-### Phase 2: SSD Space Management (Week 2)
-**Focus:** Prevent SSD from filling up
+### Phase 2: SSD Space Management + BullMQ Queue (Week 2)
+**Focus:** Prevent SSD from filling up, implement robust queue
 
 - [ ] Create `src/utils/diskSpace.js`
   - [ ] `getAvailableDiskSpace()`
@@ -604,16 +759,24 @@ AUTO_MIGRATE_TO_R2=true                   # Auto-migrate completed to R2
   - [ ] Add SSD space check before download
   - [ ] Reserve SSD space atomically
   - [ ] Release SSD space on completion
-- [ ] Add download queue system
-  - [ ] Create `src/services/queueManager.js`
-  - [ ] `addToQueue()`
-  - [ ] `processQueue()` background job
+- [ ] Implement BullMQ download queue
+  - [ ] Create `src/services/redis.js` - Redis connection
+  - [ ] Create `src/services/queueManager.js` - BullMQ wrapper
+  - [ ] `addToQueue()` - Add job to BullMQ
+  - [ ] `startWorker()` - Process jobs with concurrency control
+  - [ ] `cancelQueueItem()` - Cancel pending jobs
+  - [ ] `getQueueStats()` - Queue statistics
+  - [ ] `retryFailedJobs()` - Retry failed downloads
+- [ ] Set up Bull Board dashboard for monitoring
 - [ ] Test SSD full scenarios
+- [ ] Test queue retry mechanisms
 
 **Deliverables:**
 - SSD space checking works
-- Queue system functional
+- BullMQ queue functional with retries
+- Bull Board dashboard accessible
 - No more crashes when SSD full
+- Graceful handling of concurrent downloads
 
 ---
 
@@ -707,25 +870,33 @@ AUTO_MIGRATE_TO_R2=true                   # Auto-migrate completed to R2
 **Focus:** User-facing features
 
 - [ ] API endpoints
-  - [ ] `GET /api/torrents/check-cache`
-  - [ ] `GET /api/torrents/queue`
-  - [ ] `DELETE /api/torrents/queue/:id`
-  - [ ] `GET /api/admin/cache-stats`
-  - [ ] `GET /api/admin/ssd-usage`
+  - [ ] `GET /api/torrents/check-cache` - Check if torrent is cached
+  - [ ] `GET /api/torrents/queue` - Get user's queue
+  - [ ] `DELETE /api/torrents/queue/:id` - Cancel queued download
+  - [ ] `GET /api/admin/cache-stats` - Cache statistics
+  - [ ] `GET /api/admin/ssd-usage` - SSD usage info
+  - [ ] `GET /api/admin/queue/stats` - BullMQ queue statistics
+  - [ ] `POST /api/admin/queue/pause` - Pause the queue
+  - [ ] `POST /api/admin/queue/resume` - Resume the queue
+  - [ ] `POST /api/admin/queue/retry-failed` - Retry all failed jobs
+  - [ ] `POST /api/admin/queue/clean` - Clean old completed jobs
 - [ ] Frontend indicators
   - [ ] ⚡ "Cached" badge on torrents
   - [ ] "Queued" status display
   - [ ] Queue position indicator
+  - [ ] Real-time progress updates
   - [ ] SSD usage dashboard
 - [ ] Admin dashboard
   - [ ] Cache statistics
   - [ ] SSD usage graphs
-  - [ ] Queue management
+  - [ ] BullMQ queue management (or use Bull Board at :3001)
   - [ ] Manual cache cleanup
+  - [ ] Failed jobs management
 
 **Deliverables:**
 - User-facing features complete
 - Admin tools available
+- Bull Board dashboard accessible
 - API documentation
 
 ---
@@ -886,128 +1057,278 @@ module.exports = new SSDReservationManager();
 
 ---
 
-### 2. Download Queue System
+### 2. Download Queue System (Redis + BullMQ)
+
+#### File: `src/services/redis.js`
+```javascript
+const { Redis } = require('ioredis');
+
+// Create Redis connection for BullMQ
+const createRedisConnection = () => {
+  return new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT) || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB) || 0,
+    maxRetriesPerRequest: null, // Required for BullMQ
+    enableReadyCheck: false,    // Required for BullMQ
+  });
+};
+
+// Singleton connection for general use
+let redisClient = null;
+
+const getRedisClient = () => {
+  if (!redisClient) {
+    redisClient = createRedisConnection();
+
+    redisClient.on('connect', () => {
+      console.log('✅ Redis connected');
+    });
+
+    redisClient.on('error', (err) => {
+      console.error('❌ Redis error:', err);
+    });
+  }
+  return redisClient;
+};
+
+module.exports = {
+  createRedisConnection,
+  getRedisClient
+};
+```
 
 #### File: `src/services/queueManager.js`
 ```javascript
+const { Queue, Worker, QueueEvents } = require('bullmq');
+const { createRedisConnection } = require('./redis');
 const database = require('../models/database');
 const { v4: uuidv4 } = require('uuid');
 
 class QueueManager {
   constructor() {
-    this.processInterval = parseInt(process.env.QUEUE_PROCESS_INTERVAL) || 30000;
     this.maxConcurrent = parseInt(process.env.QUEUE_MAX_CONCURRENT_GLOBAL) || 10;
-    this.isProcessing = false;
+    this.maxRetries = parseInt(process.env.QUEUE_MAX_RETRIES) || 3;
+    this.retryDelay = parseInt(process.env.QUEUE_RETRY_DELAY) || 60000;
+    this.jobTimeout = parseInt(process.env.QUEUE_JOB_TIMEOUT) || 3600000;
+
+    this.queue = null;
+    this.worker = null;
+    this.queueEvents = null;
+    this.isInitialized = false;
+  }
+
+  async initialize() {
+    if (this.isInitialized) return;
+
+    const connection = createRedisConnection();
+
+    // Create the download queue
+    this.queue = new Queue('downloads', {
+      connection,
+      defaultJobOptions: {
+        attempts: this.maxRetries,
+        backoff: {
+          type: 'exponential',
+          delay: this.retryDelay,
+        },
+        timeout: this.jobTimeout,
+        removeOnComplete: {
+          age: 24 * 3600,    // Keep completed jobs for 24 hours
+          count: 1000,       // Keep last 1000 completed jobs
+        },
+        removeOnFail: {
+          age: 7 * 24 * 3600, // Keep failed jobs for 7 days
+        },
+      },
+    });
+
+    // Create queue events listener
+    this.queueEvents = new QueueEvents('downloads', { connection });
+
+    // Set up event listeners
+    this.setupEventListeners();
+
+    this.isInitialized = true;
+    console.log('🚀 BullMQ Queue Manager initialized');
+  }
+
+  setupEventListeners() {
+    this.queueEvents.on('completed', async ({ jobId, returnvalue }) => {
+      console.log(`✅ Job ${jobId} completed`);
+      await this.updateJobStatus(jobId, 'completed');
+    });
+
+    this.queueEvents.on('failed', async ({ jobId, failedReason }) => {
+      console.error(`❌ Job ${jobId} failed: ${failedReason}`);
+      await this.updateJobStatus(jobId, 'failed', failedReason);
+    });
+
+    this.queueEvents.on('progress', async ({ jobId, data }) => {
+      console.log(`📊 Job ${jobId} progress: ${data}%`);
+    });
+
+    this.queueEvents.on('waiting', ({ jobId }) => {
+      console.log(`⏳ Job ${jobId} is waiting`);
+    });
+
+    this.queueEvents.on('active', ({ jobId }) => {
+      console.log(`▶️  Job ${jobId} is now active`);
+    });
+
+    this.queueEvents.on('stalled', ({ jobId }) => {
+      console.warn(`⚠️  Job ${jobId} has stalled`);
+    });
   }
 
   async addToQueue(userId, magnetLink, infoHash, estimatedSize = 0, priority = 0) {
-    const id = uuidv4();
+    if (!this.isInitialized) await this.initialize();
 
+    const jobId = uuidv4();
+
+    // Add to BullMQ queue
+    const job = await this.queue.add(
+      'download-torrent',
+      {
+        jobId,
+        userId,
+        magnetLink,
+        infoHash,
+        estimatedSize,
+      },
+      {
+        jobId,                          // Use our own ID
+        priority: 10 - priority,        // BullMQ: lower = higher priority
+        delay: 0,                        // Start immediately when worker available
+      }
+    );
+
+    // Also store in database for persistence and UI
     await database.db.run(`
       INSERT INTO download_queue
-      (id, user_id, magnet_link, info_hash, estimated_size, priority, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued')
-    `, [id, userId, magnetLink, infoHash, estimatedSize, priority]);
+      (id, user_id, magnet_link, info_hash, estimated_size, priority, status, bullmq_job_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
+    `, [jobId, userId, magnetLink, infoHash, estimatedSize, priority, job.id]);
 
-    console.log(`📥 Added to queue: ${infoHash} (User: ${userId})`);
+    console.log(`📥 Added to BullMQ queue: ${infoHash} (Job: ${jobId})`);
+
+    const position = await this.getQueuePosition(jobId);
 
     return {
-      id,
+      id: jobId,
+      bullmqJobId: job.id,
       status: 'queued',
-      position: await this.getQueuePosition(id)
+      position,
     };
   }
 
-  async getQueuePosition(queueId) {
-    const result = await database.db.get(`
-      SELECT COUNT(*) as position
-      FROM download_queue
-      WHERE status = 'queued'
-        AND (priority > (SELECT priority FROM download_queue WHERE id = ?)
-          OR (priority = (SELECT priority FROM download_queue WHERE id = ?)
-            AND requested_at < (SELECT requested_at FROM download_queue WHERE id = ?)))
-    `, [queueId, queueId, queueId]);
+  async getQueuePosition(jobId) {
+    if (!this.isInitialized) await this.initialize();
 
-    return result.position + 1;
+    const job = await this.queue.getJob(jobId);
+    if (!job) return -1;
+
+    const state = await job.getState();
+    if (state === 'active') return 0;
+    if (state !== 'waiting' && state !== 'delayed') return -1;
+
+    const waiting = await this.queue.getWaiting();
+    const index = waiting.findIndex(j => j.id === jobId);
+    return index + 1;
   }
 
-  async processQueue() {
-    if (this.isProcessing) return;
-    this.isProcessing = true;
+  async updateJobStatus(jobId, status, errorMessage = null) {
+    const updateQuery = errorMessage
+      ? `UPDATE download_queue SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ? OR bullmq_job_id = ?`
+      : `UPDATE download_queue SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ? OR bullmq_job_id = ?`;
 
-    try {
-      const diskSpace = require('../utils/diskSpace');
-      const torrentManager = require('./torrentManager');
+    const params = errorMessage
+      ? [status, errorMessage, jobId, jobId]
+      : [status, jobId, jobId];
 
-      // Get current active downloads
-      const activeDownloads = await this.getActiveDownloadsCount();
+    await database.db.run(updateQuery, params);
+  }
 
-      if (activeDownloads >= this.maxConcurrent) {
-        console.log(`⏸️  Queue paused: Max concurrent downloads (${this.maxConcurrent}) reached`);
-        return;
-      }
+  // Start the worker that processes jobs
+  async startWorker() {
+    if (!this.isInitialized) await this.initialize();
 
-      // Get queued items (ordered by priority, then FIFO)
-      const queuedItems = await database.db.all(`
-        SELECT * FROM download_queue
-        WHERE status = 'queued'
-        ORDER BY priority DESC, requested_at ASC
-        LIMIT ?
-      `, [this.maxConcurrent - activeDownloads]);
+    const diskSpace = require('../utils/diskSpace');
+    const torrentManager = require('./torrentManager');
 
-      for (const item of queuedItems) {
-        // Check if we have space
-        const hasSpace = await diskSpace.hasEnoughSpace(item.estimated_size || 0);
+    this.worker = new Worker(
+      'downloads',
+      async (job) => {
+        const { jobId, userId, magnetLink, infoHash, estimatedSize } = job.data;
 
+        console.log(`🔄 Processing job ${jobId}: ${infoHash}`);
+
+        // Update status to downloading
+        await database.db.run(`
+          UPDATE download_queue
+          SET status = 'downloading', started_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `, [jobId]);
+
+        // Check SSD space before starting
+        const hasSpace = await diskSpace.hasEnoughSpace(estimatedSize || 0);
         if (!hasSpace) {
-          console.log(`💾 Queue paused: Not enough SSD space`);
-          break;
+          // Move back to delayed queue
+          throw new Error('INSUFFICIENT_SPACE');
         }
 
-        // Start download
-        console.log(`▶️  Starting queued download: ${item.info_hash}`);
+        // Report progress
+        await job.updateProgress(10);
 
-        try {
-          await database.db.run(`
-            UPDATE download_queue
-            SET status = 'downloading', started_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `, [item.id]);
+        // Start the actual download
+        const result = await torrentManager.downloadToCache(
+          userId,
+          magnetLink,
+          infoHash,
+          null,
+          async (progress) => {
+            // Update progress from torrent download
+            await job.updateProgress(10 + Math.floor(progress * 0.9));
+          }
+        );
 
-          await torrentManager.addMagnet(
-            item.user_id,
-            item.magnet_link,
-            item.info_hash
-          );
+        await job.updateProgress(100);
 
-          await database.db.run(`
-            UPDATE download_queue
-            SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `, [item.id]);
-
-        } catch (error) {
-          console.error(`❌ Queue download failed: ${item.info_hash}`, error);
-
-          await database.db.run(`
-            UPDATE download_queue
-            SET status = 'failed', error_message = ?
-            WHERE id = ?
-          `, [error.message, item.id]);
-        }
+        return {
+          success: true,
+          infoHash,
+          ...result,
+        };
+      },
+      {
+        connection: createRedisConnection(),
+        concurrency: this.maxConcurrent,
+        limiter: {
+          max: this.maxConcurrent,
+          duration: 1000,
+        },
       }
-    } finally {
-      this.isProcessing = false;
-    }
-  }
+    );
 
-  async getActiveDownloadsCount() {
-    const result = await database.db.get(`
-      SELECT COUNT(*) as count
-      FROM download_queue
-      WHERE status = 'downloading'
-    `);
-    return result.count;
+    this.worker.on('completed', (job, result) => {
+      console.log(`✅ Worker completed job ${job.id}:`, result);
+    });
+
+    this.worker.on('failed', (job, err) => {
+      console.error(`❌ Worker failed job ${job?.id}:`, err.message);
+
+      // Special handling for space issues - don't count as attempt
+      if (err.message === 'INSUFFICIENT_SPACE') {
+        console.log(`💾 Job ${job?.id} delayed due to insufficient space`);
+      }
+    });
+
+    this.worker.on('error', (err) => {
+      console.error('❌ Worker error:', err);
+    });
+
+    console.log(`🔄 BullMQ Worker started (concurrency: ${this.maxConcurrent})`);
   }
 
   async getUserQueue(userId) {
@@ -1020,20 +1341,209 @@ class QueueManager {
   }
 
   async cancelQueueItem(userId, queueId) {
+    if (!this.isInitialized) await this.initialize();
+
+    // Get job from database
+    const queueItem = await database.db.get(`
+      SELECT bullmq_job_id FROM download_queue
+      WHERE id = ? AND user_id = ? AND status = 'queued'
+    `, [queueId, userId]);
+
+    if (queueItem?.bullmq_job_id) {
+      // Remove from BullMQ
+      const job = await this.queue.getJob(queueItem.bullmq_job_id);
+      if (job) {
+        await job.remove();
+      }
+    }
+
+    // Update database
     await database.db.run(`
       UPDATE download_queue
       SET status = 'cancelled'
       WHERE id = ? AND user_id = ? AND status = 'queued'
     `, [queueId, userId]);
+
+    console.log(`🚫 Cancelled queue item: ${queueId}`);
   }
 
-  startQueueProcessor() {
-    setInterval(() => this.processQueue(), this.processInterval);
-    console.log(`🔄 Queue processor started (interval: ${this.processInterval}ms)`);
+  async getQueueStats() {
+    if (!this.isInitialized) await this.initialize();
+
+    const [waiting, active, completed, failed, delayed] = await Promise.all([
+      this.queue.getWaitingCount(),
+      this.queue.getActiveCount(),
+      this.queue.getCompletedCount(),
+      this.queue.getFailedCount(),
+      this.queue.getDelayedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      delayed,
+      total: waiting + active + delayed,
+    };
+  }
+
+  async pauseQueue() {
+    if (!this.isInitialized) await this.initialize();
+    await this.queue.pause();
+    console.log('⏸️  Queue paused');
+  }
+
+  async resumeQueue() {
+    if (!this.isInitialized) await this.initialize();
+    await this.queue.resume();
+    console.log('▶️  Queue resumed');
+  }
+
+  async retryFailedJobs() {
+    if (!this.isInitialized) await this.initialize();
+
+    const failed = await this.queue.getFailed();
+    for (const job of failed) {
+      await job.retry();
+    }
+
+    console.log(`🔄 Retried ${failed.length} failed jobs`);
+    return failed.length;
+  }
+
+  async cleanOldJobs(gracePeriodMs = 24 * 60 * 60 * 1000) {
+    if (!this.isInitialized) await this.initialize();
+
+    const cleaned = await this.queue.clean(gracePeriodMs, 1000, 'completed');
+    console.log(`🧹 Cleaned ${cleaned.length} old completed jobs`);
+    return cleaned.length;
+  }
+
+  async shutdown() {
+    console.log('🛑 Shutting down Queue Manager...');
+
+    if (this.worker) {
+      await this.worker.close();
+    }
+    if (this.queueEvents) {
+      await this.queueEvents.close();
+    }
+    if (this.queue) {
+      await this.queue.close();
+    }
+
+    console.log('✅ Queue Manager shut down');
   }
 }
 
-module.exports = new QueueManager();
+// Export singleton instance
+const queueManager = new QueueManager();
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  await queueManager.shutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  await queueManager.shutdown();
+  process.exit(0);
+});
+
+module.exports = queueManager;
+```
+
+#### File: `src/index.js` (Updated initialization)
+```javascript
+const express = require('express');
+const queueManager = require('./services/queueManager');
+const cacheManager = require('./services/cacheManager');
+// ... other imports
+
+async function startServer() {
+  const app = express();
+
+  // ... existing middleware setup
+
+  // Initialize BullMQ Queue Manager
+  await queueManager.initialize();
+
+  // Start the BullMQ worker
+  await queueManager.startWorker();
+
+  // Start cache cleanup job
+  cacheManager.startCleanupJob();
+
+  // ... existing routes
+
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Bull Board dashboard: http://localhost:3001`);
+  });
+}
+
+startServer().catch(console.error);
+```
+
+#### File: `src/routes/admin.routes.js` (Queue management API)
+```javascript
+const express = require('express');
+const router = express.Router();
+const queueManager = require('../services/queueManager');
+
+// Get queue statistics
+router.get('/queue/stats', async (req, res) => {
+  try {
+    const stats = await queueManager.getQueueStats();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Pause the queue
+router.post('/queue/pause', async (req, res) => {
+  try {
+    await queueManager.pauseQueue();
+    res.json({ success: true, message: 'Queue paused' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Resume the queue
+router.post('/queue/resume', async (req, res) => {
+  try {
+    await queueManager.resumeQueue();
+    res.json({ success: true, message: 'Queue resumed' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Retry all failed jobs
+router.post('/queue/retry-failed', async (req, res) => {
+  try {
+    const count = await queueManager.retryFailedJobs();
+    res.json({ success: true, retriedCount: count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Clean old completed jobs
+router.post('/queue/clean', async (req, res) => {
+  try {
+    const count = await queueManager.cleanOldJobs();
+    res.json({ success: true, cleanedCount: count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+module.exports = router;
 ```
 
 ---
@@ -1639,9 +2149,17 @@ describe('Integration: Cache Hit', () => {
 });
 ```
 
-#### Scenario 2: SSD Full → Queue
+#### Scenario 2: SSD Full → Queue (BullMQ)
 ```javascript
-describe('Integration: Queue System', () => {
+describe('Integration: BullMQ Queue System', () => {
+  beforeAll(async () => {
+    await queueManager.initialize();
+  });
+
+  afterAll(async () => {
+    await queueManager.shutdown();
+  });
+
   it('should queue downloads when SSD full', async () => {
     // Fill SSD
     await fillSSDToCapacity();
@@ -1651,16 +2169,70 @@ describe('Integration: Queue System', () => {
 
     expect(result.status).toBe('queued');
     expect(result.position).toBeGreaterThan(0);
+    expect(result.bullmqJobId).toBeDefined();
 
     // Free space
     await freeSomeSpace();
 
-    // Process queue
-    await queueManager.processQueue();
+    // BullMQ worker will automatically process when space available
+    // Wait for job to complete
+    await waitForJobCompletion(result.id);
 
-    // Should start download
+    // Should have completed download
     const queue = await queueManager.getUserQueue('user1');
-    expect(queue[0].status).toBe('downloading');
+    expect(queue.length).toBe(0); // No longer in queue
+  });
+
+  it('should respect concurrency limits', async () => {
+    const maxConcurrent = 10;
+
+    // Add more jobs than concurrency limit
+    const jobs = await Promise.all(
+      Array(15).fill().map((_, i) =>
+        queueManager.addToQueue(`user${i}`, `magnet:?xt=urn:btih:${i}...`, `hash${i}`, 1000)
+      )
+    );
+
+    // Check queue stats
+    const stats = await queueManager.getQueueStats();
+    expect(stats.active).toBeLessThanOrEqual(maxConcurrent);
+    expect(stats.waiting).toBeGreaterThan(0);
+  });
+
+  it('should retry failed jobs automatically', async () => {
+    // Add job that will fail
+    const result = await queueManager.addToQueue('user1', FAILING_MAGNET, 'failhash', 1000);
+
+    // Wait for retries
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Check retry count
+    const dbEntry = await database.db.get(
+      'SELECT retry_count FROM download_queue WHERE id = ?',
+      [result.id]
+    );
+    expect(dbEntry.retry_count).toBeGreaterThan(0);
+  });
+
+  it('should cancel queued jobs', async () => {
+    const result = await queueManager.addToQueue('user1', MAGNET_LINK, 'cancelhash', 1000);
+
+    await queueManager.cancelQueueItem('user1', result.id);
+
+    const stats = await queueManager.getQueueStats();
+    const job = await queueManager.queue.getJob(result.bullmqJobId);
+    expect(job).toBeNull(); // Job removed from BullMQ
+  });
+
+  it('should provide accurate queue statistics', async () => {
+    const stats = await queueManager.getQueueStats();
+
+    expect(stats).toHaveProperty('waiting');
+    expect(stats).toHaveProperty('active');
+    expect(stats).toHaveProperty('completed');
+    expect(stats).toHaveProperty('failed');
+    expect(stats).toHaveProperty('delayed');
+    expect(stats).toHaveProperty('total');
   });
 });
 ```
@@ -1793,16 +2365,36 @@ describe('Integration: R2 Migration', () => {
 }
 ```
 
-#### 4. Queue Statistics
+#### 4. Queue Statistics (BullMQ)
 ```javascript
 {
-  queuedItems: 12,
-  avgWaitTime: 180000,              // 3 minutes
-  avgQueuePosition: 6,
+  // BullMQ native stats
+  waiting: 12,                      // Jobs waiting to be processed
+  active: 5,                        // Jobs currently being processed
+  completed: 156,                   // Completed jobs (last 24h)
+  failed: 3,                        // Failed jobs
+  delayed: 2,                       // Jobs delayed (retrying)
+
+  // Custom metrics
+  avgWaitTime: 180000,              // 3 minutes average wait
+  avgProcessTime: 600000,           // 10 minutes average process time
   processedToday: 45,
-  failedToday: 2
+  failedToday: 2,
+  retryRate: 5.2,                   // % of jobs that needed retry
+
+  // Worker info
+  workers: 1,                       // Active workers
+  concurrency: 10,                  // Max concurrent jobs per worker
 }
 ```
+
+#### 5. Bull Board Dashboard
+Access the Bull Board dashboard at `http://localhost:3001` to:
+- View all queues and their status
+- Monitor job progress in real-time
+- Retry failed jobs manually
+- Clean old completed jobs
+- Pause/resume queue processing
 
 ### Alerts
 
@@ -1885,16 +2477,34 @@ if (cacheStats.cacheHitRate < 50) {
 - [AWS S3 SDK for JavaScript](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/welcome.html)
 - [Node.js fs.symlink](https://nodejs.org/api/fs.html#fspromisessymlinktarget-path-type)
 - [SQLite Documentation](https://www.sqlite.org/docs.html)
+- [BullMQ Documentation](https://docs.bullmq.io/)
+- [BullMQ GitHub](https://github.com/taskforcesh/bullmq)
+- [ioredis Documentation](https://github.com/redis/ioredis)
+- [Redis Documentation](https://redis.io/docs/)
+- [Bull Board Dashboard](https://github.com/felixmosh/bull-board)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
 
 ---
 
-**Document Version:** 1.0
+**Document Version:** 2.0
 **Created:** January 5, 2026
+**Updated:** January 26, 2026
 **Author:** Claude Code Assistant
 **Status:** Planning Phase
 **Estimated Timeline:** 7 weeks
 **Estimated Cost Savings:** 40-85%
 **Expected Impact:** High
+
+### Changelog
+- **v2.0** (Jan 26, 2026): Updated to use Redis + BullMQ with Docker
+  - Added `docker-compose.yml` for Redis and Bull Board
+  - Replaced simple SQLite queue with BullMQ
+  - Added `redis.js` for connection management
+  - Updated `queueManager.js` with full BullMQ implementation
+  - Added queue management API endpoints
+  - Added Bull Board dashboard for monitoring
+  - Updated tests for BullMQ
+- **v1.0** (Jan 5, 2026): Initial plan with SQLite-based queue
 
 
 
@@ -2037,3 +2647,65 @@ Perfect! Now I'll create a comprehensive master plan document that combines SSD 
   ⏵⏵ accept edits on (shift+tab to cycle)
 
 
+
+Done! I've updated the STORAGE_OPTIMIZATION_MASTER_PLAN.md to use Redis + BullMQ with Docker. Here's a summary of the changes:
+
+  Changes Made                                                                                                                                                                                                               
+  1. Added Docker Configuration                                                                                                                                                                                           
+                                                                                                                                                                                                                          
+  - docker-compose.yml with:
+    - Redis 7 Alpine container
+    - Bull Board dashboard (accessible at :3001)
+    - Seedr Server container
+  - Dockerfile for the seedr-server
+
+  2. Updated Environment Variables
+
+  # Redis + BullMQ Configuration
+  REDIS_HOST=localhost
+  REDIS_PORT=6379
+  REDIS_PASSWORD=
+  QUEUE_MAX_CONCURRENT_GLOBAL=10
+  QUEUE_MAX_RETRIES=3
+  QUEUE_RETRY_DELAY=60000
+  QUEUE_JOB_TIMEOUT=3600000
+
+  3. New/Updated Files
+  ┌──────────────────────────────┬───────────────────────────────────┐
+  │             File             │              Purpose              │
+  ├──────────────────────────────┼───────────────────────────────────┤
+  │ src/services/redis.js        │ Redis connection management       │
+  ├──────────────────────────────┼───────────────────────────────────┤
+  │ src/services/queueManager.js │ Full BullMQ implementation        │
+  ├──────────────────────────────┼───────────────────────────────────┤
+  │ src/routes/admin.routes.js   │ Queue management API              │
+  ├──────────────────────────────┼───────────────────────────────────┤
+  │ src/index.js                 │ Server initialization with BullMQ │
+  └──────────────────────────────┴───────────────────────────────────┘
+  4. BullMQ Features Now Included
+
+  - Automatic retries with exponential backoff
+  - Job priority queuing
+  - Real-time progress tracking
+  - Concurrency limiting
+  - Graceful shutdown
+  - Bull Board dashboard for monitoring
+
+  5. New API Endpoints
+
+  - GET /api/admin/queue/stats - Queue statistics
+  - POST /api/admin/queue/pause - Pause processing
+  - POST /api/admin/queue/resume - Resume processing
+  - POST /api/admin/queue/retry-failed - Retry failed jobs
+  - POST /api/admin/queue/clean - Clean old jobs
+
+  Quick Start
+
+  # Start everything with Docker
+  docker-compose up -d
+
+  # Access:
+  # - Your app: http://localhost:5000
+  # - Bull Board: http://localhost:3001
+
+✻ Churned for 3m 26s                         

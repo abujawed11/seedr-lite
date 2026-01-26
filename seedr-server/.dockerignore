@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+
+# Build files
+dist
+build
+
+# Development files
+.git
+.gitignore
+*.md
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+logs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Storage (mount as volume instead)
+src/storage/library/*
+src/storage/cache/*
+src/storage/hls/*
+src/storage/thumbs/*
+data/*.db
+
+# Test files
+*.test.js
+*.spec.js
+__tests__
+coverage

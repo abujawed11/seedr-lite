@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Redis for BullMQ job queue
+  redis:
+    image: redis:7-alpine
+    container_name: seedr-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - seedr-network
+
+  # Bull Board - Queue Dashboard (Optional but recommended)
+  bull-board:
+    image: deadly0/bull-board
+    container_name: seedr-bull-board
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USE_TLS: "false"
+      BULL_PREFIX: "bull"
+    depends_on:
+      - redis
+    networks:
+      - seedr-network
+
+  # Seedr Server (your app)
+  seedr-server:
+    build:
+      context: ./seedr-server
+      dockerfile: Dockerfile
+    container_name: seedr-server
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - NODE_ENV=production
+      - PORT=5002
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    env_file:
+      - ./seedr-server/.env
+    volumes:
+      # Storage directories (persistent)
+      - ./seedr-server/srv/storage:/app/srv/storage
+      - ./seedr-server/data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - seedr-network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  seedr-network:
+    driver: bridge
