@@ -875,6 +875,198 @@ router.get('/ssd/check-space', asyncHandler(async (req, res) => {
   });
 }));
 
+// ==================== Torrent Cache Management ====================
+
+// Get cache statistics
+router.get('/cache/stats', asyncHandler(async (req, res) => {
+  const cacheManager = require('../services/cacheManager');
+  const stats = await cacheManager.getCacheStats();
+
+  res.json({
+    stats,
+    formatted: stats ? {
+      totalSize: formatBytes(stats.total_size || 0),
+      avgReferences: (stats.avg_references || 0).toFixed(2)
+    } : null
+  });
+}));
+
+// Get all cached torrents
+router.get('/cache/torrents', asyncHandler(async (req, res) => {
+  const { status, limit = 100 } = req.query;
+
+  let sql = `SELECT * FROM torrent_cache`;
+  const params = [];
+
+  if (status) {
+    sql += ` WHERE download_status = ?`;
+    params.push(status);
+  }
+
+  sql += ` ORDER BY last_accessed_at DESC LIMIT ?`;
+  params.push(parseInt(limit));
+
+  const torrents = await new Promise((resolve, reject) => {
+    database.db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows || []);
+    });
+  });
+
+  res.json({
+    torrents: torrents.map(t => ({
+      ...t,
+      formatted_size: formatBytes(t.total_size || 0)
+    })),
+    count: torrents.length
+  });
+}));
+
+// Get cache entry details
+router.get('/cache/torrents/:infoHash', asyncHandler(async (req, res) => {
+  const { infoHash } = req.params;
+  const cacheManager = require('../services/cacheManager');
+
+  const cache = await cacheManager.getCacheEntry(infoHash);
+  if (!cache) {
+    return res.status(404).json({ error: 'Cache entry not found' });
+  }
+
+  // Get user links for this cache
+  const userLinks = await new Promise((resolve, reject) => {
+    database.db.all(
+      `SELECT utl.*, u.username, u.email
+       FROM user_torrent_links utl
+       LEFT JOIN users u ON utl.user_id = u.id
+       WHERE utl.info_hash = ?`,
+      [infoHash.toLowerCase()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+
+  // Get R2 files if uploaded
+  const r2Files = await new Promise((resolve, reject) => {
+    database.db.all(
+      `SELECT * FROM r2_files WHERE info_hash = ?`,
+      [infoHash.toLowerCase()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+
+  res.json({
+    cache: {
+      ...cache,
+      formatted_size: formatBytes(cache.total_size || 0)
+    },
+    userLinks,
+    r2Files: r2Files.map(f => ({
+      ...f,
+      formatted_size: formatBytes(f.file_size || 0)
+    }))
+  });
+}));
+
+// Delete a cache entry (admin cleanup)
+router.delete('/cache/torrents/:infoHash', asyncHandler(async (req, res) => {
+  const { infoHash } = req.params;
+  const cacheManager = require('../services/cacheManager');
+
+  const cache = await cacheManager.getCacheEntry(infoHash);
+  if (!cache) {
+    return res.status(404).json({ error: 'Cache entry not found' });
+  }
+
+  const deleted = await cacheManager.deleteCacheEntry(infoHash);
+
+  if (deleted) {
+    await req.activityLogger.log(req, 'admin_cache_delete', {
+      torrentName: cache.name,
+      torrentHash: infoHash,
+      fileSize: cache.total_size
+    });
+  }
+
+  res.json({
+    success: deleted,
+    message: deleted ? 'Cache entry deleted' : 'Failed to delete cache entry'
+  });
+}));
+
+// Cleanup unused cache entries
+router.post('/cache/cleanup', asyncHandler(async (req, res) => {
+  const cacheManager = require('../services/cacheManager');
+  const cleaned = await cacheManager.cleanupUnusedCache();
+
+  await req.activityLogger.log(req, 'admin_cache_cleanup', {
+    torrentName: `Cleaned ${cleaned} unused cache entries`,
+    fileSize: cleaned
+  });
+
+  res.json({
+    success: true,
+    cleanedCount: cleaned
+  });
+}));
+
+// Check if a magnet/infoHash is cached
+router.get('/cache/check', asyncHandler(async (req, res) => {
+  const { magnet, infoHash } = req.query;
+  const cacheManager = require('../services/cacheManager');
+
+  let hash = infoHash;
+  if (!hash && magnet) {
+    hash = cacheManager.extractInfoHash(magnet);
+  }
+
+  if (!hash) {
+    return res.status(400).json({ error: 'Provide either magnet or infoHash' });
+  }
+
+  const cache = await cacheManager.checkCacheAvailability(hash);
+  const inProgress = cache ? false : await cacheManager.isCacheInProgress(hash);
+
+  res.json({
+    infoHash: hash,
+    cached: !!cache,
+    inProgress,
+    cache: cache ? {
+      name: cache.name,
+      size: cache.total_size,
+      formatted_size: formatBytes(cache.total_size || 0),
+      r2_uploaded: cache.r2_uploaded === 1,
+      reference_count: cache.reference_count
+    } : null
+  });
+}));
+
+// Get user's torrent links
+router.get('/cache/user-links/:userId', asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const cacheManager = require('../services/cacheManager');
+
+  const user = await database.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const links = await cacheManager.getUserLinks(userId);
+
+  res.json({
+    user: { id: user.id, username: user.username },
+    links: links.map(l => ({
+      ...l,
+      formatted_size: formatBytes(l.total_size || 0)
+    })),
+    count: links.length
+  });
+}));
+
 // ==================== Subscription Management ====================
 
 // Get user's subscription details
