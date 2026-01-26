@@ -726,6 +726,155 @@ router.get('/stats', asyncHandler(async (req, res) => {
   res.json({ stats });
 }));
 
+// ==================== Queue Management (BullMQ) ====================
+
+// Get queue statistics
+router.get('/queue/stats', asyncHandler(async (req, res) => {
+  const queueManager = require('../services/queueManager');
+  const stats = await queueManager.getQueueStats();
+  res.json(stats);
+}));
+
+// Get all jobs in the queue
+router.get('/queue/jobs', asyncHandler(async (req, res) => {
+  const { limit = 100 } = req.query;
+  const queueManager = require('../services/queueManager');
+  const jobs = await queueManager.getAllJobs(parseInt(limit));
+  res.json(jobs);
+}));
+
+// Pause the queue
+router.post('/queue/pause', asyncHandler(async (req, res) => {
+  const queueManager = require('../services/queueManager');
+  const success = await queueManager.pauseQueue();
+
+  if (success) {
+    await req.activityLogger.log(req, 'admin_queue_pause', {
+      torrentName: 'Queue paused by admin'
+    });
+  }
+
+  res.json({ success, message: success ? 'Queue paused' : 'Failed to pause queue' });
+}));
+
+// Resume the queue
+router.post('/queue/resume', asyncHandler(async (req, res) => {
+  const queueManager = require('../services/queueManager');
+  const success = await queueManager.resumeQueue();
+
+  if (success) {
+    await req.activityLogger.log(req, 'admin_queue_resume', {
+      torrentName: 'Queue resumed by admin'
+    });
+  }
+
+  res.json({ success, message: success ? 'Queue resumed' : 'Failed to resume queue' });
+}));
+
+// Retry all failed jobs
+router.post('/queue/retry-failed', asyncHandler(async (req, res) => {
+  const queueManager = require('../services/queueManager');
+  const count = await queueManager.retryFailedJobs();
+
+  await req.activityLogger.log(req, 'admin_queue_retry', {
+    torrentName: `Retried ${count} failed jobs`,
+    fileSize: count
+  });
+
+  res.json({ success: true, retriedCount: count });
+}));
+
+// Clean old completed jobs
+router.post('/queue/clean', asyncHandler(async (req, res) => {
+  const { gracePeriodHours = 24 } = req.body;
+  const queueManager = require('../services/queueManager');
+  const count = await queueManager.cleanOldJobs(parseInt(gracePeriodHours) * 60 * 60 * 1000);
+
+  await req.activityLogger.log(req, 'admin_queue_clean', {
+    torrentName: `Cleaned ${count} old jobs`,
+    fileSize: count
+  });
+
+  res.json({ success: true, cleanedCount: count });
+}));
+
+// Check if queue is paused
+router.get('/queue/status', asyncHandler(async (req, res) => {
+  const queueManager = require('../services/queueManager');
+  const isPaused = await queueManager.isPaused();
+  const isAvailable = queueManager.isAvailable();
+
+  res.json({
+    available: isAvailable,
+    paused: isPaused,
+    enabled: queueManager.enabled
+  });
+}));
+
+// ==================== SSD & Disk Space Management ====================
+
+// Get SSD usage details
+router.get('/ssd/usage', asyncHandler(async (req, res) => {
+  const diskSpace = require('../utils/diskSpace');
+  const usage = await diskSpace.getDetailedSSDUsage();
+  const summary = await diskSpace.getSpaceCheckSummary();
+
+  res.json({
+    usage,
+    formatted: summary.formatted,
+    critical: await diskSpace.isCriticalUsage()
+  });
+}));
+
+// Get SSD reservations
+router.get('/ssd/reservations', asyncHandler(async (req, res) => {
+  const reservations = await database.ssdReservations.getAllActiveReservations();
+  const stats = await database.ssdReservations.getReservationStats();
+
+  res.json({
+    reservations,
+    stats,
+    formatted: {
+      activeBytes: formatBytes(stats.active_bytes),
+      finalizedBytes: formatBytes(stats.finalized_bytes)
+    }
+  });
+}));
+
+// Cleanup stale SSD reservations
+router.post('/ssd/cleanup-reservations', asyncHandler(async (req, res) => {
+  const { olderThanHours = 24 } = req.body;
+  const cleaned = await database.ssdReservations.cleanupStaleReservations(parseInt(olderThanHours));
+
+  await req.activityLogger.log(req, 'admin_ssd_cleanup', {
+    torrentName: `Cleaned ${cleaned} stale SSD reservations`,
+    fileSize: cleaned
+  });
+
+  res.json({
+    success: true,
+    cleanedCount: cleaned,
+    olderThanHours: parseInt(olderThanHours)
+  });
+}));
+
+// Check space availability for a specific size
+router.get('/ssd/check-space', asyncHandler(async (req, res) => {
+  const { size = 0 } = req.query;
+  const diskSpace = require('../utils/diskSpace');
+  const check = await diskSpace.hasEnoughSpace(parseInt(size));
+
+  res.json({
+    ...check,
+    formatted: {
+      required: formatBytes(check.required || 0),
+      available: formatBytes(check.available || 0),
+      free: formatBytes(check.free || 0),
+      reserved: formatBytes(check.reserved || 0)
+    }
+  });
+}));
+
 // ==================== Subscription Management ====================
 
 // Get user's subscription details

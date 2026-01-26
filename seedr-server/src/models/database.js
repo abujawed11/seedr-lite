@@ -4,6 +4,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { nanoid } = require('nanoid');
 const ReservationManager = require('./reservations');
+const SSDReservationManager = require('./ssdReservations');
 
 const DB_PATH = path.join(__dirname, '../../data/users.db');
 
@@ -11,6 +12,7 @@ class Database {
   constructor() {
     this.db = null;
     this.reservations = null;
+    this.ssdReservations = null;
   }
 
   async init() {
@@ -23,6 +25,7 @@ class Database {
         if (err) return reject(err);
         console.log('Connected to SQLite database');
         this.reservations = new ReservationManager(this.db);
+        this.ssdReservations = new SSDReservationManager(this.db);
         this.createTables()
           .then(() => this.createDefaultAdminIfNeeded())
           .then(resolve)
