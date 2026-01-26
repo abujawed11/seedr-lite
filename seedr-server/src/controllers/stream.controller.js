@@ -303,14 +303,19 @@ async function streamFromR2(req, res, { infoHash, filePath, asAttachment = false
 
 exports.r2Stream = async (req, res) => {
   const { infoHash } = req.params;
-  const filePath = req.params[0] || req.params.filePath; // Handle wildcard route
+  let filePath = req.params[0] || req.params.filePath; // Handle wildcard route
+  
+  // Express 5 / path-to-regexp v6 might return wildcards as arrays
+  if (Array.isArray(filePath)) filePath = filePath.join('/');
 
   await streamFromR2(req, res, { infoHash, filePath, asAttachment: false });
 };
 
 exports.r2Download = async (req, res) => {
   const { infoHash } = req.params;
-  const filePath = req.params[0] || req.params.filePath;
+  let filePath = req.params[0] || req.params.filePath;
+  
+  if (Array.isArray(filePath)) filePath = filePath.join('/');
 
   await streamFromR2(req, res, { infoHash, filePath, asAttachment: true });
 };
@@ -390,8 +395,11 @@ exports.streamFromCache = async (req, res) => {
  * Get presigned URL for R2 file (for direct client access)
  */
 exports.getR2PresignedUrl = async (req, res) => {
-  const { infoHash, filePath } = req.params;
+  const { infoHash } = req.params;
+  let filePath = req.params[0] || req.params.filePath;
   const expiresIn = parseInt(req.query.expiresIn) || 3600;
+
+  if (Array.isArray(filePath)) filePath = filePath.join('/');
 
   try {
     if (!r2Storage.isAvailable()) {

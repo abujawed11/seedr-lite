@@ -38,7 +38,7 @@ router.get('/direct/:token/:filename', s.direct);    // signed public link with 
 // ==================== R2 Cloud Streaming Routes ====================
 
 // CORS preflight for R2 routes
-router.options('/r2-stream/:infoHash/*', (req, res) => {
+router.options('/r2-stream/:infoHash/*filePath', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Authorization, Content-Type');
@@ -46,7 +46,7 @@ router.options('/r2-stream/:infoHash/*', (req, res) => {
   res.status(200).end();
 });
 
-router.options('/cache-stream/:infoHash/:fileIndex?', (req, res) => {
+router.options('/cache-stream/:infoHash/:fileIndex', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Authorization, Content-Type');
@@ -56,16 +56,16 @@ router.options('/cache-stream/:infoHash/:fileIndex?', (req, res) => {
 
 // Stream from R2 (requires auth)
 // Route: /r2-stream/:infoHash/path/to/file.mp4
-router.get('/r2-stream/:infoHash/*', authenticateToken, s.r2Stream);
+router.get('/r2-stream/:infoHash/*filePath', authenticateToken, s.r2Stream);
 
 // Download from R2 (requires auth)
-router.get('/r2-download/:infoHash/*', authenticateToken, s.r2Download);
+router.get('/r2-download/:infoHash/*filePath', authenticateToken, s.r2Download);
 
 // Unified cache streaming - tries local first, then R2 (requires auth)
 // Route: /cache-stream/:infoHash/:fileIndex?download=true
-router.get('/cache-stream/:infoHash/:fileIndex?', authenticateToken, s.streamFromCache);
+router.get('/cache-stream/:infoHash/:fileIndex', authenticateToken, s.streamFromCache);
 
 // Get presigned URL for direct R2 access (requires auth)
-router.get('/r2-presign/:infoHash/*', authenticateToken, s.getR2PresignedUrl);
+router.get('/r2-presign/:infoHash/*filePath', authenticateToken, s.getR2PresignedUrl);
 
 module.exports = router;

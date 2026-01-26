@@ -1069,3 +1069,261 @@ exports.clearAllNotifications = async (req, res) => {
   }
 };
 
+// ==================== Cache-Aware Torrent Management ====================
+
+const storageOrchestrator = require('../services/storageOrchestrator');
+const cacheManager = require('../services/cacheManager');
+
+/**
+ * POST /api/torrents/smart
+ * Smart torrent add with cache support
+ * - Checks cache first for instant access
+ * - Queues download if SSD full
+ * - Falls back to regular download
+ */
+exports.smartCreate = async (req, res) => {
+  const { magnet, folderName } = req.body || {};
+
+  if (!magnet) {
+    return res.status(400).json({ error: 'Magnet link is required' });
+  }
+
+  const userId = req.user.id;
+
+  try {
+    // Check if user account is disabled
+    if (req.user.isActive === false) {
+      return res.status(403).json({
+        error: 'Your account has been disabled',
+        code: 'ACCOUNT_DISABLED'
+      });
+    }
+
+    console.log(`🧠 Smart torrent add for user ${userId}`);
+
+    // Use storage orchestrator to handle the request
+    const result = await storageOrchestrator.addTorrent(userId, magnet, folderName);
+
+    if (!result.success) {
+      // Handle different error cases
+      if (result.existingLink) {
+        return res.status(409).json({
+          error: result.error,
+          code: 'ALREADY_EXISTS',
+          existingLink: result.existingLink
+        });
+      }
+
+      if (result.status === 'in_progress') {
+        return res.status(202).json({
+          status: 'in_progress',
+          message: 'This torrent is being downloaded by another user. You will get instant access once complete.',
+          infoHash: result.infoHash
+        });
+      }
+
+      if (result.quotaInfo) {
+        return res.status(403).json({
+          error: result.error,
+          code: 'QUOTA_EXCEEDED',
+          quotaInfo: result.quotaInfo
+        });
+      }
+
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Handle different success cases
+    if (result.instant) {
+      // Cache hit - instant access
+      console.log(`⚡ Instant access granted for ${result.infoHash}`);
+
+      // Log activity
+      await database.logActivity({
+        userId,
+        username: req.user.username,
+        actionType: 'cache_hit',
+        torrentName: result.name,
+        torrentHash: result.infoHash,
+        fileSize: result.size,
+        ipAddress: req.ip || req.connection?.remoteAddress,
+        userAgent: req.get('user-agent')
+      }).catch(e => console.error('Activity log error:', e));
+
+      return res.status(200).json({
+        status: 'instant',
+        message: result.message,
+        cached: true,
+        infoHash: result.infoHash,
+        name: result.name,
+        size: result.size,
+        sizeFormatted: humanBytes(result.size),
+        r2Available: result.r2Available
+      });
+    }
+
+    if (result.action === 'queued') {
+      // Added to queue
+      console.log(`📥 Queued for download: ${result.infoHash}`);
+
+      return res.status(202).json({
+        status: 'queued',
+        message: result.message,
+        queueId: result.queueId,
+        position: result.position,
+        infoHash: result.infoHash
+      });
+    }
+
+    if (result.action === 'download') {
+      // Ready to download - proceed with regular flow
+      console.log(`📥 Proceeding with download: ${result.infoHash}`);
+
+      // Notify orchestrator that download is starting
+      await storageOrchestrator.onDownloadStart(userId, result.infoHash, folderName || 'Unknown', 0);
+
+      // Start the actual download using existing addMagnet
+      addMagnet(magnet, userId).catch((e) => {
+        console.error('addMagnet failed:', e);
+        storageOrchestrator.onDownloadFailed(userId, result.infoHash, e.message);
+      });
+
+      // Log activity
+      await database.logActivity({
+        userId,
+        username: req.user.username,
+        actionType: 'torrent_add_smart',
+        torrentHash: result.infoHash,
+        magnetLink: magnet,
+        ipAddress: req.ip || req.connection?.remoteAddress,
+        userAgent: req.get('user-agent')
+      }).catch(e => console.error('Activity log error:', e));
+
+      return res.status(202).json({
+        status: 'downloading',
+        message: 'Download started',
+        infoHash: result.infoHash,
+        spaceAvailable: humanBytes(result.spaceAvailable || 0)
+      });
+    }
+
+    // Unknown result
+    return res.status(200).json(result);
+
+  } catch (error) {
+    console.error('Smart create error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /api/torrents/cache-check?magnet=...
+ * Check if a torrent is cached before adding
+ */
+exports.cacheCheck = async (req, res) => {
+  const { magnet, infoHash: providedHash } = req.query;
+
+  if (!magnet && !providedHash) {
+    return res.status(400).json({ error: 'Provide magnet or infoHash' });
+  }
+
+  try {
+    const infoHash = providedHash || cacheManager.extractInfoHash(magnet);
+
+    if (!infoHash) {
+      return res.status(400).json({ error: 'Invalid magnet link' });
+    }
+
+    const cache = await cacheManager.checkCacheAvailability(infoHash);
+    const inProgress = cache ? false : await cacheManager.isCacheInProgress(infoHash);
+    const userHasLink = await cacheManager.userHasLink(req.user.id, infoHash);
+
+    res.json({
+      infoHash,
+      cached: !!cache,
+      inProgress,
+      userHasAccess: userHasLink,
+      cache: cache ? {
+        name: cache.name,
+        size: cache.total_size,
+        sizeFormatted: humanBytes(cache.total_size),
+        r2Uploaded: cache.r2_uploaded === 1,
+        refCount: cache.reference_count
+      } : null
+    });
+  } catch (error) {
+    console.error('Cache check error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /api/torrents/storage-status
+ * Get storage system status (cache, queue, SSD, R2)
+ */
+exports.storageStatus = async (req, res) => {
+  try {
+    const status = await storageOrchestrator.getStorageStatus();
+
+    // Format sizes for display
+    const formatSize = (bytes) => bytes ? humanBytes(bytes) : '0 B';
+
+    res.json({
+      ...status,
+      formatted: {
+        ssd: status.ssd ? {
+          total: formatSize(status.ssd.disk?.total),
+          used: formatSize(status.ssd.disk?.used),
+          free: formatSize(status.ssd.disk?.free),
+          availableForDownloads: formatSize(status.ssd.calculated?.availableForDownloads)
+        } : null,
+        cache: status.cache ? {
+          totalSize: formatSize(status.cache.total_size),
+          torrents: status.cache.total_torrents
+        } : null,
+        r2: status.r2 ? {
+          totalSize: status.r2.stats?.formattedSize
+        } : null
+      }
+    });
+  } catch (error) {
+    console.error('Storage status error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /api/torrents/cache/:infoHash/files
+ * Get files for a cached torrent
+ */
+exports.getCacheFiles = async (req, res) => {
+  const { infoHash } = req.params;
+  const userId = req.user.id;
+
+  try {
+    // Check if user has access
+    const userLink = await cacheManager.getUserLink(userId, infoHash);
+    if (!userLink) {
+      return res.status(403).json({ error: 'You do not have access to this torrent' });
+    }
+
+    const result = await storageOrchestrator.getTorrentFiles(infoHash);
+
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+
+    res.json({
+      infoHash,
+      source: result.source,
+      files: result.files.map(f => ({
+        ...f,
+        sizeFormatted: humanBytes(f.size)
+      }))
+    });
+  } catch (error) {
+    console.error('Get cache files error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+

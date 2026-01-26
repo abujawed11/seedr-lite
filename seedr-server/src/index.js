@@ -32,11 +32,65 @@ async function initServer() {
       }
     }
 
-    // Ensure storage directories
+    // Ensure storage directories (including cache directory)
     ensureDirs();
 
+    // ==================== Storage Optimization Services ====================
+
+    // Initialize Cache Manager
+    const cacheManager = require('./services/cacheManager');
+    await cacheManager.initialize();
+    logger.info('Cache Manager initialized');
+
+    // Initialize R2 Storage (if enabled)
+    const r2Storage = require('./services/r2Storage');
+    if (process.env.R2_ENABLED === 'true') {
+      const r2Initialized = r2Storage.initialize();
+      if (r2Initialized) {
+        logger.info('R2 Storage initialized');
+      } else {
+        logger.warn('R2 Storage initialization failed - running in local mode');
+      }
+    } else {
+      logger.info('R2 Storage disabled - running in local mode');
+    }
+
+    // Start cache cleanup job
+    cacheManager.startCleanupJob();
+    logger.info('Cache cleanup job started');
+
     // Initialize torrent manager (triggers startup cleanup)
-    require('./services/torrentManager');
+    const torrentManager = require('./services/torrentManager');
+
+    // ==================== End Storage Optimization Services ====================
+
+    // Initialize Queue Manager (BullMQ)
+    const queueManager = require('./services/queueManager');
+    if (process.env.QUEUE_ENABLED !== 'false') {
+      const queueInitialized = await queueManager.initialize();
+      if (queueInitialized) {
+        logger.info('Queue Manager initialized');
+        // Start the worker to process downloads
+        await queueManager.startWorker(async (job) => {
+          const { userId, magnetLink, infoHash } = job.data;
+          logger.info(`📥 Queue Worker: Starting download for ${infoHash}`);
+          try {
+            await torrentManager.addMagnet(magnetLink, userId);
+            return { success: true, infoHash };
+          } catch (error) {
+            logger.error(`❌ Queue Worker: Failed to start download for ${infoHash}:`, error.message);
+            throw error; // Let BullMQ handle retry
+          }
+        });
+        logger.info('Queue Worker started');
+      } else {
+        logger.warn('Queue Manager initialization failed - downloads will be immediate');
+      }
+    } else {
+      logger.info('Queue Manager disabled');
+    }
+
+    // Start subscription monitor
 
     // Start subscription monitor
     const subscriptionMonitor = require('./utils/subscriptionMonitor');
@@ -46,10 +100,32 @@ async function initServer() {
     require('./server');
 
     logger.info('MyPeerCloud server booting…');
+    logger.info('==========================================');
+    logger.info('Storage Optimization Status:');
+    logger.info(`  - Cache Manager: ✅ Ready`);
+    logger.info(`  - R2 Storage: ${r2Storage.isAvailable() ? '✅ Ready' : '⚠️  Disabled'}`);
+    logger.info(`  - Queue (BullMQ): ${queueManager.isAvailable() ? '✅ Ready' : '⚠️  Disabled'}`);
+    logger.info('==========================================');
+
   } catch (error) {
     logger.error('Failed to initialize server:', error);
     process.exit(1);
   }
 }
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down gracefully...');
+  const queueManager = require('./services/queueManager');
+  await queueManager.shutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, shutting down gracefully...');
+  const queueManager = require('./services/queueManager');
+  await queueManager.shutdown();
+  process.exit(0);
+});
 
 initServer();

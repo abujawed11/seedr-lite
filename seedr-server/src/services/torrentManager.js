@@ -4,6 +4,7 @@ const { logger } = require('../utils/logger');
 const { getTrackers } = require('../utils/trackers');
 const database = require('../models/database');
 const { getUserStorageDir, ensureUserStorageDir } = require('../utils/storage');
+const storageOrchestrator = require('./storageOrchestrator');
 
 const ROOT = process.env.ROOT || './src/storage/library';
 
@@ -190,19 +191,37 @@ function toSummary(t) {
 async function addMagnet(magnet, userId) {
   const c = await getUserClient(userId);  // Use user-specific client
   const announce = getTrackers();
+
+  // Extract infoHash to determine if we should use the cache system
+  const infoHash = storageOrchestrator && typeof storageOrchestrator.extractInfoHash === 'function'
+    ? storageOrchestrator.extractInfoHash(magnet)
+    : (require('./cacheManager').extractInfoHash(magnet));
+
   return new Promise((resolve, reject) => {
-    // Ensure user directory exists and get user-specific path
+    // Determine download path
+    // If cache system is used, download into global cache directory
+    // Otherwise, use user-specific storage directory
+    const cachePath = require('./cacheManager').getCachePath(infoHash);
     const userStorageDir = ensureUserStorageDir(userId);
-    console.log(`📁 Using user storage directory: ${userStorageDir}`);
+
+    // Default to cache path for deduplication, fallback to user storage if needed
+    const downloadPath = cachePath || userStorageDir;
+
+    console.log(`📁 Download destination: ${downloadPath} (for infoHash: ${infoHash})`);
 
     const t = c.add(
       magnet,
-      { path: userStorageDir, announce },
+      { path: downloadPath, announce },
       (torrent) => {
         // Track user for this torrent - CRITICAL: Set this immediately
         torrent.userId = userId;
         torrent.quotaValidated = false; // Flag to prevent duplicate quota validation
 
+        // Notify orchestrator that download is starting (if not already notified)
+        if (storageOrchestrator) {
+          storageOrchestrator.onDownloadStart(userId, torrent.infoHash, torrent.name || 'Unknown', 0)
+            .catch(e => console.error('Error notifying orchestrator of download start:', e));
+        }
 
         torrent.on('infoHash', () => {
           console.log(`🔑 Got infoHash: ${torrent.infoHash} for user ${userId}`);
@@ -315,6 +334,13 @@ async function addMagnet(magnet, userId) {
         torrent.on('metadata', async () => {
           console.log(`🔍 METADATA EVENT TRIGGERED!`);
           console.log(`📋 Got metadata: ${torrent.name} (${humanBytes(torrent.length)}) for user ${userId}`);
+
+          // Notify orchestrator that metadata is received (actual size known)
+          if (storageOrchestrator) {
+            storageOrchestrator.onMetadataReceived(userId, torrent.infoHash, torrent.name, torrent.length, torrent.files.length)
+              .catch(e => console.error('Error notifying orchestrator of metadata:', e));
+          }
+
           await validateQuotaAndReserve('METADATA');
         });
 
@@ -325,6 +351,13 @@ async function addMagnet(magnet, userId) {
 
         torrent.on('error', (err) => {
           console.error(`💥 Torrent error for user ${userId}:`, err);
+
+          // Notify orchestrator of failure
+          if (storageOrchestrator) {
+            storageOrchestrator.onDownloadFailed(userId, torrent.infoHash, err.message)
+              .catch(e => console.error('Error notifying orchestrator of failure:', e));
+          }
+
           // Log torrent error
           database.logActivity({
             userId,
@@ -404,6 +437,12 @@ async function addMagnet(magnet, userId) {
         // ⛔ Stop seeding as soon as download finishes and finalize storage
         torrent.on('done', async () => {
           console.log(`🎉 Download complete: ${torrent.name} for user ${userId}`);
+
+          // Notify orchestrator of completion
+          if (storageOrchestrator) {
+            storageOrchestrator.onDownloadComplete(userId, torrent.infoHash, downloadPath)
+              .catch(e => console.error('Error notifying orchestrator of completion:', e));
+          }
 
           try {
             // CRITICAL: Final progressive update to sync all downloaded bytes before finalization

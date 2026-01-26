@@ -33,4 +33,18 @@ router.get('/:id', asyncH(c.show));                                     // files
 router.put('/:id/stop', asyncH(c.stop));                                // stop torrent
 router.delete('/:id', asyncH(c.destroy));                               // remove torrent
 
+// ==================== Cache-Aware Torrent Management ====================
+
+// Add torrent with cache support (smart add)
+router.post('/smart', asyncH(c.smartCreate));
+
+// Check if torrent is cached before adding
+router.get('/cache-check', asyncH(c.cacheCheck));
+
+// Get storage system status
+router.get('/storage-status', asyncH(c.storageStatus));
+
+// Get files for a cached torrent (from local or R2)
+router.get('/cache/:infoHash/files', asyncH(c.getCacheFiles));
+
 module.exports = router;
