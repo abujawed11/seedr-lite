@@ -18,8 +18,19 @@ quotaExceededNotifications.clear();
 
 // Store per-user WebTorrent clients for complete isolation
 const userClients = new Map(); // userId -> WebTorrent client
+const pendingUserClients = new Map(); // userId -> Promise<WebTorrent client>
 
 let WebTorrentMod;   // ESM default export
+let webTorrentImportPromise;
+
+async function loadWebTorrent() {
+  if (WebTorrentMod) return WebTorrentMod;
+  if (!webTorrentImportPromise) {
+    webTorrentImportPromise = import('webtorrent').then((m) => m.default);
+  }
+  WebTorrentMod = await webTorrentImportPromise;
+  return WebTorrentMod;
+}
 
 // Initialize WebTorrent module and perform startup cleanup
 initializeManager().catch(error => {
@@ -44,9 +55,7 @@ function humanBytes(bytes) {
 
 // Initialize the WebTorrent module and perform startup cleanup
 async function initializeManager() {
-  if (!WebTorrentMod) {
-    WebTorrentMod = (await import('webtorrent')).default;
-  }
+  await loadWebTorrent();
 
   // Smart startup cleanup: Collect torrents from all existing user clients after delay
   setTimeout(async () => {
@@ -127,9 +136,7 @@ setInterval(logClientStats, 2 * 60 * 1000);
 
 // Get or create a WebTorrent client for a specific user
 async function getUserClient(userId) {
-  if (!WebTorrentMod) {
-    WebTorrentMod = (await import('webtorrent')).default;
-  }
+  await loadWebTorrent();
 
   // Update activity timestamp if client exists
   if (userClients.has(userId)) {
@@ -138,27 +145,47 @@ async function getUserClient(userId) {
     return client;
   }
 
-  // Create user-specific client if it doesn't exist
-  console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
+  // Prevent a race where concurrent requests create multiple clients for the same user
+  // and overwrite the map, causing torrents to "disappear" from subsequent API calls.
+  if (pendingUserClients.has(userId)) {
+    const client = await pendingUserClients.get(userId);
+    client._lastActivity = Date.now();
+    return client;
+  }
 
-  const userClient = new WebTorrentMod({
-    dht: true,
-    tracker: true,
-    maxConns: 30        // Limit concurrent connections per user
-  });
+  const createPromise = (async () => {
+    // Double-check after awaiting anything
+    if (userClients.has(userId)) return userClients.get(userId);
 
-  userClient.on('error', (e) => {
-    logger.error(`WebTorrent error for user ${userId}:`, e.message);
-  });
+    // Create user-specific client if it doesn't exist
+    console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
 
-  // Store the client for this user with timestamp
-  userClients.set(userId, userClient);
-  userClient._lastActivity = Date.now();
-  userClient._userId = userId;
+    const userClient = new WebTorrentMod({
+      dht: true,
+      tracker: true,
+      maxConns: 30        // Limit concurrent connections per user
+    });
 
-  console.log(`✅ WebTorrent client created for user: ${userId} (max ${userClient.maxConns} connections)`);
+    userClient.on('error', (e) => {
+      logger.error(`WebTorrent error for user ${userId}:`, e.message);
+    });
 
-  return userClients.get(userId);
+    // Store the client for this user with timestamp
+    userClients.set(userId, userClient);
+    userClient._lastActivity = Date.now();
+    userClient._userId = userId;
+
+    console.log(`✅ WebTorrent client created for user: ${userId} (max ${userClient.maxConns} connections)`);
+
+    return userClient;
+  })();
+
+  pendingUserClients.set(userId, createPromise);
+  try {
+    return await createPromise;
+  } finally {
+    pendingUserClients.delete(userId);
+  }
 }
 
 // For backward compatibility - this should be replaced with getUserClient

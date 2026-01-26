@@ -33,6 +33,8 @@ src/storage/cache/*
 src/storage/hls/*
 src/storage/thumbs/*
 data/*.db
+srv/
+data/
 
 # Test files
 *.test.js

@@ -29,6 +29,7 @@ router.delete('/notifications/:id', asyncH(c.clearNotification));       // clear
 router.delete('/notifications', asyncH(c.clearAllNotifications));       // clear all notifications
 router.post('/', upload.single('torrent'), asyncH(c.create));           // add magnet link or torrent file
 router.get('/', asyncH(c.index));                                       // list torrents
+router.get('/library', asyncH(c.library));                              // list cached/completed torrents (DB-backed)
 router.get('/:id', asyncH(c.show));                                     // files + URLs for one torrent
 router.put('/:id/stop', asyncH(c.stop));                                // stop torrent
 router.delete('/:id', asyncH(c.destroy));                               // remove torrent

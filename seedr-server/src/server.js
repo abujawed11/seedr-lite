@@ -16,6 +16,17 @@ const paymentRoutes = require('./routes/payment');
 
 const app = express();
 
+// APIs should not rely on browser caching/ETags; 304 responses can surface as empty bodies to XHR/axios and
+// cause the UI to think there are "no torrents". Disable ETag and force no-store for API routes.
+app.set('etag', false);
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 // Trust proxy for correct IP detection (needed for Cloudflare, nginx, load balancers)
 // This allows req.ip to show real client IP instead of proxy IP
 app.set('trust proxy', true);

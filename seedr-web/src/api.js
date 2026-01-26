@@ -58,6 +58,11 @@ export async function listTorrents() {
   return res.data;
 }
 
+export async function listLibrary() {
+  const res = await api.get("/torrents/library");
+  return res.data;
+}
+
 export async function getTorrent(id) {
   const res = await api.get(`/torrents/${id}`);
   return res.data;

@@ -4,7 +4,8 @@ const mime = require("mime-types");
 const rangeParser = require("range-parser");
 const archiver = require("archiver");
 const { signLink, verifyLink } = require("../services/linkSigner");
-const { getUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
+const { getUserStorageDir, ensureUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
+const symlinkHelper = require("../utils/symlinkHelper");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
@@ -18,7 +19,12 @@ function calculateDirectorySize(dirPath) {
 
     for (const item of items) {
       const itemPath = path.join(dirPath, item);
-      const stat = fs.statSync(itemPath);
+      let stat;
+      try {
+        stat = fs.statSync(itemPath);
+      } catch (e) {
+        continue;
+      }
 
       if (stat.isDirectory()) {
         const subResult = calculateDirectorySize(itemPath);
@@ -78,7 +84,7 @@ exports.browse = async (req, res) => {
     });
 
     const userId = req.user.id;
-    const userRoot = getUserStorageDir(userId);
+    const userRoot = ensureUserStorageDir(userId);
     console.log(`📁 Browse: User ${userId} browsing directory: ${userRoot}`);
 
     // Update storage usage when browsing (to keep it current)
@@ -105,7 +111,12 @@ exports.browse = async (req, res) => {
       return res.status(404).json({ error: "Directory not found" });
     }
 
-    const stat = fs.statSync(fullPath);
+    let stat;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch (e) {
+      return res.status(404).json({ error: "Directory not found" });
+    }
     if (!stat.isDirectory()) {
       return res.status(400).json({ error: "Path is not a directory" });
     }
@@ -114,9 +125,38 @@ exports.browse = async (req, res) => {
     const dirs = [];
     const files = [];
 
+    const tryRepairDanglingSymlink = async (itemPath) => {
+      try {
+        const lstats = fs.lstatSync(itemPath);
+        if (!lstats.isSymbolicLink()) return false;
+
+        const rawTarget = fs.readlinkSync(itemPath);
+        if (!rawTarget || path.isAbsolute(rawTarget)) return false;
+
+        const candidateTarget = path.resolve(rawTarget);
+        if (!fs.existsSync(candidateTarget)) return false;
+
+        await symlinkHelper.createSymlink(candidateTarget, itemPath);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     for (const item of items) {
       const itemPath = path.join(fullPath, item);
-      const itemStat = fs.statSync(itemPath);
+      let itemStat;
+      try {
+        itemStat = fs.statSync(itemPath);
+      } catch (e) {
+        const repaired = await tryRepairDanglingSymlink(itemPath);
+        if (!repaired) continue;
+        try {
+          itemStat = fs.statSync(itemPath);
+        } catch {
+          continue;
+        }
+      }
       const relativePath = path.posix.join(safePath, item).replace(/\\/g, "/");
 
       if (itemStat.isDirectory()) {
@@ -457,7 +497,12 @@ exports.listFiles = async (req, res) => {
 
       list.forEach((file) => {
         const fullPath = path.join(dir, file);
-        const stat = fs.statSync(fullPath);
+        let stat;
+        try {
+          stat = fs.statSync(fullPath);
+        } catch (e) {
+          return;
+        }
         if (stat.isDirectory()) {
           results.push(...walk(fullPath, base));
         } else {

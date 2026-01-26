@@ -14,50 +14,80 @@ class SymlinkHelper {
     this.isWindows = process.platform === 'win32';
   }
 
+  resolveSymlinkTarget(linkPath, rawTarget) {
+    if (!rawTarget) return null;
+
+    if (path.isAbsolute(rawTarget)) {
+      return path.resolve(rawTarget);
+    }
+
+    const relativeToLinkDir = path.resolve(path.dirname(linkPath), rawTarget);
+    if (fsSync.existsSync(relativeToLinkDir)) {
+      return relativeToLinkDir;
+    }
+
+    const relativeToCwd = path.resolve(rawTarget);
+    if (fsSync.existsSync(relativeToCwd)) {
+      return relativeToCwd;
+    }
+
+    return relativeToLinkDir;
+  }
+
   /**
    * Create a symlink or junction from user directory to cache
    * On Windows, uses junctions for directories (no admin required)
-   * On Unix, uses regular symlinks
+   * On Unix, uses absolute-target symlinks to avoid dangling links
    */
   async createSymlink(targetPath, linkPath) {
     try {
+      const resolvedTarget = path.resolve(targetPath);
+      const resolvedLink = path.resolve(linkPath);
+
       // Ensure parent directory exists
-      const parentDir = path.dirname(linkPath);
+      const parentDir = path.dirname(resolvedLink);
       await fs.mkdir(parentDir, { recursive: true });
 
       // Check if link already exists
-      if (await this.exists(linkPath)) {
+      if (await this.exists(resolvedLink)) {
         // Check if it's already pointing to the same target
-        const existingTarget = await this.getSymlinkTarget(linkPath);
-        if (existingTarget === targetPath) {
-          console.log(`🔗 Symlink already exists: ${linkPath} -> ${targetPath}`);
+        const existingTarget = await this.getSymlinkTarget(resolvedLink);
+        const existingResolvedTarget = this.resolveSymlinkTarget(resolvedLink, existingTarget);
+        const existingResolvesFromLinkDir = !existingTarget
+          ? false
+          : path.isAbsolute(existingTarget) || fsSync.existsSync(path.resolve(path.dirname(resolvedLink), existingTarget));
+
+        // If the existing link stores a relative target that doesn't resolve from the link dir,
+        // it's effectively broken (common when running inside Linux containers with relative paths).
+        if (existingResolvedTarget && path.resolve(existingResolvedTarget) === resolvedTarget && existingResolvesFromLinkDir) {
+          console.log(`ðŸ”— Symlink already exists: ${linkPath} -> ${targetPath}`);
           return { success: true, existed: true };
         }
         // Remove existing link
-        await this.removeSymlink(linkPath);
+        await this.removeSymlink(resolvedLink);
       }
 
-      // Check if target exists
-      if (!await this.exists(targetPath)) {
-        throw new Error(`Target does not exist: ${targetPath}`);
+      let targetStat;
+      try {
+        targetStat = await fs.stat(resolvedTarget);
+      } catch {
+        throw new Error(`Target does not exist: ${resolvedTarget}`);
       }
-
-      const targetStat = await fs.stat(targetPath);
 
       if (this.isWindows) {
         if (targetStat.isDirectory()) {
           // Use junction for directories on Windows (no admin required)
-          await this.createWindowsJunction(targetPath, linkPath);
+          await this.createWindowsJunction(resolvedTarget, resolvedLink);
         } else {
           // Use hard link for files on Windows, or copy if that fails
-          await this.createWindowsFileLink(targetPath, linkPath);
+          await this.createWindowsFileLink(resolvedTarget, resolvedLink);
         }
       } else {
-        // Unix: use regular symlink
-        await fs.symlink(targetPath, linkPath);
+        // Unix: use absolute paths so link is stable regardless of link location
+        await fs.symlink(resolvedTarget, resolvedLink);
       }
 
-      console.log(`🔗 Symlink created: ${linkPath} -> ${targetPath}`);
+      console.log(`ðŸ”— Symlink created: ${linkPath} -> ${targetPath}`);
       return { success: true, existed: false };
     } catch (error) {
       console.error(`Failed to create symlink: ${linkPath} -> ${targetPath}`, error);
@@ -102,7 +132,7 @@ class SymlinkHelper {
       } catch (symlinkError) {
         // Symlink failed (needs admin), copy the file instead
         await fs.copyFile(resolvedTarget, resolvedLink);
-        console.log(`📋 Copied file (symlink not available): ${linkPath}`);
+        console.log(`ðŸ“‹ Copied file (symlink not available): ${linkPath}`);
       }
     }
   }
@@ -140,7 +170,7 @@ class SymlinkHelper {
         await fs.unlink(linkPath);
       }
 
-      console.log(`🔗 Symlink removed: ${linkPath}`);
+      console.log(`ðŸ”— Symlink removed: ${linkPath}`);
       return { success: true, existed: true };
     } catch (error) {
       console.error(`Failed to remove symlink: ${linkPath}`, error);
@@ -184,7 +214,7 @@ class SymlinkHelper {
       // Node.js doesn't expose this directly, so we check by trying to read it
       if (stats.isDirectory()) {
         try {
-          const target = await fs.readlink(linkPath);
+          await fs.readlink(linkPath);
           return true; // If readlink succeeds, it's a junction/symlink
         } catch (e) {
           return false; // Regular directory
@@ -214,7 +244,7 @@ class SymlinkHelper {
    */
   async exists(filePath) {
     try {
-      await fs.access(filePath);
+      await fs.lstat(filePath);
       return true;
     } catch {
       return false;
@@ -267,12 +297,8 @@ class SymlinkHelper {
         return { valid: false, reason: 'Cannot read target' };
       }
 
-      // Resolve relative targets
-      const resolvedTarget = path.isAbsolute(target)
-        ? target
-        : path.resolve(path.dirname(linkPath), target);
-
-      if (!await this.exists(resolvedTarget)) {
+      const resolvedTarget = this.resolveSymlinkTarget(linkPath, target);
+      if (!resolvedTarget || !fsSync.existsSync(resolvedTarget)) {
         return { valid: false, reason: 'Target does not exist', target: resolvedTarget };
       }
 
@@ -301,7 +327,7 @@ class SymlinkHelper {
             if (!verification.valid) {
               await this.removeSymlink(itemPath);
               cleaned++;
-              console.log(`🧹 Removed broken symlink: ${itemPath}`);
+              console.log(`ðŸ§¹ Removed broken symlink: ${itemPath}`);
             }
           }
         } catch (error) {

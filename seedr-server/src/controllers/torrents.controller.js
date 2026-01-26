@@ -785,6 +785,63 @@ exports.index = async (req, res) => {
 };
 
 /**
+ * GET /api/torrents/library
+ * Returns DB-backed "library" entries (cached/completed torrents) so the UI can
+ * still show items after the WebTorrent client removes finished torrents.
+ */
+exports.library = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const links = await cacheManager.getUserLinks(userId);
+
+    // Backfill missing sizes for already-completed torrents (e.g. if metadata event was missed)
+    const normalizedLinks = await Promise.all(
+      (links || []).map(async (l) => {
+        try {
+          if ((l.download_status || '').toLowerCase() !== 'completed') return l;
+          if (l.total_size && l.total_size > 0) return l;
+          if (!l.cache_path) return l;
+
+          const files = await storageOrchestrator.listLocalFiles(l.cache_path);
+          const totalSize = files.reduce((sum, f) => sum + (typeof f.size === 'number' ? f.size : 0), 0);
+          const filesCount = files.length;
+
+          if (totalSize > 0) {
+            await cacheManager.updateCacheStatus(l.info_hash, 'completed', {
+              totalSize,
+              filesCount
+            });
+            return { ...l, total_size: totalSize, files_count: filesCount };
+          }
+
+          return l;
+        } catch {
+          return l;
+        }
+      })
+    );
+
+    res.json(
+      (normalizedLinks || []).map((l) => ({
+        id: l.info_hash,
+        infoHash: l.info_hash,
+        name: l.user_folder_name || l.name || l.info_hash,
+        addedAt: l.added_at,
+        isCached: l.is_cached === 1,
+        downloadStatus: l.download_status || null,
+        r2Uploaded: l.r2_uploaded === 1,
+        sizeBytes: l.total_size || 0,
+        size: humanBytes(l.total_size || 0),
+      }))
+    );
+  } catch (error) {
+    console.error('Library error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * GET /api/torrents/:id
  */
 exports.show = async (req, res) => {

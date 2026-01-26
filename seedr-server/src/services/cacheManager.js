@@ -410,7 +410,7 @@ class CacheManager {
 
       return new Promise((resolve, reject) => {
         database.db.all(
-          `SELECT utl.*, tc.name, tc.total_size, tc.download_status, tc.r2_uploaded
+          `SELECT utl.*, tc.name, tc.total_size, tc.files_count, tc.cache_path, tc.download_status, tc.r2_uploaded
            FROM user_torrent_links utl
            LEFT JOIN torrent_cache tc ON utl.info_hash = tc.info_hash
            WHERE utl.user_id = ?

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { listTorrents, browse, getNotifications, clearNotification } from "./api";
+import { listTorrents, listLibrary, browse, getNotifications, clearNotification } from "./api";
 import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
@@ -10,6 +10,7 @@ export default function App() {
   const { user, logout, getStorageInfo, refreshUserProfile, fetchDetailedQuota } = useAuth();
   const [currentView, setCurrentView] = useState('main'); // 'main' or 'admin'
   const [torrents, setTorrents] = useState([]);
+  const [library, setLibrary] = useState([]);
   const [browseData, setBrowseData] = useState({ cwd: "", parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
@@ -35,6 +36,15 @@ export default function App() {
       console.error("❌ App: Torrents fetch error:", err);
     } finally {
       setLoading((prev) => ({ ...prev, torrents: false }));
+    }
+  }
+
+  async function fetchLibrary() {
+    try {
+      const data = await listLibrary();
+      setLibrary(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("❌ App: Library fetch error:", err);
     }
   }
 
@@ -66,6 +76,7 @@ export default function App() {
   async function handleTorrentAdded() {
     //console.log('🎯 App: handleTorrentAdded called');
     await fetchTorrents();
+    await fetchLibrary();
     fetchDetailedQuota(); // Refresh quota when torrent is added
     //console.log('✅ App: handleTorrentAdded completed');
     // No complex logic needed - just fetch torrents once like in working backup
@@ -80,6 +91,7 @@ export default function App() {
     if (currentView === 'admin') return;
 
     fetchTorrents();
+    fetchLibrary();
     fetchBrowse();
     fetchDetailedQuota(); // Fetch detailed quota information
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,6 +185,7 @@ export default function App() {
     if (hasActiveDownloads) {
       const interval = setInterval(() => {
         fetchTorrents();
+        fetchLibrary();
       }, 5000); // Poll every 5 seconds like in backup
 
       return () => clearInterval(interval);
@@ -242,7 +255,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Torrents Section */}
         <section>
-          <TorrentSection torrents={torrents} onTorrentAdded={handleTorrentAdded} />
+          <TorrentSection torrents={torrents} library={library} onTorrentAdded={handleTorrentAdded} />
         </section>
 
         {/* File Explorer Section */}

@@ -23,7 +23,7 @@ function humanBytes(bytes) {
   return `${bytes.toFixed(fixed)} ${units[u]}`;
 }
 
-export default function TorrentSection({ torrents, onTorrentAdded }) {
+export default function TorrentSection({ torrents, library = [], onTorrentAdded }) {
   const [magnets, setMagnets] = useState([{ id: 1, value: "", state: 'idle', error: null }]);
   const [nextId, setNextId] = useState(2);
   const [notifications, setNotifications] = useState([]);
@@ -363,6 +363,54 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
           <div className="space-y-3">
             {torrents.map((t) => (
               <TorrentCard key={t.id} torrent={t} onTorrentUpdated={onTorrentAdded} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Library (cached/completed) */}
+      <div className="space-y-4 pt-6">
+        <h2 className="text-xl font-semibold text-green-400 flex items-center">
+          <span className="mr-2">✅</span>
+          Library {library.length > 0 && `(${library.length})`}
+        </h2>
+
+        {library.length === 0 ? (
+          <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center">
+            <div className="text-gray-400 text-6xl mb-4">📚</div>
+            <p className="text-gray-400 text-lg">No completed/cached items yet</p>
+            <p className="text-gray-500 text-sm mt-2">Completed torrents move here after download finishes</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {library.map((item) => (
+              <div
+                key={item.id}
+                className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-start justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="text-white font-semibold truncate">{item.name || item.infoHash}</div>
+                  <div className="text-sm text-gray-400 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    <span className="flex items-center">
+                      <span className="mr-1">💾</span>{item.size || "0 B"}
+                    </span>
+                    <span className="flex items-center">
+                      <span className="mr-1">📦</span>{item.downloadStatus || "unknown"}
+                    </span>
+                    <span className="flex items-center">
+                      <span className="mr-1">☁️</span>{item.r2Uploaded ? "R2" : "Local"}
+                    </span>
+                    {item.isCached && (
+                      <span className="flex items-center text-yellow-300">
+                        <span className="mr-1">⚡</span>cached
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Open files in the File Explorer section below.
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         )}

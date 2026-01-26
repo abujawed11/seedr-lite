@@ -282,18 +282,34 @@ class StorageOrchestrator {
         }
       }
 
+      // Backfill size/count if metadata update was missed
+      let totalSize = cache?.total_size || 0;
+      let filesCount = cache?.files_count || 0;
+      if ((!totalSize || totalSize <= 0) && cachePath) {
+        const files = await this.listLocalFiles(cachePath);
+        totalSize = files.reduce((sum, f) => sum + (typeof f.size === 'number' ? f.size : 0), 0);
+        filesCount = files.length;
+      }
+
       // Release SSD reservation
       await database.ssdReservations.finalizeReservation(infoHash);
 
       // Auto-migrate to R2 if enabled
       if (this.autoMigrateToR2 && r2Storage.isAvailable()) {
         console.log(`☁️ Auto-migrating to R2: ${infoHash}`);
+        await cacheManager.updateCacheStatus(infoHash, 'completed', {
+          ...(totalSize > 0 ? { totalSize } : {}),
+          ...(filesCount > 0 ? { filesCount } : {})
+        });
         this.migrateToR2(infoHash, cachePath).catch(err => {
           console.error('R2 migration failed:', err.message);
         });
       } else {
         // Mark as completed locally
-        await cacheManager.updateCacheStatus(infoHash, 'completed');
+        await cacheManager.updateCacheStatus(infoHash, 'completed', {
+          ...(totalSize > 0 ? { totalSize } : {}),
+          ...(filesCount > 0 ? { filesCount } : {})
+        });
       }
 
       return {
@@ -482,7 +498,12 @@ class StorageOrchestrator {
 
       for (const item of items) {
         const fullPath = path.join(dirPath, item);
-        const stat = await fs.stat(fullPath);
+        let stat;
+        try {
+          stat = await fs.stat(fullPath);
+        } catch {
+          continue;
+        }
 
         if (stat.isDirectory()) {
           await this.listLocalFiles(fullPath, basePath, files);

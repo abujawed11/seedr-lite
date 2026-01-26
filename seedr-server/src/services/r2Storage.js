@@ -40,8 +40,10 @@ class R2StorageManager {
     const accountId = process.env.R2_ACCOUNT_ID;
     const accessKeyId = process.env.R2_ACCESS_KEY_ID;
     const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const endpoint = process.env.R2_ENDPOINT;
+    const region = process.env.S3_REGION || 'auto';
 
-    if (!accountId || !accessKeyId || !secretAccessKey) {
+    if ((!accountId && !endpoint) || !accessKeyId || !secretAccessKey) {
       console.warn('⚠️  R2 credentials not configured, R2 storage disabled');
       this.enabled = false;
       return false;
@@ -49,8 +51,8 @@ class R2StorageManager {
 
     try {
       this.client = new S3Client({
-        region: 'auto',
-        endpoint: process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`,
+        region,
+        endpoint: endpoint || `https://${accountId}.r2.cloudflarestorage.com`,
         credentials: {
           accessKeyId,
           secretAccessKey,
