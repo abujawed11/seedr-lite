@@ -396,6 +396,39 @@ class Database {
       this.db.exec(createUserLinksIndexes, (err) => (err ? reject(err) : resolve()))
     );
 
+    // Clean up duplicate user_torrent_links before creating unique index
+    await new Promise((resolve) => {
+      this.db.run(`
+        DELETE FROM user_torrent_links
+        WHERE rowid NOT IN (
+          SELECT MIN(rowid)
+          FROM user_torrent_links
+          GROUP BY user_id, info_hash
+        )
+      `, [], function(err) {
+        if (err) {
+          console.warn('Warning: Could not clean duplicate user links:', err.message);
+        } else if (this.changes > 0) {
+          console.log(`🧹 Cleaned ${this.changes} duplicate user_torrent_links entries`);
+        }
+        resolve();
+      });
+    });
+
+    // Now create unique index (safe after cleanup)
+    await new Promise((resolve) => {
+      this.db.run(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_links_unique ON user_torrent_links(user_id, info_hash)`,
+        [],
+        (err) => {
+          if (err) {
+            console.warn('Warning: Could not create unique index on user_torrent_links:', err.message);
+          }
+          resolve();
+        }
+      );
+    });
+
     console.log('User torrent links table created or verified');
 
     // 3. R2 Files - Tracks files uploaded to Cloudflare R2

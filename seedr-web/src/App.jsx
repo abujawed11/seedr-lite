@@ -42,7 +42,13 @@ export default function App() {
   async function fetchLibrary() {
     try {
       const data = await listLibrary();
-      setLibrary(Array.isArray(data) ? data : []);
+      // Deduplicate by infoHash to avoid React key warnings
+      const unique = Array.isArray(data)
+        ? data.filter((item, index, self) =>
+            index === self.findIndex((t) => t.infoHash === item.infoHash || t.id === item.id)
+          )
+        : [];
+      setLibrary(unique);
     } catch (err) {
       console.error("❌ App: Library fetch error:", err);
     }

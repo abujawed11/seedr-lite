@@ -292,10 +292,17 @@ class CacheManager {
   async createUserLink(userId, infoHash, folderName, symlinkPath = null, isCached = false) {
     if (!userId || !infoHash) throw new Error('userId and infoHash are required');
 
-    const id = nanoid();
-
     try {
       const database = require('../models/database');
+
+      // Check if link already exists
+      const existing = await this.getUserLink(userId, infoHash);
+      if (existing) {
+        console.log(`🔗 User link already exists: ${userId} -> ${infoHash}`);
+        return existing;
+      }
+
+      const id = nanoid();
 
       return new Promise((resolve, reject) => {
         database.db.run(
@@ -304,7 +311,15 @@ class CacheManager {
            VALUES (?, ?, ?, ?, ?, ?)`,
           [id, userId, infoHash.toLowerCase(), folderName, symlinkPath, isCached ? 1 : 0],
           async function (err) {
-            if (err) return reject(err);
+            if (err) {
+              // Handle unique constraint violation gracefully
+              if (err.message && err.message.includes('UNIQUE constraint')) {
+                console.log(`🔗 User link already exists (race condition): ${userId} -> ${infoHash}`);
+                const existingLink = await require('./cacheManager').getUserLink(userId, infoHash);
+                return resolve(existingLink);
+              }
+              return reject(err);
+            }
 
             // Increment reference count
             await require('./cacheManager').incrementRefCount(infoHash);
