@@ -3,7 +3,8 @@ const database = require('../models/database');
 const { generateToken, authenticateToken } = require('../middlewares/auth');
 const asyncHandler = require('../middlewares/asyncHandler');
 const { updateUserStorageUsage, ensureUserStorageDir } = require('../utils/storage');
-const emailService = require('../services/emailService');
+// COMMENTED OUT: SMTP blocked on Digital Ocean
+// const emailService = require('../services/emailService');
 const { generateOTP } = require('../utils/otpGenerator');
 const axios = require('axios');
 
@@ -63,7 +64,9 @@ router.post('/register', asyncHandler(async (req, res) => {
     await database.createOTP(email, otp, { ageConfirmed, registrationIp });
 
     // Send OTP email
-    await emailService.sendOTPEmail(email, otp);
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // await emailService.sendOTPEmail(email, otp);
+    console.log('🔐 [TESTING MODE] Registration OTP:', otp, 'for email:', email);
 
     // Log registration attempt (OTP sent)
     await req.activityLogger.log(req, 'register_attempt', {
@@ -74,14 +77,16 @@ router.post('/register', asyncHandler(async (req, res) => {
 
     res.status(200).json({
       message: 'OTP sent to your email. Please verify to complete registration.',
-      email: email
+      email: email,
+      otp: otp // TESTING: Include OTP in response (remove in production)
     });
   } catch (error) {
     console.error('Registration error:', error);
-    if (error.message.includes('Email service not configured')) {
-      return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
-    }
-    res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+    // COMMENTED OUT: Email service check not needed
+    // if (error.message.includes('Email service not configured')) {
+    //   return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
+    // }
+    res.status(500).json({ error: 'Failed to generate verification code. Please try again.' });
   }
 }));
 
@@ -265,11 +270,14 @@ router.post('/resend-admin-otp', asyncHandler(async (req, res) => {
     await database.createOTP(adminEmail, otp);
 
     // Send OTP email
-    await emailService.sendAdminLoginOTP(adminEmail, otp);
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // await emailService.sendAdminLoginOTP(adminEmail, otp);
+    console.log(`🔐 [TESTING MODE] Resend Admin OTP:`, otp, 'for email:', adminEmail);
 
     res.status(200).json({
       message: 'OTP resent successfully',
-      email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+      email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+      otp: otp // TESTING: Include OTP in response (remove in production)
     });
   } catch (error) {
     console.error('Resend admin OTP error:', error);
@@ -293,10 +301,13 @@ router.post('/resend-otp', asyncHandler(async (req, res) => {
     await database.createOTP(email, otp);
 
     // Send OTP email
-    await emailService.sendOTPEmail(email, otp);
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // await emailService.sendOTPEmail(email, otp);
+    console.log('🔐 [TESTING MODE] Resend Registration OTP:', otp, 'for email:', email);
 
     res.status(200).json({
-      message: 'OTP resent successfully'
+      message: 'OTP resent successfully',
+      otp: otp // TESTING: Include OTP in response (remove in production)
     });
   } catch (error) {
     console.error('Resend OTP error:', error);
@@ -359,14 +370,16 @@ router.post('/login', asyncHandler(async (req, res) => {
       await database.createOTP(adminEmail, otp);
 
       // Send OTP email
-      await emailService.sendAdminLoginOTP(adminEmail, otp);
+      // COMMENTED OUT: SMTP blocked on Digital Ocean
+      // await emailService.sendAdminLoginOTP(adminEmail, otp);
 
-      console.log(`🔐 Admin OTP sent to ${adminEmail}`);
+      console.log(`🔐 [TESTING MODE] Admin OTP:`, otp, 'for email:', adminEmail);
 
       return res.status(200).json({
         requiresOTP: true,
         message: 'Admin verification required. OTP sent to your email.',
-        email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Partially hide email
+        email: adminEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3'), // Partially hide email
+        otp: otp // TESTING: Include OTP in response (remove in production)
       });
     } catch (error) {
       console.error('Failed to send admin OTP:', error);
@@ -491,8 +504,9 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
     await database.createOTP(email, otp, { type: 'password_reset' });
 
     // Send OTP email
-    await emailService.sendPasswordResetOTP(email, otp);
-    console.log("OTP for reset pass: ",otp);
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // await emailService.sendPasswordResetOTP(email, otp);
+    console.log('🔐 [TESTING MODE] Password Reset OTP:', otp, 'for email:', email);
 
     // Log password reset request
     await req.activityLogger.log(req, 'password_reset_request', {
@@ -501,14 +515,16 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
 
     res.status(200).json({
       message: 'Password reset code sent to your email.',
-      email: email
+      email: email,
+      otp: otp // TESTING: Include OTP in response (remove in production)
     });
   } catch (error) {
     console.error('Forgot password error:', error);
-    if (error.message.includes('Email service not configured')) {
-      return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
-    }
-    res.status(500).json({ error: 'Failed to send password reset code. Please try again.' });
+    // COMMENTED OUT: Email service check not needed
+    // if (error.message.includes('Email service not configured')) {
+    //   return res.status(503).json({ error: 'Email service is not available. Please contact administrator.' });
+    // }
+    res.status(500).json({ error: 'Failed to generate password reset code. Please try again.' });
   }
 }));
 

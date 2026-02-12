@@ -2,7 +2,8 @@ require('dotenv').config();
 const { ensureDirs } = require('./utils/ensureDirs');
 const { logger } = require('./utils/logger');
 const database = require('./models/database');
-const emailService = require('./services/emailService');
+// COMMENTED OUT: SMTP blocked on Digital Ocean
+// const emailService = require('./services/emailService');
 
 async function initServer() {
   try {
@@ -11,15 +12,18 @@ async function initServer() {
     logger.info('Database initialized');
 
     // Initialize email service
-    emailService.init();
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // emailService.init();
 
     // Verify email service connection
-    const emailVerification = await emailService.verifyConnection();
-    if (emailVerification.success) {
-      logger.info('Email service ready');
-    } else {
-      logger.warn('Email service verification failed:', emailVerification.error);
-    }
+    // COMMENTED OUT: SMTP blocked on Digital Ocean
+    // const emailVerification = await emailService.verifyConnection();
+    // if (emailVerification.success) {
+    //   logger.info('Email service ready');
+    // } else {
+    //   logger.warn('Email service verification failed:', emailVerification.error);
+    // }
+    logger.info('Email service skipped (SMTP blocked - testing mode)');
 
     // Add downloaded_bytes column if it doesn't exist (migration)
     try {
