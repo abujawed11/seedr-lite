@@ -45,10 +45,12 @@ import NotFound from './pages/NotFound.jsx'
 
 import { AuthProvider } from './context/AuthContext.jsx'
 import AuthWrapper from './components/AuthWrapper.jsx'
+import GoogleAnalytics from './components/GoogleAnalytics.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
+      <GoogleAnalytics />
       <AuthProvider>
         <Routes>
           {/* ✅ PUBLIC – Razorpay verification pages */}

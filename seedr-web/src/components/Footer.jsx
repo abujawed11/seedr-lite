@@ -37,7 +37,7 @@ export default function Footer({ onNavigate, isAuthenticated }) {
               </h3>
             </div>
             {/* <p className="text-gray-400 mb-4 max-w-md">
-              Fast, secure, and reliable cloud-based torrent downloading service. Download to the cloud and stream from anywhere.
+              Fast, secure, and reliable cloud-based file management platform. Download to the cloud and stream from anywhere.
             </p> */}
             <p className="text-gray-400 mb-4 max-w-md">
               Fast, secure, and reliable cloud-based file management platform. Download, store, and stream your personal files from anywhere.
@@ -267,8 +267,9 @@ export default function Footer({ onNavigate, isAuthenticated }) {
             <div className="text-center space-y-3">
               <p className="text-sm text-gray-300 leading-relaxed">
                 <span className="text-yellow-400 text-lg mr-2">⚠️</span>
-                <strong className="text-yellow-300">Disclaimer:</strong> MyPeerCloud provides a user-controlled cloud file management platform. 
-                Users are solely responsible for ensuring their content complies with applicable laws.
+                <strong className="text-yellow-300">Disclaimer:</strong> MyPeerCloud does not host or index copyrighted content.
+                Users are responsible for ensuring they have the rights to download, store, or stream any content.
+                We respond to valid DMCA requests — contact <a href="mailto:dmca@mypeercloud.in" className="text-blue-400 hover:text-blue-300">dmca@mypeercloud.in</a>.
               </p>
               <div className="flex justify-center gap-6 text-xs">
                 <button

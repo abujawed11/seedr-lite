@@ -97,7 +97,7 @@ export default function RefundPage() {
                 <li>Partial month usage ("I didn't use the Service much")</li>
                 <li>Lack of awareness of auto-renewal (clearly stated at purchase)</li>
                 <li>Failure to cancel before renewal date</li>
-                <li>Dissatisfaction with torrent speeds (dependent on seeders/peers)</li>
+                <li>Dissatisfaction with remote download speeds (dependent on source availability)</li>
               </ul>
             </section>
 

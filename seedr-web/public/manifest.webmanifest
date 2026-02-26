@@ -1,7 +1,7 @@
 {
-  "name": "MyPeerCloud - Cloud Torrent Downloader",
+  "name": "MyPeerCloud - Personal Cloud Download Service",
   "short_name": "MyPeerCloud",
-  "description": "Download torrents to the cloud and stream instantly in your browser.",
+  "description": "Download files to the cloud and stream instantly in your browser. Secure, lightweight, no desktop client required.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

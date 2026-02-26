@@ -7,9 +7,8 @@ const DisclaimerFooter = () => {
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="text-center space-y-3">
           <p className="text-sm text-gray-300 leading-relaxed">
-            ⚠️ <strong>Disclaimer:</strong> This service acts as a torrent client only. We do not host,
-            store, or distribute copyrighted content. Users are solely responsible for ensuring their
-            downloads comply with applicable copyright laws.
+            ⚠️ <strong>Disclaimer:</strong> MyPeerCloud does not host or index copyrighted content. Users are solely responsible for ensuring their
+            downloads comply with applicable copyright laws. We respond to valid DMCA requests.
           </p>
           <div className="flex justify-center gap-6 text-xs text-gray-400">
             <Link

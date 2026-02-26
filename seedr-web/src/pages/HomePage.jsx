@@ -32,7 +32,7 @@ export default function HomePage({ onNavigate }) {
     {
       icon: '🚀',
       title: 'Lightning Fast Downloads',
-      description: 'Download torrents at maximum speed with our optimized servers'
+      description: 'Fetch files remotely at maximum speed with our optimized cloud servers'
     },
     {
       icon: '☁️',
@@ -116,7 +116,7 @@ export default function HomePage({ onNavigate }) {
 
             {/* Hero Description */}
             {/* <p className="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
-              Fast, secure, and reliable torrent downloads. Stream or download files from anywhere, anytime.
+              Fast, secure, and reliable cloud downloads. Stream or access your files from anywhere, anytime.
             </p> */}
             <p className="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
               Fast, secure cloud-based file downloads. Stream or access your files from anywhere, anytime.
@@ -174,7 +174,7 @@ export default function HomePage({ onNavigate }) {
               Why Choose MyPeerCloud?
             </h2>
             <p className="text-xl text-gray-400">
-              Everything you need for seamless torrent downloads
+              Everything you need for seamless cloud file management
             </p>
           </div>
 
@@ -305,7 +305,7 @@ export default function HomePage({ onNavigate }) {
             Ready to Get Started?
           </h2>
           <p className="text-xl text-gray-400 mb-8">
-            Join thousands of users who trust MyPeerCloud for their torrent downloads
+            Join thousands of users who trust MyPeerCloud for fast, secure cloud downloads
           </p>
           <button
             onClick={() => onNavigate('register')}

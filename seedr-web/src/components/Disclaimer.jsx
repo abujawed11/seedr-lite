@@ -124,8 +124,8 @@ const Disclaimer = () => {
           <section>
             <h2 className="text-2xl font-semibold text-white mb-3">Service Description</h2>
             <p className="leading-relaxed">
-              MyPeerCloud operates as a <strong>cloud-based downloader and torrent client</strong> that enables users to
-              remotely fetch and store files through peer-to-peer (P2P) technology such as magnet links or .torrent files.
+              MyPeerCloud operates as a <strong>cloud-based remote file downloader and storage service</strong> that enables users to
+              remotely fetch and store files, including via peer-to-peer (P2P) protocols such as magnet links.
               MyPeerCloud <strong>acts solely as a neutral technology intermediary</strong> that provides infrastructure
               for lawful file transfers and private storage. We do not initiate or control the transfer, selection, or
               modification of any user-generated content.
