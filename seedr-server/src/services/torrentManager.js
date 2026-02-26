@@ -1,597 +1,747 @@
-// src/services/torrentManager.js (CJS compatible, no pretty-bytes)
+// src/services/torrentManager.js — aria2-based torrent manager
 const path = require('path');
+const { spawn } = require('child_process');
+const axios = require('axios');
 const { logger } = require('../utils/logger');
 const { getTrackers } = require('../utils/trackers');
 const database = require('../models/database');
 const { getUserStorageDir, ensureUserStorageDir } = require('../utils/storage');
 
+const ARIA2_PORT = process.env.ARIA2_PORT || 6800;
+const ARIA2_HOST = process.env.ARIA2_HOST || '127.0.0.1';
+const ARIA2_RPC_URL = `http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc`;
+const ARIA2_SECRET = process.env.ARIA2_SECRET || 'seedr_aria2_secret';
 const ROOT = process.env.ROOT || './src/storage/library';
 
-// Store quota exceeded notifications for frontend
+// ARIA2_CONTAINER_DIR: the path aria2 sees inside Docker (e.g. /downloads)
+// When set, file paths returned by aria2 are translated to host paths.
+const ARIA2_CONTAINER_DIR = process.env.ARIA2_CONTAINER_DIR || null;
+
+// ARIA2_MODE=docker → skip spawning aria2 locally (it runs in Docker)
+const DOCKER_MODE = process.env.ARIA2_MODE === 'docker';
+
+// ===================== IN-MEMORY STATE =====================
+
+// Store quota exceeded & completion notifications for frontend
 const quotaExceededNotifications = new Map(); // userId -> [notifications]
 
-// CRITICAL FIX: Clear all notifications on server start to prevent stale alerts
-// Notifications are in-memory only and should not persist across server restarts
+// Per-user download tracking
+const userGids = new Map();      // userId -> Set<gid>
+const gidInfo = new Map();       // gid -> { userId, infoHash, name, addedAt, quotaValidated, done }
+const infoHashToGid = new Map(); // infoHash -> gid
+
+let aria2Process = null;
+
+// Clear stale notifications on startup
 console.log('🧹 STARTUP: Clearing all in-memory notifications from previous session');
 quotaExceededNotifications.clear();
 
-// Store per-user WebTorrent clients for complete isolation
-const userClients = new Map(); // userId -> WebTorrent client
+// ===================== ARIA2 PROCESS =====================
 
-let WebTorrentMod;   // ESM default export
+function startAria2() {
+  if (aria2Process) return;
 
-// Initialize WebTorrent module and perform startup cleanup
-initializeManager().catch(error => {
-  console.error('❌ TORRENT_MANAGER: Failed to initialize manager:', error);
-});
+  const args = [
+    '--enable-rpc',
+    '--rpc-listen-all=false',
+    `--rpc-listen-port=${ARIA2_PORT}`,
+    `--rpc-secret=${ARIA2_SECRET}`,
+    '--seed-ratio=0',
+    '--seed-time=0',
+    '--max-connection-per-server=16',
+    '--split=16',
+    '--min-split-size=1M',
+    '--bt-enable-lpd=true',
+    '--continue=true',
+    '--always-resume=true',
+    '--file-allocation=none',
+    '--console-log-level=warn',
+    '--quiet=true',
+    `--dir=${path.resolve(ROOT)}`,
+    '--bt-seed-unverified=true',
+    '--follow-torrent=true',
+    '--bt-save-metadata=true',
+    '--dht-entry-point=dht.transmissionbt.com:6881'
+  ];
 
-// Simple human-readable bytes formatter (replaces pretty-bytes)
+  console.log('🚀 ARIA2: Starting aria2c process...');
+
+  aria2Process = spawn('aria2c', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false
+  });
+
+  aria2Process.stdout.on('data', d => process.stdout.write(`[aria2] ${d}`));
+  aria2Process.stderr.on('data', d => process.stderr.write(`[aria2] ${d}`));
+
+  aria2Process.on('spawn', () => {
+    console.log('✅ ARIA2: aria2c started successfully');
+  });
+
+  aria2Process.on('error', (err) => {
+    console.error('❌ ARIA2: Failed to start aria2c:', err.message);
+    console.error('💡 Please install aria2:');
+    console.error('   Windows: choco install aria2  (or scoop install aria2)');
+    console.error('   Linux:   sudo apt install aria2');
+    console.error('   macOS:   brew install aria2');
+    aria2Process = null;
+  });
+
+  aria2Process.on('exit', (code, signal) => {
+    console.log(`aria2c exited (code=${code}, signal=${signal})`);
+    aria2Process = null;
+    // Auto-restart unless intentionally killed
+    if (signal !== 'SIGTERM' && signal !== 'SIGINT') {
+      setTimeout(startAria2, 3000);
+    }
+  });
+
+  // Graceful shutdown
+  const killAria2 = () => { if (aria2Process) { aria2Process.kill('SIGTERM'); } };
+  process.once('exit', killAria2);
+  process.once('SIGINT', () => { killAria2(); process.exit(0); });
+  process.once('SIGTERM', () => { killAria2(); process.exit(0); });
+}
+
+// ===================== ARIA2 RPC =====================
+
+async function rpc(method, ...params) {
+  try {
+    const response = await axios.post(ARIA2_RPC_URL, {
+      jsonrpc: '2.0',
+      id: Date.now().toString(),
+      method: `aria2.${method}`,
+      params: [`token:${ARIA2_SECRET}`, ...params]
+    }, { timeout: 10000 });
+
+    if (response.data.error) {
+      throw new Error(`aria2 [${response.data.error.code}]: ${response.data.error.message}`);
+    }
+    return response.data.result;
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      throw new Error('aria2 RPC unreachable — is aria2c running?');
+    }
+    throw err;
+  }
+}
+
+// ===================== UTILITIES =====================
+
 function humanBytes(bytes) {
   const thresh = 1024;
   if (typeof bytes !== 'number' || isNaN(bytes)) return '0 B';
   if (Math.abs(bytes) < thresh) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
   let u = -1;
-  do {
-    bytes /= thresh;
-    ++u;
-  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-  // fewer decimals for small units
-  const fixed = u < 2 ? 0 : 2;
-  return `${bytes.toFixed(fixed)} ${units[u]}`;
+  do { bytes /= thresh; ++u; }
+  while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  return `${bytes.toFixed(u < 2 ? 0 : 2)} ${units[u]}`;
 }
 
-// Initialize the WebTorrent module and perform startup cleanup
-async function initializeManager() {
-  if (!WebTorrentMod) {
-    WebTorrentMod = (await import('webtorrent')).default;
+function extractNameFromMagnet(magnet) {
+  try {
+    const dnMatch = magnet.match(/[?&]dn=([^&]+)/);
+    if (dnMatch) return decodeURIComponent(dnMatch[1].replace(/\+/g, ' '));
+  } catch (e) {}
+  return null;
+}
+
+// Extract infoHash from a magnet URI (always available in a valid magnet link).
+// e.g. magnet:?xt=urn:btih:abc123... → 'abc123'
+function extractInfoHashFromMagnet(magnet) {
+  const match = magnet.match(/xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+// Translate aria2's container-internal path to the host filesystem path.
+// e.g. /downloads/users/abc/hash/file.mp4 → ROOT\users\abc\hash\file.mp4
+function containerToHostPath(containerPath) {
+  if (!ARIA2_CONTAINER_DIR || !containerPath) return containerPath;
+  const containerBase = ARIA2_CONTAINER_DIR.replace(/\\/g, '/');
+  const normalized = containerPath.replace(/\\/g, '/');
+  if (normalized.startsWith(containerBase)) {
+    const hostBase = path.resolve(ROOT);
+    const relativePart = normalized.slice(containerBase.length);
+    return path.join(hostBase, relativePart);
+  }
+  return containerPath;
+}
+
+// Get the directory to pass to aria2 for a specific torrent download.
+// Uses infoHash as a subdirectory so directory names are never based on the
+// torrent display name — avoids conflicts with stale files/symlinks.
+// Structure: ROOT/users/<userId>/<infoHash>/  (aria2 puts TorrentName/ inside this)
+function getAria2Dir(userId, infoHash) {
+  const fs = require('fs');
+  const hostUserDir = path.join(path.resolve(ROOT), 'users', userId);
+  const hostTorrentDir = infoHash ? path.join(hostUserDir, infoHash) : hostUserDir;
+
+  // Always create the host directory so Node.js can read from it
+  if (!fs.existsSync(hostTorrentDir)) {
+    fs.mkdirSync(hostTorrentDir, { recursive: true });
   }
 
-  // Smart startup cleanup: Collect torrents from all existing user clients after delay
-  setTimeout(async () => {
-    try {
-      const allActiveTorrentHashes = [];
-
-      // Collect all active torrents across all user clients
-      for (const [userId, client] of userClients.entries()) {
-        const userTorrentHashes = client.torrents.map(t => t.infoHash);
-        allActiveTorrentHashes.push(...userTorrentHashes);
-        console.log(`🧹 User ${userId} has ${userTorrentHashes.length} active torrents`);
-      }
-
-      console.log(`🧹 SMART CLEANUP: Found ${allActiveTorrentHashes.length} total active torrents across all users, cleaning stale reservations...`);
-
-      const cleanedCount = await database.reservations.cleanupStaleReservations(allActiveTorrentHashes);
-      console.log(`✅ SMART CLEANUP: Released ${cleanedCount} stale reservations`);
-
-      if (cleanedCount > 0) {
-        await database.logActivity({
-          userId: null,
-          username: 'system',
-          actionType: 'reservation_cleanup',
-          fileSize: cleanedCount,
-          torrentName: 'smart_cleanup_startup'
-        });
-      }
-    } catch (error) {
-      console.error('❌ SMART CLEANUP ERROR:', error);
-    }
-  }, 5000); // Wait 5 seconds for torrents to load
-}
-
-// Cleanup idle clients to save resources
-function cleanupIdleClients() {
-  const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-  const now = Date.now();
-
-  for (const [userId, client] of userClients.entries()) {
-    // Skip if client has active torrents
-    if (client.torrents.length > 0) {
-      client._lastActivity = now; // Update activity
-      continue;
-    }
-
-    // Check if client has been idle too long
-    if (now - client._lastActivity > IDLE_TIMEOUT) {
-      console.log(`🧹 Cleaning up idle client for user: ${userId}`);
-      try {
-        client.destroy((err) => {
-          if (err) console.error(`Error destroying client for user ${userId}:`, err);
-        });
-        userClients.delete(userId);
-        console.log(`✅ Idle client cleaned up for user: ${userId}`);
-      } catch (error) {
-        console.error(`Failed to cleanup client for user ${userId}:`, error);
-      }
-    }
+  if (ARIA2_CONTAINER_DIR) {
+    return infoHash
+      ? `${ARIA2_CONTAINER_DIR}/users/${userId}/${infoHash}`
+      : `${ARIA2_CONTAINER_DIR}/users/${userId}`;
   }
+  return hostTorrentDir;
 }
 
-// Run cleanup every 5 minutes
-setInterval(cleanupIdleClients, 5 * 60 * 1000);
+function toSummary(status, meta) {
+  const totalLength = parseInt(status.totalLength || 0);
+  const completedLength = parseInt(status.completedLength || 0);
+  const progress = totalLength > 0 ? Number(((completedLength / totalLength) * 100).toFixed(2)) : 0;
+  const name = status.bittorrent?.info?.name || meta?.name || 'Unknown';
+  const infoHash = status.infoHash || meta?.infoHash;
 
-// Monitor client performance
-function logClientStats() {
-  console.log(`📊 CLIENT STATS: ${userClients.size} active user clients`);
-  for (const [userId, client] of userClients.entries()) {
-    const torrentsCount = client.torrents.length;
-    const totalPeers = client.torrents.reduce((sum, t) => sum + t.numPeers, 0);
-    const totalSpeed = client.torrents.reduce((sum, t) => sum + t.downloadSpeed, 0);
-    console.log(`  User ${userId}: ${torrentsCount} torrents, ${totalPeers} peers, ${humanBytes(totalSpeed)}/s`);
-  }
-}
+  const files = (status.files || []).map((f, i) => ({
+    index: i,
+    name: path.basename(f.path || ''),
+    path: containerToHostPath(f.path || ''), // Translate Docker path → host path
+    length: parseInt(f.length || 0)
+  }));
 
-// Log stats every 2 minutes
-setInterval(logClientStats, 2 * 60 * 1000);
-
-// Get or create a WebTorrent client for a specific user
-async function getUserClient(userId) {
-  if (!WebTorrentMod) {
-    WebTorrentMod = (await import('webtorrent')).default;
-  }
-
-  // Update activity timestamp if client exists
-  if (userClients.has(userId)) {
-    const client = userClients.get(userId);
-    client._lastActivity = Date.now();
-    return client;
-  }
-
-  // Create user-specific client if it doesn't exist
-  console.log(`🏗️ Creating new WebTorrent client for user: ${userId}`);
-
-  const userClient = new WebTorrentMod({
-    dht: true,
-    tracker: true,
-    maxConns: 30        // Limit concurrent connections per user
-  });
-
-  userClient.on('error', (e) => {
-    logger.error(`WebTorrent error for user ${userId}:`, e.message);
-  });
-
-  // Store the client for this user with timestamp
-  userClients.set(userId, userClient);
-  userClient._lastActivity = Date.now();
-  userClient._userId = userId;
-
-  console.log(`✅ WebTorrent client created for user: ${userId} (max ${userClient.maxConns} connections)`);
-
-  return userClients.get(userId);
-}
-
-// For backward compatibility - this should be replaced with getUserClient
-async function getClient() {
-  console.warn('⚠️ DEPRECATED: getClient() called without userId - this should be replaced with getUserClient(userId)');
-  // Return a default client or throw error
-  throw new Error('getClient() is deprecated - use getUserClient(userId) instead');
-}
-
-function toSummary(t) {
   return {
-    id: t.infoHash,
-    name: t.name,
-    progress: Number((t.progress * 100).toFixed(2)),
-    downloaded: humanBytes(t.downloaded),
-    length: humanBytes(t.length || 0),
-    downloadSpeed: `${humanBytes(t.downloadSpeed)}/s`,
-    uploadSpeed: `${humanBytes(t.uploadSpeed)}/s`,
-    numPeers: t.numPeers,
-    files: t.files.map((f, i) => ({
-      index: i,
-      name: f.name,
-      path: f.path,
-      length: f.length
-    })),
-    done: t.done
+    id: infoHash || status.gid,
+    gid: status.gid,
+    name,
+    progress,
+    downloaded: humanBytes(completedLength),
+    length: humanBytes(totalLength),
+    downloadSpeed: `${humanBytes(parseInt(status.downloadSpeed || 0))}/s`,
+    uploadSpeed: `${humanBytes(parseInt(status.uploadSpeed || 0))}/s`,
+    numPeers: parseInt(status.numSeeders || 0) + parseInt(status.connections || 0),
+    files,
+    done: status.status === 'complete',
+    status: status.status,
+    infoHash
   };
 }
 
+// ===================== GID LIFECYCLE =====================
+
+function cleanupGid(gid, userId) {
+  const meta = gidInfo.get(gid);
+  if (meta?.infoHash) infoHashToGid.delete(meta.infoHash);
+  gidInfo.delete(gid);
+  if (userGids.has(userId)) {
+    userGids.get(userId).delete(gid);
+  }
+}
+
+// ===================== QUOTA VALIDATION =====================
+
+async function validateQuotaForGid(gid, userId, status) {
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.quotaValidated) return;
+
+  const totalLength = parseInt(status.totalLength || 0);
+  if (totalLength === 0) return;
+
+  try {
+    const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
+    const availableSpace = quotaInfo.effectiveRemaining;
+
+    console.log(`🔍 QUOTA CHECK: ${meta.name} - ${humanBytes(totalLength)} vs available ${humanBytes(availableSpace)}`);
+
+    if (totalLength > availableSpace) {
+      console.log(`❌ QUOTA EXCEEDED: Removing ${meta.name}`);
+      meta.quotaValidated = true;
+
+      try { await rpc('forceRemove', gid); } catch (e) {}
+
+      const safeAvailableSpace = (typeof availableSpace === 'number' && !isNaN(availableSpace))
+        ? humanBytes(availableSpace) : '0 B';
+
+      addQuotaExceededNotification(userId, {
+        torrentName: meta.name || 'Unknown',
+        torrentSize: humanBytes(totalLength),
+        availableSpace: safeAvailableSpace,
+        timestamp: new Date().toISOString()
+      });
+
+      cleanupGid(gid, userId);
+      return;
+    }
+
+    console.log(`✅ QUOTA OK: ${meta.name}`);
+    meta.quotaValidated = true;
+
+    const infoHash = status.infoHash;
+    if (infoHash) {
+      try {
+        await database.reservations._run(
+          `DELETE FROM storage_reservations WHERE user_id=? AND info_hash=?`,
+          [userId, infoHash]
+        );
+        await database.reserveSpaceAtomic(userId, infoHash, totalLength);
+        console.log(`✅ Space reserved: ${humanBytes(totalLength)}`);
+      } catch (err) {
+        console.warn('⚠️ Reservation failed but quota OK:', err.message);
+      }
+    }
+  } catch (err) {
+    console.error('Error during quota validation:', err.message);
+  }
+}
+
+// ===================== DOWNLOAD COMPLETION =====================
+
+async function handleDownloadComplete(gid, status, userId) {
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.done) return;
+  meta.done = true;
+
+  const name = status.bittorrent?.info?.name || meta?.name || 'Unknown';
+  const totalLength = parseInt(status.totalLength || 0);
+  const infoHash = status.infoHash;
+
+  console.log(`🎉 Download complete: ${name} for user ${userId}`);
+
+  if (infoHash) {
+    try {
+      await database.updateProgressiveStorage(userId, infoHash, totalLength);
+      await database.finalizeReservation(userId, infoHash, totalLength);
+      console.log(`✅ Storage finalized: ${humanBytes(totalLength)}`);
+    } catch (err) {
+      console.error('Error finalizing reservation:', err.message);
+      try { await database.releaseReservation(userId, infoHash); } catch (e) {}
+    }
+  }
+
+  addCompletionNotification(userId, {
+    torrentName: name,
+    torrentSize: humanBytes(totalLength),
+    infoHash,
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    await database.logActivity({
+      userId,
+      username: 'system',
+      actionType: 'torrent_complete',
+      torrentName: name,
+      torrentHash: infoHash,
+      fileSize: totalLength,
+      filePath: 'download_complete'
+    });
+  } catch (err) {
+    console.warn('Failed to log completion:', err.message);
+  }
+
+  try { await rpc('removeDownloadResult', gid); } catch (err) {}
+
+  cleanupGid(gid, userId);
+}
+
+// ===================== CONTENT GID SWITCHING =====================
+
+// When a magnet's metadata GID completes, aria2 starts the real content download
+// under a NEW GID reported in status.followedBy[]. This function switches all
+// in-memory tracking from the metadata GID to the content GID.
+async function switchToContentGid(metadataGid, contentGid, userId) {
+  // Guard against double-switch race conditions
+  if (gidInfo.has(contentGid)) return;
+  const meta = gidInfo.get(metadataGid);
+  if (!meta) return;
+
+  console.log(`🔄 Switching tracking: metadata GID ${metadataGid} → content GID ${contentGid}`);
+
+  // Register content GID with the same metadata, no longer marked as metadata-only
+  gidInfo.set(contentGid, {
+    ...meta,
+    gid: contentGid,
+    isMetadata: false,
+    quotaValidated: false, // Content size is different from metadata size — re-validate
+    done: false
+  });
+
+  // Update infoHash → GID mapping
+  if (meta.infoHash) infoHashToGid.set(meta.infoHash, contentGid);
+
+  // Update user's GID set
+  if (userGids.has(userId)) {
+    userGids.get(userId).delete(metadataGid);
+    userGids.get(userId).add(contentGid);
+  }
+
+  // Remove the metadata GID entry
+  gidInfo.delete(metadataGid);
+
+  // Pull infoHash from content status if aria2 has it
+  try {
+    const contentStatus = await rpc('tellStatus', contentGid);
+    if (contentStatus.infoHash) {
+      const m = gidInfo.get(contentGid);
+      if (m) m.infoHash = contentStatus.infoHash;
+      infoHashToGid.set(contentStatus.infoHash, contentGid);
+    }
+  } catch (e) {}
+}
+
+// ===================== POLLING =====================
+
+async function pollDownloads() {
+  if (gidInfo.size === 0) return;
+
+  try {
+    const [active, waiting] = await Promise.all([
+      rpc('tellActive').catch(() => []),
+      rpc('tellWaiting', 0, 100).catch(() => [])
+    ]);
+
+    const allDownloads = [...active, ...waiting];
+
+    for (const status of allDownloads) {
+      const gid = status.gid;
+      const meta = gidInfo.get(gid);
+      if (!meta) continue;
+
+      const { userId } = meta;
+
+      // ── Metadata GID handling ──────────────────────────────────────────────
+      // Metadata GIDs are the small initial download aria2 uses to fetch
+      // torrent info from a magnet link (~3KiB). Once complete, aria2 creates
+      // the real content download and reports it in status.followedBy[].
+      if (meta.isMetadata) {
+        // Update name while metadata is fetching
+        const btName = status.bittorrent?.info?.name;
+        if (btName && btName !== meta.name) meta.name = btName;
+
+        // When metadata completes, followedBy contains the content GID
+        if (status.followedBy && status.followedBy.length > 0) {
+          await switchToContentGid(gid, status.followedBy[0], userId);
+        }
+        // Never do quota/progress/completion logic on metadata GIDs
+        continue;
+      }
+
+      // ── Content GID handling ───────────────────────────────────────────────
+
+      // Update infoHash mapping when available
+      if (status.infoHash && status.infoHash !== meta.infoHash) {
+        meta.infoHash = status.infoHash;
+        infoHashToGid.set(status.infoHash, gid);
+        console.log(`🔑 Got infoHash: ${status.infoHash} for "${meta.name || gid}"`);
+      }
+
+      // Update name when available
+      const btName = status.bittorrent?.info?.name;
+      if (btName && btName !== meta.name) {
+        meta.name = btName;
+      }
+
+      // Quota validation when total content size is known
+      if (!meta.quotaValidated && parseInt(status.totalLength || 0) > 0) {
+        await validateQuotaForGid(gid, userId, status);
+      }
+
+      // Progressive storage update
+      if (meta.quotaValidated && meta.infoHash) {
+        const completedLength = parseInt(status.completedLength || 0);
+        if (completedLength > 0) {
+          database.updateProgressiveStorage(userId, meta.infoHash, completedLength).catch(() => {});
+        }
+      }
+
+      // Completion
+      if (status.status === 'complete' && !meta.done) {
+        await handleDownloadComplete(gid, status, userId);
+      }
+    }
+
+    // Check for GIDs that disappeared (errored or manually removed)
+    const activeGids = new Set(allDownloads.map(s => s.gid));
+    for (const [gid, meta] of gidInfo.entries()) {
+      if (!activeGids.has(gid)) {
+        try {
+          const status = await rpc('tellStatus', gid);
+          // Check followedBy even on completed metadata GIDs
+          if (meta.isMetadata && status.followedBy?.length > 0) {
+            await switchToContentGid(gid, status.followedBy[0], meta.userId);
+          } else if (status.status === 'error') {
+            console.error(`❌ Download error for "${meta.name}": ${status.errorMessage}`);
+            cleanupGid(gid, meta.userId);
+          } else if (status.status === 'complete' && !meta.isMetadata && !meta.done) {
+            await handleDownloadComplete(gid, status, meta.userId);
+          }
+        } catch (err) {
+          cleanupGid(gid, meta.userId);
+        }
+      }
+    }
+  } catch (err) {
+    if (!err.message?.includes('ECONNREFUSED') && !err.message?.includes('unreachable')) {
+      console.error('Poll error:', err.message);
+    }
+  }
+}
+
+// Poll every 3 seconds
+setInterval(pollDownloads, 3000);
+
+// Stats every 2 minutes
+setInterval(() => {
+  if (gidInfo.size > 0) {
+    console.log(`📊 ARIA2 STATS: ${gidInfo.size} downloads across ${userGids.size} users`);
+  }
+}, 2 * 60 * 1000);
+
+// Startup cleanup (stale reservations)
+setTimeout(async () => {
+  try {
+    const activeHashes = [...gidInfo.values()].filter(m => m.infoHash).map(m => m.infoHash);
+    const cleanedCount = await database.reservations.cleanupStaleReservations(activeHashes);
+    if (cleanedCount > 0) {
+      console.log(`✅ STARTUP CLEANUP: Released ${cleanedCount} stale reservations`);
+      await database.logActivity({
+        userId: null,
+        username: 'system',
+        actionType: 'reservation_cleanup',
+        fileSize: cleanedCount,
+        torrentName: 'smart_cleanup_startup'
+      });
+    }
+  } catch (err) {
+    console.error('Startup cleanup error:', err.message);
+  }
+}, 5000);
+
+// ===================== PUBLIC API =====================
+
 async function addMagnet(magnet, userId) {
-  const c = await getUserClient(userId);  // Use user-specific client
-  const announce = getTrackers();
+  // Extract infoHash from the magnet URI — always available in a valid magnet link.
+  // Using it as the storage subdirectory avoids any conflict with torrent display names
+  // or stale files/symlinks from previous downloads.
+  const infoHashFromMagnet = extractInfoHashFromMagnet(magnet);
+  const aria2Dir = getAria2Dir(userId, infoHashFromMagnet);
+  const trackers = getTrackers();
+
+  console.log(`📁 Adding torrent for user ${userId} → ${aria2Dir}`);
+
+  const options = {
+    dir: aria2Dir,
+    'seed-ratio': '0',
+    'seed-time': '0',
+    'max-connection-per-server': '16',
+    'split': '16',
+    'min-split-size': '1M',
+    'bt-tracker': trackers.join(',')
+  };
+
+  const gid = await rpc('addUri', [magnet], options);
+  console.log(`✅ Torrent queued in aria2, gid=${gid}`);
+
+  if (!userGids.has(userId)) userGids.set(userId, new Set());
+  userGids.get(userId).add(gid);
+
+  // Pre-populate infoHash from the magnet link so we don't have to wait for aria2
+  if (infoHashFromMagnet) {
+    infoHashToGid.set(infoHashFromMagnet, gid);
+  }
+
+  // Mark as metadata GID — the real content download comes later via followedBy
+  gidInfo.set(gid, {
+    userId,
+    gid,
+    isMetadata: true,
+    infoHash: infoHashFromMagnet,
+    name: extractNameFromMagnet(magnet),
+    addedAt: Date.now(),
+    quotaValidated: false,
+    done: false
+  });
+
+  // Wait for aria2 to fetch metadata and report the content GID in followedBy.
+  // Once we have the content GID, switch tracking and resolve with its summary.
   return new Promise((resolve, reject) => {
-    // Ensure user directory exists and get user-specific path
-    const userStorageDir = ensureUserStorageDir(userId);
-    console.log(`📁 Using user storage directory: ${userStorageDir}`);
+    const deadline = Date.now() + 120000; // 2 min for metadata fetch
 
-    const t = c.add(
-      magnet,
-      { path: userStorageDir, announce },
-      (torrent) => {
-        // Track user for this torrent - CRITICAL: Set this immediately
-        torrent.userId = userId;
-        torrent.quotaValidated = false; // Flag to prevent duplicate quota validation
-
-
-        torrent.on('infoHash', () => {
-          console.log(`🔑 Got infoHash: ${torrent.infoHash} for user ${userId}`);
-          console.log(`🔍 Torrent state after infoHash: ready=${torrent.ready}, length=${torrent.length}, name=${torrent.name || 'Unknown'}`);
-        });
-
-        // Shared quota validation function
-        const validateQuotaAndReserve = async (source = '') => {
-          if (torrent.quotaValidated) {
-            console.log(`🔍 QUOTA ALREADY VALIDATED${source ? ` (${source})` : ''} - skipping`);
-            return;
-          }
-
-          console.log(`🔍 QUOTA VALIDATION${source ? ` (${source})` : ''} STARTING`);
-          console.log(`🔍 Torrent details: name=${torrent.name}, length=${torrent.length}, ready=${torrent.ready}`);
-
+    const poll = setInterval(async () => {
+      try {
+        // Check if the polling loop already switched us to a content GID
+        const contentGid = infoHashFromMagnet ? infoHashToGid.get(infoHashFromMagnet) : null;
+        if (contentGid && contentGid !== gid && gidInfo.has(contentGid)) {
+          clearInterval(poll);
           try {
-            const quotaInfo = await database.getUserStorageInfoWithReservations(userId);
-            const torrentSize = torrent.length;
-            const availableSpace = quotaInfo.effectiveRemaining;
-
-            console.log(`🔍 QUOTA CHECK DEBUG${source ? ` (${source})` : ''}:`);
-            console.log(`  📊 Torrent size: ${humanBytes(torrentSize)} (${torrentSize} bytes)`);
-            console.log(`  📊 Available space: ${humanBytes(availableSpace)} (${availableSpace} bytes)`);
-            console.log(`  📊 Size > Available: ${torrentSize} > ${availableSpace} = ${torrentSize > availableSpace}`);
-
-            if (torrentSize > availableSpace) {
-              console.log(`❌ QUOTA EXCEEDED${source ? ` (${source})` : ''}! Torrent exceeds available quota - stopping download immediately`);
-              console.log(`❌ REMOVING TORRENT: ${torrent.name} (${humanBytes(torrentSize)}) > available (${humanBytes(availableSpace)})`);
-
-              // Mark as validated to prevent duplicate attempts
-              torrent.quotaValidated = true;
-
-              // Stop the torrent and remove files
-              try {
-                await new Promise((resolve, reject) => {
-                  c.remove(torrent.infoHash, { destroyStore: true }, (err) => {
-                    if (err) {
-                      console.error(`💥 Error removing oversized torrent${source ? ` (${source})` : ''}:`, err);
-                      reject(err);
-                    } else {
-                      console.log(`🗑️ Successfully removed oversized torrent${source ? ` (${source})` : ''}: ${torrent.name}`);
-                      resolve();
-                    }
-                  });
-                });
-              } catch (removeError) {
-                console.error(`💥 Failed to remove oversized torrent${source ? ` (${source})` : ''}:`, removeError);
-              }
-
-              // Log quota exceeded message that frontend can pick up
-              console.error(`🚫 QUOTA_EXCEEDED${source ? ` (${source})` : ''}: ${torrent.name} (${humanBytes(torrentSize)}) exceeds available quota (${humanBytes(availableSpace)})`);
-
-              // Store notification for frontend
-              // DEFENSIVE: Ensure availableSpace is valid before creating notification
-              const safeAvailableSpace = (typeof availableSpace === 'number' && !isNaN(availableSpace))
-                ? humanBytes(availableSpace)
-                : '0 B';
-
-              addQuotaExceededNotification(userId, {
-                torrentName: torrent.name || 'Unknown',
-                torrentSize: humanBytes(torrentSize) || '0 B',
-                availableSpace: safeAvailableSpace,
-                timestamp: new Date().toISOString()
-              });
-
-              return;
-            }
-
-            console.log(`✅ QUOTA CHECK PASSED${source ? ` (${source})` : ''}: Torrent size ${humanBytes(torrentSize)} fits in available space ${humanBytes(availableSpace)}`);
-
-            // Mark as validated to prevent duplicate attempts
-            torrent.quotaValidated = true;
-
-            // Simple, foolproof reservation creation using INSERT OR REPLACE
-            try {
-              // First, clear any existing reservations for this torrent (clean slate)
-              await database.reservations._run(
-                `DELETE FROM storage_reservations WHERE user_id=? AND info_hash=?`,
-                [userId, torrent.infoHash]
-              );
-              console.log(`🧹 Cleared any existing reservations for ${torrent.infoHash}`);
-
-              // Now create new reservation (guaranteed to work)
-              await database.reserveSpaceAtomic(userId, torrent.infoHash, torrentSize);
-              console.log(`✅ Quota validated and space reserved${source ? ` (${source})` : ''} - torrent can proceed (${humanBytes(torrentSize)})`);
-
-            } catch (reserveError) {
-              console.log(`⚠️ Reservation failed but quota OK${source ? ` (${source})` : ''} - continuing: ${reserveError.message}`);
-
-              // Show debug info
-              try {
-                const allReservations = await database.getUserReservations(userId);
-                console.log(`🔍 DEBUG: Current user reservations (${allReservations.length}):`);
-                allReservations.forEach(r => {
-                  console.log(`  - ${r.info_hash}: ${humanBytes(r.size_bytes)} (${r.status})`);
-                });
-              } catch (debugError) {
-                console.error(`💥 Failed to debug reservations:`, debugError);
-              }
-            }
-
-          } catch (error) {
-            console.error(`💥 Error during quota validation${source ? ` (${source})` : ''}:`, error);
-            console.error('💥 Error stack:', error.stack);
-            // Don't stop torrent for validation errors, just log
+            const contentStatus = await rpc('tellStatus', contentGid);
+            return resolve(toSummary(contentStatus, gidInfo.get(contentGid)));
+          } catch (e) {
+            return resolve({ id: infoHashFromMagnet || contentGid, gid: contentGid, name: gidInfo.get(contentGid)?.name || 'Loading...', progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'active', infoHash: infoHashFromMagnet });
           }
-        };
-
-        torrent.on('metadata', async () => {
-          console.log(`🔍 METADATA EVENT TRIGGERED!`);
-          console.log(`📋 Got metadata: ${torrent.name} (${humanBytes(torrent.length)}) for user ${userId}`);
-          await validateQuotaAndReserve('METADATA');
-        });
-
-        torrent.on('ready', () => {
-          console.log(`🚀 Torrent ready: ${torrent.name} for user ${userId}`);
-          console.log(`🔍 Ready state details: length=${torrent.length}, files=${torrent.files.length}, progress=${torrent.progress}`);
-        });
-
-        torrent.on('error', (err) => {
-          console.error(`💥 Torrent error for user ${userId}:`, err);
-          // Log torrent error
-          database.logActivity({
-            userId,
-            username: 'system',
-            actionType: 'torrent_error',
-            torrentName: torrent.name || 'Unknown',
-            torrentHash: torrent.infoHash,
-            magnetLink: `error:${err.message}`
-          }).catch(e => console.error('Failed to log torrent error:', e));
-        });
-
-        torrent.on('noPeers', (type) => {
-          console.log(`🔍 No peers from ${type} for torrent: ${torrent.name || 'Unknown'}`);
-        });
-
-        // Additional debugging events
-        torrent.on('wire', (wire, addr) => {
-          console.log(`🔗 Connected to peer: ${addr}`);
-        });
-
-        // Track cumulative data transfer (less noisy than per-chunk logging)
-        let totalDownloaded = 0;
-        let totalUploaded = 0;
-        let lastLogTime = Date.now();
-
-        torrent.on('upload', (bytes) => {
-          totalUploaded += bytes;
-          const now = Date.now();
-          // Only log every 10 seconds to reduce noise
-          if (now - lastLogTime > 10000) {
-            console.log(`📊 Data transfer: ⬇️ ${humanBytes(totalDownloaded)} ⬆️ ${humanBytes(totalUploaded)}`);
-            lastLogTime = now;
-          }
-        });
-
-        // Progressive storage tracking
-        let lastUpdateTime = 0;
-        const UPDATE_INTERVAL = 5000; // Update every 5 seconds
-
-        torrent.on('download', async (bytes) => {
-          totalDownloaded += bytes;
-
-          // Update storage progressively (throttled to avoid too many DB calls)
-          const now = Date.now();
-          if (now - lastUpdateTime > UPDATE_INTERVAL && torrent.quotaValidated) {
-            lastUpdateTime = now;
-
-            try {
-              const downloadedBytes = torrent.downloaded;
-              await database.updateProgressiveStorage(userId, torrent.infoHash, downloadedBytes);
-              console.log(`📊 Progressive update: ${humanBytes(downloadedBytes)} downloaded for ${torrent.name || 'Unknown'}`);
-            } catch (error) {
-              console.error('Error updating progressive storage:', error);
-            }
-          }
-        });
-
-        // Log torrent state periodically
-        const debugInterval = setInterval(() => {
-          if (torrent.destroyed) {
-            clearInterval(debugInterval);
-            return;
-          }
-          console.log(`🔍 TORRENT STATUS: name=${torrent.name || 'Unknown'}, ready=${torrent.ready}, length=${torrent.length || 0}, progress=${(torrent.progress * 100).toFixed(1)}%, peers=${torrent.numPeers}`);
-        }, 30000); // Every 30 seconds
-
-        // Check if metadata is already available immediately
-        console.log(`🔍 IMMEDIATE CHECK: ready=${torrent.ready}, length=${torrent.length}, name=${torrent.name || 'None'}`);
-        if (torrent.ready && torrent.length > 0) {
-          console.log(`🔍 METADATA ALREADY AVAILABLE! Triggering quota check immediately`);
-          // Manually trigger quota validation since metadata event might have already fired
-          setTimeout(async () => {
-            await validateQuotaAndReserve('MANUAL');
-          }, 1000);
         }
 
-        // ⛔ Stop seeding as soon as download finishes and finalize storage
-        torrent.on('done', async () => {
-          console.log(`🎉 Download complete: ${torrent.name} for user ${userId}`);
+        const status = await rpc('tellStatus', gid);
+
+        if (status.status === 'error') {
+          clearInterval(poll);
+          cleanupGid(gid, userId);
+          return reject(new Error(`Torrent error: ${status.errorMessage || 'unknown'}`));
+        }
+
+        if (status.status === 'removed') {
+          clearInterval(poll);
+          return reject(new Error('Torrent was removed'));
+        }
+
+        // Update name while waiting
+        const btName = status.bittorrent?.info?.name;
+        const meta = gidInfo.get(gid);
+        if (meta && btName) meta.name = btName;
+
+        // followedBy means metadata is fetched and content download has started
+        if (status.followedBy && status.followedBy.length > 0) {
+          clearInterval(poll);
+          const newContentGid = status.followedBy[0];
+          await switchToContentGid(gid, newContentGid, userId);
 
           try {
-            // CRITICAL: Final progressive update to sync all downloaded bytes before finalization
-            // This prevents race conditions where the last 5-second interval hasn't triggered yet
-            const finalDownloadedBytes = torrent.downloaded;
-            console.log(`🔄 Final sync: ${humanBytes(finalDownloadedBytes)} downloaded for ${torrent.name}`);
-
-            await database.updateProgressiveStorage(userId, torrent.infoHash, finalDownloadedBytes);
-            console.log(`✅ Progressive storage synced before finalization`);
-
-            // Now finalize with the exact downloaded amount
-            // This should result in minimal or zero remainingBytes since we just synced
-            await database.finalizeReservation(userId, torrent.infoHash, finalDownloadedBytes);
-            console.log(`✅ Storage usage finalized for completed torrent: ${humanBytes(finalDownloadedBytes)}`);
-            console.log(`🔄 Reservation finalized for user ${userId}, torrent ${torrent.infoHash}`);
-          } catch (error) {
-            console.error('💥 Error finalizing reservation:', error);
-            console.error('💥 Error details:', {
-              userId,
-              infoHash: torrent.infoHash,
-              downloaded: torrent.downloaded,
-              length: torrent.length,
-              error: error.message
-            });
-
-            // Fallback: try to release the reservation if finalization fails
-            try {
-              await database.releaseReservation(userId, torrent.infoHash);
-              console.log(`🔄 Fallback: Released reservation for ${torrent.infoHash}`);
-            } catch (releaseError) {
-              console.error('💥 Fallback release also failed:', releaseError);
-            }
+            const contentStatus = await rpc('tellStatus', newContentGid);
+            return resolve(toSummary(contentStatus, gidInfo.get(newContentGid)));
+          } catch (e) {
+            const m = gidInfo.get(newContentGid);
+            return resolve({ id: infoHashFromMagnet || newContentGid, gid: newContentGid, name: m?.name || 'Loading...', progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'active', infoHash: infoHashFromMagnet });
           }
+        }
 
-          // Add completion notification to trigger file explorer refresh
-          addCompletionNotification(userId, {
-            torrentName: torrent.name,
-            torrentSize: humanBytes(torrent.length),
-            infoHash: torrent.infoHash,
-            timestamp: new Date().toISOString()
-          });
-
-          // Log torrent completion
-          try {
-            await database.logActivity({
-              userId,
-              username: 'system', // or get user details if available, but torrent.userId is all we have
-              actionType: 'torrent_complete',
-              torrentName: torrent.name,
-              torrentHash: torrent.infoHash,
-              fileSize: torrent.length,
-              filePath: 'download_complete'
-            });
-            console.log(`📝 Activity logged: torrent_complete for ${torrent.name}`);
-          } catch (logError) {
-            console.error('⚠️ Failed to log torrent completion:', logError);
-          }
-
-          c.remove(torrent.infoHash, { destroyStore: false }, (err) => {
-            if (err) {
-              console.error('error removing completed torrent:', err);
-            } else {
-              console.log('torrent removed from client (files kept):', torrent.infoHash);
-            }
-          });
-        });
-
-        // resolve summary when torrent is ready (metadata available)
-        torrent.on('ready', () => resolve(toSummary(torrent)));
+        if (Date.now() > deadline) {
+          clearInterval(poll);
+          // Timeout — return partial info, polling loop will handle the rest
+          return resolve({ id: infoHashFromMagnet || gid, gid, name: gidInfo.get(gid)?.name || 'Loading...', progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'active', infoHash: infoHashFromMagnet });
+        }
+      } catch (err) {
+        clearInterval(poll);
+        reject(err);
       }
-    );
-
-    // CRITICAL: Set userId immediately on the torrent object to avoid race conditions
-    t.userId = userId;
-    t.quotaValidated = false;
-
-    t.on('error', (err) => {
-      console.error(`💥 Critical error adding torrent for user ${userId}:`, err);
-      reject(err);
-    });
+    }, 1000);
   });
 }
 
 async function getTorrent(infoHash, userId) {
-  const c = await getUserClient(userId);  // Use user-specific client
-  const torrent = c.get(infoHash);
+  const gid = infoHashToGid.get(infoHash);
+  if (!gid) return null;
 
-  // With per-user clients, any torrent found in user's client belongs to them
-  return torrent;
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.userId !== userId) return null;
+
+  try {
+    const status = await rpc('tellStatus', gid);
+    return toSummary(status, meta);
+  } catch (err) {
+    return null;
+  }
 }
 
 async function listTorrents(userId) {
-  const c = await getUserClient(userId);  // Use user-specific client
-  // All torrents in user's client belong to them, no filtering needed
-  return c.torrents.map(toSummary);
+  const gids = userGids.get(userId);
+  if (!gids || gids.size === 0) return [];
+
+  const results = [];
+  const toRemove = [];
+
+  for (const gid of gids) {
+    try {
+      const status = await rpc('tellStatus', gid);
+      const meta = gidInfo.get(gid);
+
+      if (status.status === 'removed' || status.status === 'error') {
+        toRemove.push(gid);
+        continue;
+      }
+      results.push(toSummary(status, meta));
+    } catch (err) {
+      toRemove.push(gid);
+    }
+  }
+
+  toRemove.forEach(gid => cleanupGid(gid, userId));
+  return results;
+}
+
+async function pauseTorrent(infoHash, userId) {
+  const gid = infoHashToGid.get(infoHash);
+  if (!gid) return false;
+
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.userId !== userId) return false;
+
+  try {
+    await rpc('pause', gid);
+    console.log(`⏸️ Paused: ${meta.name}`);
+    return true;
+  } catch (err) {
+    try {
+      await rpc('forcePause', gid);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+async function resumeTorrent(infoHash, userId) {
+  const gid = infoHashToGid.get(infoHash);
+  if (!gid) return false;
+
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.userId !== userId) return false;
+
+  await rpc('unpause', gid);
+  console.log(`▶️ Resumed: ${meta.name}`);
+  return true;
 }
 
 async function stopTorrent(infoHash, userId) {
-  if (!userId) {
-    throw new Error('userId is required for stopTorrent');
-  }
+  if (!userId) throw new Error('userId is required for stopTorrent');
 
-  const c = await getUserClient(userId);  // Use user-specific client
-  const t = c.get(infoHash);  // Get torrent directly by infoHash
+  const gid = infoHashToGid.get(infoHash);
+  if (!gid) return false;
 
-  if (!t) return false;
+  const meta = gidInfo.get(gid);
+  if (!meta || meta.userId !== userId) return false;
 
-  // Release any active reservation when stopping torrent
-  try {
-    await database.releaseReservation(userId, infoHash);
-    console.log(`🔓 Released reservation for stopped torrent: ${infoHash}`);
-  } catch (error) {
-    console.log('⚠️ No reservation to release for stopped torrent (normal)');
-  }
+  try { await database.releaseReservation(userId, infoHash); } catch (err) {}
+  try { await rpc('forceRemove', gid); } catch (err) {}
+  try { await rpc('removeDownloadResult', gid); } catch (err) {}
 
-  return new Promise((resolve, reject) => {
-    c.remove(infoHash, { destroyStore: false }, (err) => {
-      if (err) return reject(err);
-      resolve(true);
-    });
-  });
+  cleanupGid(gid, userId);
+  return true;
 }
 
 async function removeTorrent(infoHash, userId) {
-  if (!userId) {
-    throw new Error('userId is required for removeTorrent');
-  }
-
-  const c = await getUserClient(userId);  // Use user-specific client
-  const t = c.get(infoHash);  // Get torrent directly by infoHash
-
-  if (!t) return false;
-
-  // Release any active reservation when removing torrent
-  try {
-    await database.releaseReservation(userId, infoHash);
-    console.log(`🔓 Released reservation for removed torrent: ${infoHash}`);
-  } catch (error) {
-    console.log('⚠️ No reservation to release for removed torrent (normal)');
-  }
-
-  return new Promise((resolve, reject) => {
-    c.remove(infoHash, { destroyStore: false }, (err) => {
-      if (err) return reject(err);
-      resolve(true);
-    });
-  });
+  return stopTorrent(infoHash, userId); // Same as stop — keeps files on disk
 }
 
-// Notification management functions
+// ===================== DEPRECATED SHIMS =====================
+
+async function getUserClient(userId) {
+  throw new Error('getUserClient() is deprecated — aria2 migration complete');
+}
+
+async function getClient() {
+  throw new Error('getClient() is deprecated — use listTorrents(userId) instead');
+}
+
+// ===================== NOTIFICATIONS =====================
+
 function addQuotaExceededNotification(userId, notification) {
-  if (!quotaExceededNotifications.has(userId)) {
-    quotaExceededNotifications.set(userId, []);
-  }
-
-  const userNotifications = quotaExceededNotifications.get(userId);
-  userNotifications.push({
-    id: Date.now().toString(),
-    type: 'quota_exceeded',
-    ...notification
-  });
-
-  // Keep only last 10 notifications per user
-  if (userNotifications.length > 10) {
-    userNotifications.splice(0, userNotifications.length - 10);
-  }
-
-  console.log(`📢 Added quota exceeded notification for user ${userId}: ${notification.torrentName}`);
+  if (!quotaExceededNotifications.has(userId)) quotaExceededNotifications.set(userId, []);
+  const list = quotaExceededNotifications.get(userId);
+  list.push({ id: Date.now().toString(), type: 'quota_exceeded', ...notification });
+  if (list.length > 10) list.splice(0, list.length - 10);
+  console.log(`📢 Quota exceeded notification for user ${userId}: ${notification.torrentName}`);
 }
 
 function addCompletionNotification(userId, notification) {
-  if (!quotaExceededNotifications.has(userId)) {
-    quotaExceededNotifications.set(userId, []);
-  }
-
-  const userNotifications = quotaExceededNotifications.get(userId);
-  userNotifications.push({
-    id: Date.now().toString(),
-    type: 'download_completed',
-    ...notification
-  });
-
-  // Keep only last 10 notifications per user
-  if (userNotifications.length > 10) {
-    userNotifications.splice(0, userNotifications.length - 10);
-  }
-
-  console.log(`🎉 Added completion notification for user ${userId}: ${notification.torrentName}`);
+  if (!quotaExceededNotifications.has(userId)) quotaExceededNotifications.set(userId, []);
+  const list = quotaExceededNotifications.get(userId);
+  list.push({ id: Date.now().toString(), type: 'download_completed', ...notification });
+  if (list.length > 10) list.splice(0, list.length - 10);
+  console.log(`🎉 Completion notification for user ${userId}: ${notification.torrentName}`);
 }
 
 function getQuotaExceededNotifications(userId) {
@@ -599,32 +749,29 @@ function getQuotaExceededNotifications(userId) {
 }
 
 function clearQuotaExceededNotification(userId, notificationId) {
-  const userNotifications = quotaExceededNotifications.get(userId);
-  if (userNotifications) {
-    const index = userNotifications.findIndex(n => n.id === notificationId);
-    if (index !== -1) {
-      userNotifications.splice(index, 1);
-      console.log(`🗑️ Cleared notification ${notificationId} for user ${userId}`);
-      return true;
-    }
-  }
-  return false;
+  const list = quotaExceededNotifications.get(userId);
+  if (!list) return false;
+  const idx = list.findIndex(n => n.id === notificationId);
+  if (idx === -1) return false;
+  list.splice(idx, 1);
+  console.log(`🗑️ Cleared notification ${notificationId} for user ${userId}`);
+  return true;
 }
 
 function clearAllQuotaExceededNotifications(userId) {
-  const existingNotifications = quotaExceededNotifications.get(userId) || [];
-
-  // DEBUG: Log what we're clearing
-  if (existingNotifications.length > 0) {
-    console.log(`🗑️ Clearing ${existingNotifications.length} notifications for user ${userId.substring(0, 8)}...:`);
-    existingNotifications.forEach(n => {
-      console.log(`  - Type: ${n.type}, Torrent: ${n.torrentName?.substring(0, 30)}..., Size: ${n.torrentSize}, Available: ${n.availableSpace}, ID: ${n.id}`);
-    });
-  } else {
-    console.log(`🗑️ No notifications to clear for user ${userId.substring(0, 8)}...`);
+  const existing = quotaExceededNotifications.get(userId) || [];
+  if (existing.length > 0) {
+    console.log(`🗑️ Clearing ${existing.length} notifications for user ${userId.substring(0, 8)}...`);
   }
-
   quotaExceededNotifications.set(userId, []);
+}
+
+// ===================== INITIALIZATION =====================
+
+if (DOCKER_MODE) {
+  console.log(`🐳 ARIA2: Docker mode — connecting to aria2 at ${ARIA2_RPC_URL}`);
+} else {
+  startAria2();
 }
 
 module.exports = {
@@ -633,8 +780,10 @@ module.exports = {
   listTorrents,
   stopTorrent,
   removeTorrent,
+  pauseTorrent,
+  resumeTorrent,
   getUserClient,
-  getClient,  // Keep for backward compatibility (will throw error)
+  getClient,
   getQuotaExceededNotifications,
   clearQuotaExceededNotification,
   clearAllQuotaExceededNotifications

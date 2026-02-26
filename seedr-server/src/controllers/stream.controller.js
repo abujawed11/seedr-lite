@@ -38,7 +38,7 @@
 //   res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
 //   res.setHeader('Content-Length', chunkSize);
 
-//   const stream = file.createReadStream({ start, end });
+//   const stream = fs.createReadStream(file.path, { start, end });
 //   stream.on('error', (e) => res.destroy(e));
 //   stream.pipe(res);
 // }
@@ -65,6 +65,7 @@
 
 
 // src/controllers/stream.controller.js
+const fs = require('fs');
 const rangeParser = require('range-parser');
 const mime = require('mime-types');
 const { getTorrent } = require('../services/torrentManager');
@@ -81,6 +82,11 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
   const idx = Number(fileIndex);
   const file = t.files?.[idx];
   if (!file) return res.status(404).json({ error: 'file not found' });
+
+  // aria2 downloads to disk — verify the file exists before streaming
+  if (!file.path || !fs.existsSync(file.path)) {
+    return res.status(404).json({ error: 'File not yet available on disk' });
+  }
 
   const total = file.length;
   const type = mime.lookup(file.name) || 'application/octet-stream';
@@ -125,7 +131,7 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
     res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
   }
 
-  const stream = file.createReadStream({ start, end });
+  const stream = fs.createReadStream(file.path, { start, end });
   stream.on('error', (e) => {
     console.error('stream error:', e);
     if (!res.headersSent) res.status(500).json({ error: 'stream error' });

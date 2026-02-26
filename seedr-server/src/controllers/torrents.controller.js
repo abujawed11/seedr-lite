@@ -379,7 +379,8 @@ const {
   getTorrent,
   stopTorrent,
   removeTorrent,
-  getClient,
+  pauseTorrent,
+  resumeTorrent,
   getQuotaExceededNotifications,
   clearQuotaExceededNotification,
   clearAllQuotaExceededNotifications
@@ -471,10 +472,8 @@ exports.create = async (req, res) => {
       if (reservations.length > 0) {
         console.log('🧹 Attempting automatic cleanup of stale reservations...');
 
-        const client = await getClient();
-        const activeTorrentHashes = client.torrents
-          .filter(t => t.userId === userId)
-          .map(t => t.infoHash);
+        const userTorrentList = await listTorrents(userId);
+        const activeTorrentHashes = userTorrentList.map(t => t.infoHash).filter(Boolean);
 
         console.log(`📊 Found ${activeTorrentHashes.length} active torrents for user`);
 
@@ -927,10 +926,8 @@ exports.cleanupReservations = async (req, res) => {
     console.log(`🧹 Manual cleanup requested for user ${userId}`);
 
     // Get current active torrents
-    const client = await getClient();
-    const activeTorrentHashes = client.torrents
-      .filter(t => t.userId === userId)
-      .map(t => t.infoHash);
+    const userTorrentList = await listTorrents(userId);
+    const activeTorrentHashes = userTorrentList.map(t => t.infoHash).filter(Boolean);
 
     console.log(`📊 Found ${activeTorrentHashes.length} active torrents`);
 
@@ -1067,5 +1064,33 @@ exports.clearAllNotifications = async (req, res) => {
     console.error('Error clearing all notifications:', error);
     res.status(500).json({ error: 'Failed to clear notifications' });
   }
+};
+
+/**
+ * PUT /api/torrents/:id/pause
+ * Pauses an active download (aria2 feature — not available in WebTorrent)
+ */
+exports.pause = async (req, res) => {
+  const userId = req.user.id;
+  const infoHash = req.params.id;
+
+  const ok = await pauseTorrent(infoHash, userId);
+  if (!ok) return res.status(404).json({ error: 'Torrent not found or already paused' });
+
+  res.json({ paused: true });
+};
+
+/**
+ * PUT /api/torrents/:id/resume
+ * Resumes a paused download
+ */
+exports.resume = async (req, res) => {
+  const userId = req.user.id;
+  const infoHash = req.params.id;
+
+  const ok = await resumeTorrent(infoHash, userId);
+  if (!ok) return res.status(404).json({ error: 'Torrent not found or not paused' });
+
+  res.json({ resumed: true });
 };
 
