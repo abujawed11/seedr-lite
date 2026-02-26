@@ -4,6 +4,8 @@ import {
   addTorrentFile,
   stopTorrent,
   deleteTorrent,
+  pauseTorrent,
+  resumeTorrent,
   getNotifications,
   clearNotification,
   clearAllNotifications,
@@ -518,6 +520,8 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
               className={`px-3 py-1 rounded-full text-xs font-medium ${
                 isComplete
                   ? "bg-green-900 text-green-300"
+                  : torrent.status === 'paused'
+                  ? "bg-gray-700 text-gray-300"
                   : isConnecting
                   ? "bg-blue-900 text-blue-300"
                   : "bg-yellow-900 text-yellow-300"
@@ -525,6 +529,8 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
             >
               {isComplete
                 ? "Completed"
+                : torrent.status === 'paused'
+                ? "⏸ Paused"
                 : isConnecting
                 ? "🔍 Connecting..."
                 : "📥 Downloading"
@@ -533,6 +539,40 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
 
             {/* Controls */}
             <div className="flex items-center gap-1">
+              {/* Pause/Resume Button */}
+              {!isComplete && (
+                torrent.status === 'paused' ? (
+                  <button
+                    onClick={() => handleTorrentAction(resumeTorrent, "resume")}
+                    disabled={!!actionLoading}
+                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                    title="Resume torrent"
+                  >
+                    {actionLoading === "resume" ? (
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleTorrentAction(pauseTorrent, "pause")}
+                    disabled={!!actionLoading || isLoading}
+                    className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors group disabled:opacity-50"
+                    title="Pause torrent"
+                  >
+                    {actionLoading === "pause" ? (
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-3 h-3 text-gray-400 group-hover:text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              )}
 
               <button
                 onClick={() => handleTorrentAction(stopTorrent, "stop")}

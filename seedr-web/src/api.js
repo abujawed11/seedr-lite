@@ -72,6 +72,14 @@ export async function stopTorrent(id) {
   return api.put(`/torrents/${id}/stop`);
 }
 
+export async function pauseTorrent(id) {
+  return api.put(`/torrents/${id}/pause`);
+}
+
+export async function resumeTorrent(id) {
+  return api.put(`/torrents/${id}/resume`);
+}
+
 export async function deleteTorrent(id) {
   return api.delete(`/torrents/${id}`);
 }
