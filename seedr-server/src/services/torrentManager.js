@@ -168,26 +168,16 @@ function containerToHostPath(containerPath) {
   return containerPath;
 }
 
-// Get the directory to pass to aria2 for a specific torrent download.
-// Uses infoHash as a subdirectory so directory names are never based on the
-// torrent display name — avoids conflicts with stale files/symlinks.
-// Structure: ROOT/users/<userId>/<infoHash>/  (aria2 puts TorrentName/ inside this)
-function getAria2Dir(userId, infoHash) {
-  const fs = require('fs');
-  const hostUserDir = path.join(path.resolve(ROOT), 'users', userId);
-  const hostTorrentDir = infoHash ? path.join(hostUserDir, infoHash) : hostUserDir;
-
-  // Always create the host directory so Node.js can read from it
-  if (!fs.existsSync(hostTorrentDir)) {
-    fs.mkdirSync(hostTorrentDir, { recursive: true });
-  }
+// Get the directory to pass to aria2 for a specific user's downloads.
+// We no longer use infoHash as a subdirectory to keep the file explorer clean.
+// Structure: ROOT/users/<userId>/
+function getAria2Dir(userId) {
+  const hostUserDir = ensureUserStorageDir(userId);
 
   if (ARIA2_CONTAINER_DIR) {
-    return infoHash
-      ? `${ARIA2_CONTAINER_DIR}/users/${userId}/${infoHash}`
-      : `${ARIA2_CONTAINER_DIR}/users/${userId}`;
+    return `${ARIA2_CONTAINER_DIR}/users/${userId}`;
   }
-  return hostTorrentDir;
+  return hostUserDir;
 }
 
 function toSummary(status, meta) {
@@ -515,10 +505,8 @@ setTimeout(async () => {
 
 async function addMagnet(magnet, userId) {
   // Extract infoHash from the magnet URI — always available in a valid magnet link.
-  // Using it as the storage subdirectory avoids any conflict with torrent display names
-  // or stale files/symlinks from previous downloads.
   const infoHashFromMagnet = extractInfoHashFromMagnet(magnet);
-  const aria2Dir = getAria2Dir(userId, infoHashFromMagnet);
+  const aria2Dir = getAria2Dir(userId);
   const trackers = getTrackers();
 
   console.log(`📁 Adding torrent for user ${userId} → ${aria2Dir}`);
