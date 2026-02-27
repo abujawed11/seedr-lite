@@ -389,7 +389,10 @@ const {
 const { signLink, makeDirectLinkPayload } = require('../services/linkSigner');
 const database = require('../models/database');
 
-const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
+// Derive base URL per-request so it works locally and in production without env changes
+function getBase(req) {
+  return process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
+}
 
 // Helper function to format bytes
 function humanBytes(bytes) {
@@ -791,6 +794,7 @@ exports.show = async (req, res) => {
   const t = await getTorrent(req.params.id, userId);
   if (!t) return res.status(404).json({ error: 'not found' });
 
+  const base = getBase(req);
   const files = t.files.map((f, i) => {
     const streamToken = signLink(
       makeDirectLinkPayload({
@@ -813,8 +817,9 @@ exports.show = async (req, res) => {
       index: i,
       name: f.name,
       length: f.length,
-      streamUrl: `${BASE}/direct/${streamToken}/${encodedFilename}`,
-      downloadUrl: `${BASE}/direct/${downloadToken}/${encodedFilename}`,
+      streamUrl: `${base}/direct/${streamToken}/${encodedFilename}`,
+      downloadUrl: `${base}/direct/${downloadToken}/${encodedFilename}`,
+      directUrl: `${base}/direct/${downloadToken}/${encodedFilename}`,
     };
   });
 

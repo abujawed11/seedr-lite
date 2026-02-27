@@ -6,6 +6,7 @@ const { logger } = require('../utils/logger');
 const { getTrackers } = require('../utils/trackers');
 const database = require('../models/database');
 const { getUserStorageDir, ensureUserStorageDir } = require('../utils/storage');
+const { signLink, makeDirectLinkPayload } = require('./linkSigner');
 
 const ARIA2_PORT = process.env.ARIA2_PORT || 6800;
 const ARIA2_HOST = process.env.ARIA2_HOST || '127.0.0.1';
@@ -216,13 +217,32 @@ function toSummary(status, meta) {
   const progress = totalLength > 0 ? Number(((completedLength / totalLength) * 100).toFixed(2)) : 0;
   const name = status.bittorrent?.info?.name || meta?.name || 'Unknown';
   const infoHash = status.infoHash || meta?.infoHash;
+  const userId = meta?.userId;
+  const BASE = process.env.WEB_BASE_URL || 'http://localhost:5000';
 
-  const files = (status.files || []).map((f, i) => ({
-    index: i,
-    name: path.basename(f.path || ''),
-    path: containerToHostPath(f.path || ''), // Translate Docker path → host path
-    length: parseInt(f.length || 0)
-  }));
+  const files = (status.files || []).map((f, i) => {
+    const fileName = path.basename(f.path || '');
+    const entry = {
+      index: i,
+      name: fileName,
+      path: containerToHostPath(f.path || ''), // Translate Docker path → host path
+      length: parseInt(f.length || 0)
+    };
+
+    // Attach signed stream/download URLs so the frontend can use them directly
+    if (infoHash && userId) {
+      try {
+        const encodedName = encodeURIComponent(fileName);
+        const streamToken   = signLink(makeDirectLinkPayload({ torrentId: infoHash, fileIndex: i, userId, asAttachment: false }));
+        const downloadToken = signLink(makeDirectLinkPayload({ torrentId: infoHash, fileIndex: i, userId, asAttachment: true }));
+        entry.streamUrl   = `${BASE}/direct/${streamToken}/${encodedName}`;
+        entry.downloadUrl = `${BASE}/direct/${downloadToken}/${encodedName}`;
+        entry.directUrl   = entry.downloadUrl;
+      } catch (_) { /* linkSigner not available yet — omit URLs */ }
+    }
+
+    return entry;
+  });
 
   return {
     id: infoHash || status.gid,
