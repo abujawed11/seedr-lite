@@ -115,6 +115,9 @@ exports.browse = async (req, res) => {
     const files = [];
 
     for (const item of items) {
+      // Hide aria2 control files — they're internal download state, not user files
+      if (item.endsWith('.aria2')) continue;
+
       const itemPath = path.join(fullPath, item);
       const itemStat = fs.statSync(itemPath);
       const relativePath = path.posix.join(safePath, item).replace(/\\/g, "/");
