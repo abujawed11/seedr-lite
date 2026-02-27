@@ -644,32 +644,9 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
                     {file.name}
                   </span>
                 </div>
-                <div className="flex gap-2 ml-4">
-                  <a
-                    href={file.streamUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded-md text-xs font-medium text-white transition-colors"
-                  >
-                    ▶ Stream
-                  </a>
-                  <a
-                    href={file.downloadUrl}
-                    className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded-md text-xs font-medium text-white transition-colors"
-                    download
-                  >
-                    ⬇ Download
-                  </a>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(file.directUrl || "");
-                      alert("Direct link copied!");
-                    }}
-                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded-md text-xs font-medium text-white transition-colors"
-                  >
-                    🔗 Copy
-                  </button>
-                </div>
+                <span className="text-xs text-gray-500 ml-4 flex-shrink-0">
+                  {file.length ? `${(file.length / 1024 / 1024).toFixed(1)} MB` : ''}
+                </span>
               </div>
             ))}
           </div>
