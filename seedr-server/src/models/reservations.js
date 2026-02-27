@@ -682,6 +682,14 @@ class ReservationManager {
     );
   }
 
+  async getActiveReservationByInfoHash(infoHash) {
+    return this._get(
+      `SELECT user_id, info_hash, size_bytes FROM storage_reservations
+       WHERE info_hash=? AND status='active'`,
+      [infoHash]
+    );
+  }
+
   async cleanupStaleReservations(activeTorrentHashes = []) {
     let res;
     if (activeTorrentHashes.length === 0) {

@@ -460,7 +460,12 @@ async function pollDownloads() {
             await handleDownloadComplete(gid, status, meta.userId);
           }
         } catch (err) {
-          cleanupGid(gid, meta.userId);
+          // Only cleanup when aria2 definitively says GID doesn't exist.
+          // Transient RPC errors must not wipe an active download from memory.
+          const isGidNotFound = err.message?.includes('not found') || err.message?.includes('GID');
+          if (isGidNotFound) {
+            cleanupGid(gid, meta.userId);
+          }
         }
       }
     }
@@ -481,31 +486,114 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000);
 
-// Startup cleanup (stale reservations)
-setTimeout(async () => {
+// ===================== STARTUP STATE RESTORE =====================
+
+async function restoreStateFromAria2() {
+  // Wait until aria2 is reachable (spawned locally it needs a few seconds;
+  // in Docker mode it may already be up but can still take a moment).
+  const MAX_RETRIES = 15;
+  const RETRY_DELAY_MS = 2000;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await rpc('getVersion');
+      break; // connected
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        console.warn('⚠️ STARTUP RESTORE: Could not connect to aria2 — skipping state restore');
+        // Still clean up all active reservations since nothing is running
+        await database.reservations.cleanupStaleReservations([]).catch(() => {});
+        return;
+      }
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+    }
+  }
+
   try {
+    // tellWaiting covers both queued AND paused downloads in aria2
+    const [active, waiting] = await Promise.all([
+      rpc('tellActive').catch(() => []),
+      rpc('tellWaiting', 0, 1000).catch(() => [])
+    ]);
+
+    const allDownloads = [...active, ...waiting];
+    let restored = 0;
+
+    for (const status of allDownloads) {
+      const infoHash = status.infoHash;
+      if (!infoHash) continue; // metadata GIDs not yet resolved — skip
+
+      const reservation = await database.reservations.getActiveReservationByInfoHash(infoHash);
+      if (!reservation) continue; // no DB record → not our download
+
+      const userId = reservation.user_id;
+      const gid = status.gid;
+
+      if (!userGids.has(userId)) userGids.set(userId, new Set());
+      userGids.get(userId).add(gid);
+
+      gidInfo.set(gid, {
+        userId,
+        gid,
+        isMetadata: false,
+        infoHash,
+        name: status.bittorrent?.info?.name || '',
+        addedAt: Date.now(),
+        quotaValidated: true, // already validated when originally added
+        done: false
+      });
+
+      infoHashToGid.set(infoHash, gid);
+      restored++;
+    }
+
+    console.log(`🔄 STARTUP RESTORE: Recovered ${restored} download(s) from aria2`);
+
+    // Now cleanup reservations for torrents that are no longer in aria2
     const activeHashes = [...gidInfo.values()].filter(m => m.infoHash).map(m => m.infoHash);
     const cleanedCount = await database.reservations.cleanupStaleReservations(activeHashes);
     if (cleanedCount > 0) {
-      console.log(`✅ STARTUP CLEANUP: Released ${cleanedCount} stale reservations`);
+      console.log(`✅ STARTUP CLEANUP: Released ${cleanedCount} stale reservation(s)`);
       await database.logActivity({
         userId: null,
         username: 'system',
         actionType: 'reservation_cleanup',
         fileSize: cleanedCount,
         torrentName: 'smart_cleanup_startup'
-      });
+      }).catch(() => {});
     }
   } catch (err) {
-    console.error('Startup cleanup error:', err.message);
+    console.error('Startup restore error:', err.message);
   }
-}, 5000);
+}
+
+// Give aria2 time to start before attempting restore.
+// Docker mode: aria2 is usually already running, so a shorter delay is fine.
+setTimeout(restoreStateFromAria2, DOCKER_MODE ? 3000 : 5000);
 
 // ===================== PUBLIC API =====================
 
 async function addMagnet(magnet, userId) {
   // Extract infoHash from the magnet URI — always available in a valid magnet link.
   const infoHashFromMagnet = extractInfoHashFromMagnet(magnet);
+
+  // Deduplicate: if this infoHash is already tracked in memory, return the live status
+  // instead of queuing a second aria2 task for the same torrent.
+  if (infoHashFromMagnet && infoHashToGid.has(infoHashFromMagnet)) {
+    const existingGid = infoHashToGid.get(infoHashFromMagnet);
+    const existingMeta = gidInfo.get(existingGid);
+    if (existingMeta && existingMeta.userId === userId) {
+      try {
+        const status = await rpc('tellStatus', existingGid);
+        console.log(`♻️ Duplicate add ignored — returning existing download: ${existingMeta.name}`);
+        return toSummary(status, existingMeta);
+      } catch (e) {
+        // GID is stale (aria2 lost it) — fall through to re-add
+        cleanupGid(existingGid, userId);
+      }
+    }
+  }
+
   const aria2Dir = getAria2Dir(userId);
   const trackers = getTrackers();
 
@@ -642,7 +730,13 @@ async function listTorrents(userId) {
       }
       results.push(toSummary(status, meta));
     } catch (err) {
-      toRemove.push(gid);
+      // Only cleanup when aria2 definitively says this GID doesn't exist.
+      // Transient errors (RPC timeout, ECONNREFUSED) must not wipe a live download.
+      const isGidNotFound = err.message?.includes('not found') || err.message?.includes('GID');
+      if (isGidNotFound) {
+        toRemove.push(gid);
+      }
+      // Otherwise: skip this GID silently and keep tracking it
     }
   }
 
