@@ -453,7 +453,9 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
 
   return (
     <div className={`bg-gray-800 rounded-xl border transition-all shadow-lg overflow-hidden ${
-      isLoading || isConnecting
+      isComplete
+        ? 'border-green-500/60 shadow-green-500/10'
+        : isLoading || isConnecting
         ? 'border-yellow-500/50 shadow-yellow-500/10'
         : 'border-gray-700 hover:border-gray-600'
     }`}>
@@ -508,7 +510,7 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
               }`}
             >
               {isComplete
-                ? "Completed"
+                ? "✅ Completed"
                 : torrent.status === 'paused'
                 ? "⏸ Paused"
                 : isConnecting
@@ -517,8 +519,8 @@ function TorrentCard({ torrent, onTorrentUpdated }) {
               }
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center gap-1">
+            {/* Controls — hidden while showing completed state */}
+            <div className={`flex items-center gap-1 ${isComplete ? 'invisible' : ''}`}>
               {/* Pause/Resume Button */}
               {!isComplete && (
                 torrent.status === 'paused' ? (

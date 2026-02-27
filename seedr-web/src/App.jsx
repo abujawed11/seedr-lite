@@ -16,8 +16,6 @@ export default function App() {
   const [showPlansModal, setShowPlansModal] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
-  // Track previous torrent state for detecting changes
-  const prevDoneRef = useRef(new Set());
 
   async function fetchTorrents() {
     //console.log('🔄 App: fetchTorrents called');
@@ -136,61 +134,25 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView, user?.role]);
 
-  // Detect when torrents complete and refresh data
+  // Backup: if torrent count drops (torrent removed after completion), refresh files.
+  // The SSE 'notification' event is the primary trigger; this catches any missed events.
+  // Note: completed torrents are removed from the list immediately (cleanupGid), so they
+  // never appear at progress=100 — we detect completion by the count dropping instead.
+  const prevTorrentCountRef = useRef(0);
   useEffect(() => {
-    // Skip if user is admin
-    if (user?.role === 'admin') return;
+    if (user?.role === 'admin' || currentView === 'admin') return;
 
-    // Skip if admin view is active
-    if (currentView === 'admin') return;
+    const prev = prevTorrentCountRef.current;
+    const curr = torrents.length;
+    prevTorrentCountRef.current = curr;
 
-    const currentDone = new Set(torrents.filter(t => t.progress === 100).map(t => t.id));
-    const newlyDone = [...currentDone].filter(id => !prevDoneRef.current.has(id));
-
-    if (newlyDone.length > 0) {
-      console.log(`🎉 ${newlyDone.length} torrent(s) completed - refreshing data`);
-
-      // Refresh user profile (quota/storage info)
-      refreshUserProfile();
-      fetchDetailedQuota(); // Also refresh detailed quota
-
-      // Refresh file browser to show new files
+    if (prev > 0 && curr < prev) {
       fetchBrowse();
+      refreshUserProfile();
+      fetchDetailedQuota();
     }
-
-    prevDoneRef.current = currentDone;
-  }, [torrents, refreshUserProfile, currentView]);
-
-
-  // Refresh files when torrent count decreases (indicates completion and removal)
-  useEffect(() => {
-    // Skip if user is admin
-    if (user?.role === 'admin') return;
-
-    // Skip if admin view is active
-    if (currentView === 'admin') return;
-
-    const currentCount = torrents.length;
-    const prevCount = prevDoneRef.current.size || 0;
-
-    // If we have fewer torrents than before, likely one completed and was removed
-    if (currentCount < prevCount) {
-      //console.log("Torrent count decreased, refreshing files...");
-      fetchBrowse(); // refresh files when torrents are removed (completed)
-    }
-
-    // Also refresh when any torrent reaches 100% (backup mechanism)
-    const nowDone = new Set(torrents.filter((t) => t.progress === 100).map((t) => t.id));
-    const newlyDone = [...nowDone].filter((id) => !prevDoneRef.current.has(id));
-    if (newlyDone.length > 0) {
-      //console.log("Torrent completed, refreshing files...");
-      fetchBrowse(); // refresh files once
-    }
-
-    // Store current torrent IDs for next comparison
-    prevDoneRef.current = new Set(torrents.map(t => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [torrents, currentView]);
+  }, [torrents.length, currentView]);
 
   // Auto-redirect admin users to admin panel on first load
   useEffect(() => {

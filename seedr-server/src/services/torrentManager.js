@@ -2,6 +2,7 @@
 const path = require('path');
 const { spawn } = require('child_process');
 const axios = require('axios');
+const WebSocket = require('ws');
 const { logger } = require('../utils/logger');
 const { getTrackers } = require('../utils/trackers');
 const database = require('../models/database');
@@ -373,9 +374,16 @@ async function handleDownloadComplete(gid, status, userId) {
     console.warn('Failed to log completion:', err.message);
   }
 
-  try { await rpc('removeDownloadResult', gid); } catch (err) {}
+  // Push "Completed" state to SSE clients so the UI shows the finished card
+  // briefly before it disappears, instead of vanishing instantly.
+  listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
 
-  cleanupGid(gid, userId);
+  // After 2 seconds: remove from aria2 results and clean up maps, then push final state
+  setTimeout(async () => {
+    try { await rpc('removeDownloadResult', gid); } catch (_) {}
+    cleanupGid(gid, userId);
+    listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
+  }, 2000);
 }
 
 // ===================== CONTENT GID SWITCHING =====================
@@ -535,8 +543,9 @@ async function pollDownloads() {
   }
 }
 
-// Poll every 3 seconds
-setInterval(pollDownloads, 3000);
+// Poll every 2 seconds — only drives progress bar updates.
+// Completion is now detected instantly via aria2 WebSocket events (see connectAria2Events).
+setInterval(pollDownloads, 2000);
 
 // Stats every 2 minutes
 setInterval(() => {
@@ -544,6 +553,101 @@ setInterval(() => {
     console.log(`📊 ARIA2 STATS: ${gidInfo.size} downloads across ${userGids.size} users`);
   }
 }, 2 * 60 * 1000);
+
+// ===================== ARIA2 WEBSOCKET EVENTS =====================
+// aria2 pushes instant notifications (complete, error, pause) over WebSocket.
+// This eliminates poll-based completion detection — file appears the moment
+// aria2 finishes writing it, not up to 2 seconds later.
+
+const ARIA2_WS_URL = `ws://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc`;
+
+function connectAria2Events() {
+  let ws;
+  try {
+    ws = new WebSocket(ARIA2_WS_URL);
+  } catch (e) {
+    setTimeout(connectAria2Events, 5000);
+    return;
+  }
+
+  ws.on('open', () => {
+    console.log('⚡ aria2 WebSocket connected — instant event notifications active');
+  });
+
+  ws.on('message', async (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw.toString()); } catch { return; }
+
+    // aria2 notifications look like: { jsonrpc, method: "aria2.onDownloadComplete", params: [{gid}] }
+    if (!msg.method || !msg.params?.[0]?.gid) return;
+    const gid = msg.params[0].gid;
+    const meta = gidInfo.get(gid);
+
+    switch (msg.method) {
+      case 'aria2.onDownloadComplete': {
+        if (!meta || meta.done) break;
+
+        if (meta.isMetadata) {
+          // Metadata GID finished — immediately switch to the content GID
+          // without waiting for the next poll cycle.
+          try {
+            const status = await rpc('tellStatus', gid);
+            if (status.followedBy?.length > 0) {
+              await switchToContentGid(gid, status.followedBy[0], meta.userId);
+            }
+          } catch (e) {
+            console.error(`WS: metadata→content switch failed for ${gid}:`, e.message);
+          }
+          break;
+        }
+
+        // Content GID completed (HTTP/FTP download)
+        try {
+          const status = await rpc('tellStatus', gid);
+          await handleDownloadComplete(gid, status, meta.userId);
+        } catch (e) {
+          console.error(`WS: completion handling failed for ${gid}:`, e.message);
+        }
+        break;
+      }
+      case 'aria2.onBtDownloadComplete': {
+        // Fired only for BitTorrent content GIDs (never for metadata GIDs)
+        if (!meta || meta.done || meta.isMetadata) break;
+        try {
+          const status = await rpc('tellStatus', gid);
+          await handleDownloadComplete(gid, status, meta.userId);
+        } catch (e) {
+          console.error(`WS: BT completion handling failed for ${gid}:`, e.message);
+        }
+        break;
+      }
+      case 'aria2.onDownloadError': {
+        if (!meta) break;
+        console.error(`❌ aria2 error for "${meta.name}"`);
+        cleanupGid(gid, meta.userId);
+        listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
+        break;
+      }
+      case 'aria2.onDownloadPause':
+      case 'aria2.onDownloadStop': {
+        // Push updated torrent state to SSE clients immediately
+        if (!meta) break;
+        listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
+        break;
+      }
+    }
+  });
+
+  ws.on('error', () => { /* suppress — reconnect handles it */ });
+
+  ws.on('close', () => {
+    // Auto-reconnect after 3 seconds
+    setTimeout(connectAria2Events, 3000);
+  });
+}
+
+// Start WebSocket event listener after a short delay (aria2 needs to be up first)
+setTimeout(connectAria2Events, DOCKER_MODE ? 3000 : 6000);
 
 // ===================== STARTUP STATE RESTORE =====================
 

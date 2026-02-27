@@ -31,7 +31,8 @@
     "range-parser": "^1.2.1",
     "razorpay": "^2.9.6",
     "sqlite3": "^5.1.7",
-    "webtorrent": "^2.8.4"
+    "webtorrent": "^2.8.4",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
