@@ -44,16 +44,6 @@ const AuthProvider = ({ children }) => {
     checkAuth();
   }, [token]);
 
-  // Periodically refresh detailed quota to keep it up to date
-  useEffect(() => {
-    if (!token || !user) return;
-
-    const interval = setInterval(() => {
-      fetchDetailedQuota();
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, [token, user]);
 
   const login = async (username, password) => {
     try {

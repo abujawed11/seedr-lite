@@ -1,8 +1,11 @@
 const router = require('express').Router();
 const multer = require('multer');
+const jwt = require('jsonwebtoken');
 const asyncH = require('../middlewares/asyncHandler');
-const { authenticateToken } = require('../middlewares/auth');
+const { authenticateToken, JWT_SECRET } = require('../middlewares/auth');
 const c = require('../controllers/torrents.controller');
+const database = require('../models/database');
+const { registerSSEClient, unregisterSSEClient, listTorrents } = require('../services/torrentManager');
 
 // Configure multer for memory storage (file stored in memory as Buffer)
 const upload = multer({
@@ -19,7 +22,48 @@ const upload = multer({
   }
 });
 
-// All torrent operations require authentication
+// SSE endpoint — registered BEFORE the global authenticateToken middleware because
+// EventSource (browser) cannot send Authorization headers. Token arrives as ?token=.
+router.get('/events', async (req, res) => {
+  const token = req.query.token || req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Token required' });
+
+  let user;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    user = await database.getUserById(decoded.userId);
+    if (!user) throw new Error('User not found');
+  } catch (e) {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx / Cloudflare buffering
+  res.flushHeaders();
+
+  const userId = user.id;
+  registerSSEClient(userId, res);
+
+  // Send current state immediately so the UI doesn't wait for the first poll cycle
+  try {
+    const torrents = await listTorrents(userId);
+    res.write(`event: torrent_update\ndata: ${JSON.stringify(torrents)}\n\n`);
+  } catch (e) { /* aria2 may not be ready yet — poll will catch up */ }
+
+  // Keepalive comment every 25s to survive proxy / firewall idle timeouts
+  const keepalive = setInterval(() => {
+    try { res.write(':ping\n\n'); } catch (e) { clearInterval(keepalive); }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepalive);
+    unregisterSSEClient(userId, res);
+  });
+});
+
+// All other torrent operations require authentication
 router.use(authenticateToken);
 
 router.get('/quota', asyncH(c.quota));                          // get quota information

@@ -30,6 +30,36 @@ const userGids = new Map();      // userId -> Set<gid>
 const gidInfo = new Map();       // gid -> { userId, infoHash, name, addedAt, quotaValidated, done }
 const infoHashToGid = new Map(); // infoHash -> gid
 
+// ===================== SSE REGISTRY =====================
+
+const sseClients = new Map(); // userId -> Set<Response>
+
+function registerSSEClient(userId, res) {
+  if (!sseClients.has(userId)) sseClients.set(userId, new Set());
+  sseClients.get(userId).add(res);
+}
+
+function unregisterSSEClient(userId, res) {
+  const clients = sseClients.get(userId);
+  if (!clients) return;
+  clients.delete(res);
+  if (clients.size === 0) sseClients.delete(userId);
+}
+
+function pushToUser(userId, event, data) {
+  const clients = sseClients.get(userId);
+  if (!clients || clients.size === 0) return;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of [...clients]) {
+    try {
+      res.write(payload);
+    } catch (e) {
+      clients.delete(res); // dead connection
+    }
+  }
+  if (clients.size === 0) sseClients.delete(userId);
+}
+
 let aria2Process = null;
 
 // Clear stale notifications on startup
@@ -469,6 +499,15 @@ async function pollDownloads() {
         }
       }
     }
+
+    // Push fresh torrent state to every connected SSE client
+    if (sseClients.size > 0) {
+      for (const userId of sseClients.keys()) {
+        listTorrents(userId)
+          .then(torrents => pushToUser(userId, 'torrent_update', torrents))
+          .catch(() => {});
+      }
+    }
   } catch (err) {
     if (!err.message?.includes('ECONNREFUSED') && !err.message?.includes('unreachable')) {
       console.error('Poll error:', err.message);
@@ -754,10 +793,12 @@ async function pauseTorrent(infoHash, userId) {
   try {
     await rpc('pause', gid);
     console.log(`⏸️ Paused: ${meta.name}`);
+    listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
     return true;
   } catch (err) {
     try {
       await rpc('forcePause', gid);
+      listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
       return true;
     } catch (e) {
       return false;
@@ -774,6 +815,7 @@ async function resumeTorrent(infoHash, userId) {
 
   await rpc('unpause', gid);
   console.log(`▶️ Resumed: ${meta.name}`);
+  listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
   return true;
 }
 
@@ -791,6 +833,7 @@ async function stopTorrent(infoHash, userId) {
   try { await rpc('removeDownloadResult', gid); } catch (err) {}
 
   cleanupGid(gid, userId);
+  listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
   return true;
 }
 
@@ -813,17 +856,21 @@ async function getClient() {
 function addQuotaExceededNotification(userId, notification) {
   if (!quotaExceededNotifications.has(userId)) quotaExceededNotifications.set(userId, []);
   const list = quotaExceededNotifications.get(userId);
-  list.push({ id: Date.now().toString(), type: 'quota_exceeded', ...notification });
+  const entry = { id: Date.now().toString(), type: 'quota_exceeded', ...notification };
+  list.push(entry);
   if (list.length > 10) list.splice(0, list.length - 10);
   console.log(`📢 Quota exceeded notification for user ${userId}: ${notification.torrentName}`);
+  pushToUser(userId, 'notification', entry);
 }
 
 function addCompletionNotification(userId, notification) {
   if (!quotaExceededNotifications.has(userId)) quotaExceededNotifications.set(userId, []);
   const list = quotaExceededNotifications.get(userId);
-  list.push({ id: Date.now().toString(), type: 'download_completed', ...notification });
+  const entry = { id: Date.now().toString(), type: 'download_completed', ...notification };
+  list.push(entry);
   if (list.length > 10) list.splice(0, list.length - 10);
   console.log(`🎉 Completion notification for user ${userId}: ${notification.torrentName}`);
+  pushToUser(userId, 'notification', entry);
 }
 
 function getQuotaExceededNotifications(userId) {
@@ -868,5 +915,7 @@ module.exports = {
   getClient,
   getQuotaExceededNotifications,
   clearQuotaExceededNotification,
-  clearAllQuotaExceededNotifications
+  clearAllQuotaExceededNotifications,
+  registerSSEClient,
+  unregisterSSEClient,
 };

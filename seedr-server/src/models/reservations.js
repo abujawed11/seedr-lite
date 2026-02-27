@@ -363,17 +363,6 @@ class ReservationManager {
 
     const effectiveRemaining = Math.max(0, u.storageQuota - u.storageUsed - r.totalReserved);
 
-    // Debug logging for quota calculations
-    console.log(`🔍 QUOTA CALCULATION for user ${userId.substring(0, 8)}...:`);
-    console.log(`  Quota: ${this._humanBytes(u.storageQuota)}`);
-    console.log(`  Used (includes progressive): ${this._humanBytes(u.storageUsed)}`);
-    console.log(`  Total reserved (remaining from active): ${this._humanBytes(r.totalReserved)}`);
-    console.log(`  Total in progress (already downloaded): ${this._humanBytes(r.totalInProgress)}`);
-    console.log(`  Effective remaining: ${this._humanBytes(effectiveRemaining)}`);
-    console.log(`  Active reservations: ${activeReservations.length}`);
-    activeReservations.forEach(res => {
-      console.log(`    - ${res.info_hash.substring(0, 8)}: ${this._humanBytes(res.size_bytes)} total, ${this._humanBytes(res.downloaded_bytes)} done, ${this._humanBytes(res.remaining_bytes)} remaining`);
-    });
 
     return {
       storageQuota: u.storageQuota,
@@ -549,16 +538,9 @@ class ReservationManager {
           return false;
         }
 
-        // Calculate the increase in downloaded bytes
         const previousDownloaded = reservation.downloaded_bytes || 0;
         const newDownloadedBytes = Math.min(downloadedBytes, reservation.size_bytes);
         const bytesIncrease = newDownloadedBytes - previousDownloaded;
-
-        // Detailed logging for progressive tracking
-        console.log(`📊 PROGRESSIVE UPDATE for ${infoHash.substring(0, 8)}...:`);
-        console.log(`  Previous: ${this._humanBytes(previousDownloaded)} / ${this._humanBytes(reservation.size_bytes)}`);
-        console.log(`  New: ${this._humanBytes(newDownloadedBytes)} / ${this._humanBytes(reservation.size_bytes)}`);
-        console.log(`  Increase: ${this._humanBytes(bytesIncrease)}`);
 
         if (bytesIncrease > 0) {
           // Update user's storage_used
@@ -574,10 +556,6 @@ class ReservationManager {
              WHERE id=?`,
             [newDownloadedBytes, reservation.id]
           );
-
-          console.log(`✅ Progressive update: Added ${this._humanBytes(bytesIncrease)} to storage_used`);
-        } else {
-          console.log(`⏭️ No increase this cycle (already at ${this._humanBytes(newDownloadedBytes)})`);
         }
 
         await this._exec('COMMIT');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   addTorrent,
   addTorrentFile,
@@ -6,7 +6,6 @@ import {
   deleteTorrent,
   pauseTorrent,
   resumeTorrent,
-  getNotifications,
   clearNotification,
   clearAllNotifications,
 } from "../api";
@@ -25,36 +24,17 @@ function humanBytes(bytes) {
   return `${bytes.toFixed(fixed)} ${units[u]}`;
 }
 
-export default function TorrentSection({ torrents, onTorrentAdded }) {
+export default function TorrentSection({ torrents, onTorrentAdded, notifications, onNotificationsChange }) {
   const [magnets, setMagnets] = useState([{ id: 1, value: "", state: 'idle', error: null }]);
   const [nextId, setNextId] = useState(2);
-  const [notifications, setNotifications] = useState([]);
   const [showCopyrightWarning, setShowCopyrightWarning] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Fetch notifications on component mount and periodically
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const response = await getNotifications();
-        setNotifications(response.notifications || []);
-      } catch (error) {
-        console.error('Failed to fetch notifications:', error);
-      }
-    };
-
-    fetchNotifications();
-
-    // Check for new notifications every 10 seconds
-    const interval = setInterval(fetchNotifications, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
   const handleClearNotification = async (notificationId) => {
     try {
       await clearNotification(notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      onNotificationsChange(prev => prev.filter(n => n.id !== notificationId));
     } catch (error) {
       console.error('Failed to clear notification:', error);
     }
@@ -63,7 +43,7 @@ export default function TorrentSection({ torrents, onTorrentAdded }) {
   const handleClearAllNotifications = async () => {
     try {
       await clearAllNotifications();
-      setNotifications([]);
+      onNotificationsChange([]);
     } catch (error) {
       console.error('Failed to clear all notifications:', error);
     }

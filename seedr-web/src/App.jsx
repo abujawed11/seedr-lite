@@ -14,6 +14,7 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   // Track previous torrent state for detecting changes
   const prevDoneRef = useRef(new Set());
@@ -85,55 +86,55 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath, currentView, user?.role]);
 
-  // Monitor notifications for download completions and refresh file explorer
+  // SSE connection — replaces all polling intervals.
+  // Receives torrent_update (every 3s server-side poll) and notification (instant push).
   useEffect(() => {
-    // Skip if user is admin
-    if (user?.role === 'admin') return;
+    if (user?.role === 'admin' || currentView === 'admin') return;
 
-    // Skip if admin view is active
-    if (currentView === 'admin') return;
+    const token = localStorage.getItem('seedr_token');
+    if (!token) return;
 
-    const checkNotifications = async () => {
+    // One-time fetch of any notifications that existed before SSE connected
+    getNotifications()
+      .then(r => setNotifications(r.notifications || []))
+      .catch(() => {});
+
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+    const url = `${API_BASE}/api/torrents/events?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+
+    es.addEventListener('torrent_update', (e) => {
       try {
-        const response = await getNotifications();
-        const notifications = response.notifications || [];
+        const data = JSON.parse(e.data);
+        setTorrents(Array.isArray(data) ? data : []);
+      } catch (_) {}
+    });
 
-        // Look for completion notifications
-        const completionNotifications = notifications.filter(n => n.type === 'download_completed');
-
-        if (completionNotifications.length > 0) {
-          console.log(`🎉 ${completionNotifications.length} download(s) completed - refreshing file explorer`);
-
-          // Refresh file explorer to show new files
+    es.addEventListener('notification', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        // Append to notifications list (TorrentSection displays quota_exceeded ones)
+        setNotifications(prev => {
+          if (prev.some(n => n.id === data.id)) return prev; // dedupe
+          const updated = [...prev, data];
+          return updated.length > 20 ? updated.slice(-20) : updated;
+        });
+        if (data.type === 'download_completed') {
+          console.log(`🎉 Download complete via SSE: ${data.torrentName}`);
           fetchBrowse();
-
-          // Also refresh quota/storage info
           refreshUserProfile();
           fetchDetailedQuota();
-
-          // Auto-clear completion notifications after processing
-          for (const notification of completionNotifications) {
-            try {
-              await clearNotification(notification.id);
-              console.log(`✅ Cleared completion notification for: ${notification.torrentName}`);
-            } catch (error) {
-              console.error('Failed to clear completion notification:', error);
-            }
-          }
         }
-      } catch (error) {
-        console.error('Failed to check notifications:', error);
-      }
+      } catch (_) {}
+    });
+
+    es.onerror = () => {
+      // EventSource reconnects automatically — no manual action needed
     };
 
-    // Check notifications every 5 seconds
-    const interval = setInterval(checkNotifications, 5000);
-
-    // Also check immediately
-    checkNotifications();
-
-    return () => clearInterval(interval);
-  }, [refreshUserProfile, fetchDetailedQuota, currentView]);
+    return () => es.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, user?.role]);
 
   // Detect when torrents complete and refresh data
   useEffect(() => {
@@ -160,25 +161,6 @@ export default function App() {
     prevDoneRef.current = currentDone;
   }, [torrents, refreshUserProfile, currentView]);
 
-  // Simple polling — Poll when there are active downloads (like working backup)
-  useEffect(() => {
-    // Skip if user is admin
-    if (user?.role === 'admin') return;
-
-    // Skip if admin view is active
-    if (currentView === 'admin') return;
-
-    const hasActiveDownloads = torrents.some((t) => t.progress < 100);
-
-    if (hasActiveDownloads) {
-      const interval = setInterval(() => {
-        fetchTorrents();
-      }, 5000); // Poll every 5 seconds like in backup
-
-      return () => clearInterval(interval);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [torrents, currentView]);
 
   // Refresh files when torrent count decreases (indicates completion and removal)
   useEffect(() => {
@@ -242,7 +224,12 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Torrents Section */}
         <section>
-          <TorrentSection torrents={torrents} onTorrentAdded={handleTorrentAdded} />
+          <TorrentSection
+            torrents={torrents}
+            onTorrentAdded={handleTorrentAdded}
+            notifications={notifications}
+            onNotificationsChange={setNotifications}
+          />
         </section>
 
         {/* File Explorer Section */}
