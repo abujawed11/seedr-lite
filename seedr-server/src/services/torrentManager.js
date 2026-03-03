@@ -906,10 +906,12 @@ async function addMagnet(magnet, userId) {
             timestamp: new Date().toISOString()
           });
 
-          // Clean up since metadata fetch will never succeed at this point
-          cleanupGid(gid, userId, 'metadata_fetch_timeout');
+          // Do NOT cleanupGid here — aria2 still has the download and may find
+          // peers after a delay. The poll loop will switch to the content GID
+          // naturally once aria2 fetches the metadata. Removing from memory here
+          // would orphan the download and make it invisible in the UI forever.
 
-          return resolve({ id: infoHashFromMagnet || gid, gid, name: timedOutName, progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'error', infoHash: infoHashFromMagnet });
+          return resolve({ id: infoHashFromMagnet || gid, gid, name: timedOutName, progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'active', infoHash: infoHashFromMagnet });
         }
       } catch (err) {
         clearInterval(poll);
