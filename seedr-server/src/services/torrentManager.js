@@ -546,9 +546,15 @@ async function pollDownloads() {
           if (meta.isMetadata && status.followedBy?.length > 0) {
             await switchToContentGid(gid, status.followedBy[0], meta.userId);
           } else if (status.status === 'error') {
-            console.error(`❌ Download error for "${meta.name}": ${status.errorMessage}`);
-            cleanupGid(gid, meta.userId, `poll_error: ${status.errorMessage || 'unknown'}`);
-            listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
+            // "already registered" means aria2 has a duplicate — the real GID is tracked
+            // separately. Don't clean up — the dedup logic in addMagnet will handle it.
+            if (status.errorMessage?.includes('already registered')) {
+              console.warn(`⚠️ Ignoring "already registered" error for GID=${gid} "${meta.name}" — duplicate, not cleaning up`);
+            } else {
+              console.error(`❌ Download error for "${meta.name}": ${status.errorMessage}`);
+              cleanupGid(gid, meta.userId, `poll_error: ${status.errorMessage || 'unknown'}`);
+              listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
+            }
           } else if (status.status === 'complete' && !meta.isMetadata && !meta.done) {
             await handleDownloadComplete(gid, status, meta.userId);
           } else if (status.status === 'removed' || status.status === 'stopped') {
@@ -667,6 +673,13 @@ function connectAria2Events() {
       }
       case 'aria2.onDownloadError': {
         if (!meta) break;
+        try {
+          const errStatus = await rpc('tellStatus', gid);
+          if (errStatus.errorMessage?.includes('already registered')) {
+            console.warn(`⚠️ WS: Ignoring "already registered" error for GID=${gid} "${meta.name}"`);
+            break;
+          }
+        } catch (e) { /* ignore — fall through to cleanup */ }
         console.error(`❌ aria2 error for "${meta.name}"`);
         cleanupGid(gid, meta.userId, 'ws_onDownloadError');
         listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
@@ -798,6 +811,42 @@ async function addMagnet(magnet, userId) {
         // GID is stale (aria2 lost it) — fall through to re-add
         cleanupGid(existingGid, userId, `stale_gid_on_dedup: ${e.message}`);
       }
+    }
+  }
+
+  // Secondary dedup: check aria2 directly in case the download exists in aria2
+  // but was lost from Node.js memory (e.g. after server restart or metadata timeout).
+  // This prevents the "InfoHash already registered" error from aria2.
+  if (infoHashFromMagnet) {
+    try {
+      const [active, waiting] = await Promise.all([
+        rpc('tellActive').catch(() => []),
+        rpc('tellWaiting', 0, 100).catch(() => [])
+      ]);
+      const existing = [...active, ...waiting].find(
+        s => s.infoHash?.toLowerCase() === infoHashFromMagnet
+      );
+      if (existing) {
+        const existingGid = existing.gid;
+        console.log(`♻️ Found existing aria2 download (not in memory) — re-registering GID=${existingGid}`);
+        if (!userGids.has(userId)) userGids.set(userId, new Set());
+        userGids.get(userId).add(existingGid);
+        const meta = {
+          userId,
+          gid: existingGid,
+          isMetadata: false,
+          infoHash: infoHashFromMagnet,
+          name: existing.bittorrent?.info?.name || extractNameFromMagnet(magnet) || 'Loading...',
+          addedAt: Date.now(),
+          quotaValidated: true,
+          done: false
+        };
+        gidInfo.set(existingGid, meta);
+        infoHashToGid.set(infoHashFromMagnet, existingGid);
+        return toSummary(existing, meta);
+      }
+    } catch (e) {
+      // Non-critical — fall through to normal add
     }
   }
 
