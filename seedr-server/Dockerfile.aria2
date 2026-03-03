@@ -18,6 +18,9 @@ CMD ["sh", "-c", "aria2c \
   --split=16 \
   --min-split-size=1M \
   --bt-enable-lpd=true \
+  --enable-peer-exchange=true \
+  --bt-max-peers=150 \
+  --bt-prioritize-piece=head,tail \
   --continue=true \
   --always-resume=true \
   --allow-overwrite=true \
@@ -27,4 +30,6 @@ CMD ["sh", "-c", "aria2c \
   --dht-file-path=/root/.cache/aria2/dht.dat \
   --dht-file-path6=/root/.cache/aria2/dht6.dat \
   --dht-entry-point=dht.transmissionbt.com:6881 \
-  --dht-entry-point6=dht.transmissionbt.com:6881"]
+  --dht-entry-point6=dht.transmissionbt.com:6881 \
+  --dht-entry-point=router.bittorrent.com:6881 \
+  --dht-entry-point=router.utorrent.com:6881"]

@@ -32,6 +32,9 @@ const userGids = new Map();      // userId -> Set<gid>
 const gidInfo = new Map();       // gid -> { userId, infoHash, name, addedAt, quotaValidated, done }
 const infoHashToGid = new Map(); // infoHash -> gid
 
+// Debounce progressive storage DB writes — at most once per 10s per GID
+const progressWriteTimers = new Map(); // gid -> timeout handle
+
 // ===================== SSE REGISTRY =====================
 
 const sseClients = new Map(); // userId -> Set<Response>
@@ -84,6 +87,9 @@ function startAria2() {
     '--split=16',
     '--min-split-size=1M',
     '--bt-enable-lpd=true',
+    '--enable-peer-exchange=true',
+    '--bt-max-peers=150',
+    '--bt-prioritize-piece=head,tail',
     '--continue=true',
     '--always-resume=true',
     '--file-allocation=none',
@@ -93,7 +99,9 @@ function startAria2() {
     '--bt-seed-unverified=true',
     '--follow-torrent=true',
     '--bt-save-metadata=true',
-    '--dht-entry-point=dht.transmissionbt.com:6881'
+    '--dht-entry-point=dht.transmissionbt.com:6881',
+    '--dht-entry-point=router.bittorrent.com:6881',
+    '--dht-entry-point=router.utorrent.com:6881'
   ];
 
   console.log('🚀 ARIA2: Starting aria2c process...');
@@ -138,24 +146,40 @@ function startAria2() {
 // ===================== ARIA2 RPC =====================
 
 async function rpc(method, ...params) {
-  try {
-    const response = await axios.post(ARIA2_RPC_URL, {
-      jsonrpc: '2.0',
-      id: Date.now().toString(),
-      method: `aria2.${method}`,
-      params: [`token:${ARIA2_SECRET}`, ...params]
-    }, { timeout: 10000 });
+  const isSystem = method === 'system.multicall';
+  const rpcMethod = isSystem ? method : `aria2.${method}`;
+  const rpcParams = isSystem ? params : [`token:${ARIA2_SECRET}`, ...params];
 
-    if (response.data.error) {
-      throw new Error(`aria2 [${response.data.error.code}]: ${response.data.error.message}`);
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await axios.post(ARIA2_RPC_URL, {
+        jsonrpc: '2.0',
+        id: Date.now().toString(),
+        method: rpcMethod,
+        params: rpcParams
+      }, { timeout: 10000 });
+
+      if (response.data.error) {
+        throw new Error(`aria2 [${response.data.error.code}]: ${response.data.error.message}`);
+      }
+      return response.data.result;
+    } catch (err) {
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error('aria2 RPC unreachable — is aria2c running?');
+      }
+      lastErr = err;
+      // Don't retry on aria2 application-level errors (bad GID, wrong params, etc.)
+      if (err.message?.startsWith('aria2 [')) throw err;
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 200 * attempt));
+      }
     }
-    return response.data.result;
-  } catch (err) {
-    if (err.code === 'ECONNREFUSED') {
-      throw new Error('aria2 RPC unreachable — is aria2c running?');
-    }
-    throw err;
   }
+
+  throw lastErr;
 }
 
 // ===================== UTILITIES =====================
@@ -270,6 +294,12 @@ function cleanupGid(gid, userId) {
   gidInfo.delete(gid);
   if (userGids.has(userId)) {
     userGids.get(userId).delete(gid);
+  }
+  // Cancel any pending debounced storage write for this GID
+  const timer = progressWriteTimers.get(gid);
+  if (timer) {
+    clearTimeout(timer);
+    progressWriteTimers.delete(gid);
   }
 }
 
@@ -488,11 +518,14 @@ async function pollDownloads() {
         await validateQuotaForGid(gid, userId, status);
       }
 
-      // Progressive storage update
+      // Progressive storage update — debounced to at most once every 10s per GID
       if (meta.quotaValidated && meta.infoHash) {
         const completedLength = parseInt(status.completedLength || 0);
-        if (completedLength > 0) {
-          database.updateProgressiveStorage(userId, meta.infoHash, completedLength).catch(() => {});
+        if (completedLength > 0 && !progressWriteTimers.has(gid)) {
+          progressWriteTimers.set(gid, setTimeout(() => {
+            progressWriteTimers.delete(gid);
+            database.updateProgressiveStorage(userId, meta.infoHash, completedLength).catch(() => {});
+          }, 10000));
         }
       }
 
@@ -514,8 +547,14 @@ async function pollDownloads() {
           } else if (status.status === 'error') {
             console.error(`❌ Download error for "${meta.name}": ${status.errorMessage}`);
             cleanupGid(gid, meta.userId);
+            listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
           } else if (status.status === 'complete' && !meta.isMetadata && !meta.done) {
             await handleDownloadComplete(gid, status, meta.userId);
+          } else if (status.status === 'removed' || status.status === 'stopped') {
+            // Stopped/removed downloads are not in active or waiting — clean them up
+            console.log(`🗑️ Cleaning up ${status.status} GID "${meta.name}"`);
+            cleanupGid(gid, meta.userId);
+            listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
           }
         } catch (err) {
           // Only cleanup when aria2 definitively says GID doesn't exist.
@@ -561,16 +600,20 @@ setInterval(() => {
 
 const ARIA2_WS_URL = `ws://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc`;
 
+let _wsRetryDelay = 3000;
+
 function connectAria2Events() {
   let ws;
   try {
     ws = new WebSocket(ARIA2_WS_URL);
   } catch (e) {
-    setTimeout(connectAria2Events, 5000);
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);
+    setTimeout(connectAria2Events, _wsRetryDelay);
     return;
   }
 
   ws.on('open', () => {
+    _wsRetryDelay = 3000; // reset on successful connection
     console.log('⚡ aria2 WebSocket connected — instant event notifications active');
   });
 
@@ -641,8 +684,8 @@ function connectAria2Events() {
   ws.on('error', () => { /* suppress — reconnect handles it */ });
 
   ws.on('close', () => {
-    // Auto-reconnect after 3 seconds
-    setTimeout(connectAria2Events, 3000);
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);
+    setTimeout(connectAria2Events, _wsRetryDelay);
   });
 }
 
@@ -849,8 +892,23 @@ async function addMagnet(magnet, userId) {
 
         if (Date.now() > deadline) {
           clearInterval(poll);
-          // Timeout — return partial info, polling loop will handle the rest
-          return resolve({ id: infoHashFromMagnet || gid, gid, name: gidInfo.get(gid)?.name || 'Loading...', progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'active', infoHash: infoHashFromMagnet });
+          const timedOutMeta = gidInfo.get(gid);
+          const timedOutName = timedOutMeta?.name || 'Unknown';
+          console.warn(`⏱️ Metadata fetch timed out for "${timedOutName}" (gid=${gid})`);
+
+          // Notify the user via SSE so the frontend can show an error on the card
+          pushToUser(userId, 'torrent_error', {
+            infoHash: infoHashFromMagnet,
+            gid,
+            name: timedOutName,
+            message: 'Metadata fetch timed out — no peers found. Check your connection or try a different magnet link.',
+            timestamp: new Date().toISOString()
+          });
+
+          // Clean up since metadata fetch will never succeed at this point
+          cleanupGid(gid, userId);
+
+          return resolve({ id: infoHashFromMagnet || gid, gid, name: timedOutName, progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'error', infoHash: infoHashFromMagnet });
         }
       } catch (err) {
         clearInterval(poll);
@@ -879,28 +937,46 @@ async function listTorrents(userId) {
   const gids = userGids.get(userId);
   if (!gids || gids.size === 0) return [];
 
+  const gidArray = [...gids];
   const results = [];
   const toRemove = [];
 
-  for (const gid of gids) {
-    try {
-      const status = await rpc('tellStatus', gid);
-      const meta = gidInfo.get(gid);
+  // Batch all tellStatus calls into a single system.multicall request
+  // instead of N sequential HTTP round-trips.
+  let statuses;
+  try {
+    const calls = gidArray.map(gid => ({
+      methodName: 'aria2.tellStatus',
+      params: [`token:${ARIA2_SECRET}`, gid]
+    }));
+    statuses = await rpc('system.multicall', calls);
+  } catch (err) {
+    // If multicall itself fails (e.g. aria2 unreachable), return empty silently
+    return [];
+  }
 
-      if (status.status === 'removed' || status.status === 'error') {
-        toRemove.push(gid);
-        continue;
-      }
-      results.push(toSummary(status, meta));
-    } catch (err) {
-      // Only cleanup when aria2 definitively says this GID doesn't exist.
-      // Transient errors (RPC timeout, ECONNREFUSED) must not wipe a live download.
-      const isGidNotFound = err.message?.includes('not found') || err.message?.includes('GID');
-      if (isGidNotFound) {
-        toRemove.push(gid);
-      }
-      // Otherwise: skip this GID silently and keep tracking it
+  for (let i = 0; i < gidArray.length; i++) {
+    const gid = gidArray[i];
+    const entry = statuses[i];
+    const meta = gidInfo.get(gid);
+
+    // system.multicall returns either [result] on success or {faultCode, faultString} on error
+    if (!entry || entry.faultCode !== undefined) {
+      const faultMsg = entry?.faultString || '';
+      const isGidNotFound = faultMsg.includes('not found') || faultMsg.includes('GID');
+      if (isGidNotFound) toRemove.push(gid);
+      // Transient errors: skip silently and keep tracking
+      continue;
     }
+
+    const status = Array.isArray(entry) ? entry[0] : entry;
+
+    if (status.status === 'removed' || status.status === 'error') {
+      toRemove.push(gid);
+      continue;
+    }
+
+    results.push(toSummary(status, meta));
   }
 
   toRemove.forEach(gid => cleanupGid(gid, userId));

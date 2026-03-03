@@ -142,13 +142,13 @@ show a "Metadata fetch timed out — check your connection" error on the card.
 
 ## Summary
 
-| ID | Area | File | Impact |
-|----|------|------|--------|
-| S1 | Dead trackers | `utils/trackers.js` | Slow peer/metadata discovery |
-| S2 | Missing aria2 flags | `Dockerfile.aria2`, `torrentManager.js` | Speed cap on fast connections |
-| S3 | N RPC calls in listTorrents | `torrentManager.js:878` | Latency scales with download count |
-| R1 | No RPC retry | `torrentManager.js:140` | False failures under load |
-| R2 | Fixed WS reconnect delay | `torrentManager.js:643` | Hammers restarting aria2 |
-| R3 | Excessive DB writes | `torrentManager.js:491` | Unnecessary write pressure |
-| R4 | `stopped` state unhandled | `torrentManager.js:505` | Orphaned in-memory GID entries |
-| R5 | Silent metadata timeout | `torrentManager.js:850` | Zombie torrent cards in UI |
+| ID | Area | File | Impact | Status |
+|----|------|------|--------|--------|
+| S1 | Dead trackers | `utils/trackers.js` | Slow peer/metadata discovery | ✅ Done |
+| S2 | Missing aria2 flags | `Dockerfile.aria2`, `torrentManager.js` | Speed cap on fast connections | ✅ Done |
+| S3 | N RPC calls in listTorrents | `torrentManager.js:878` | Latency scales with download count | ✅ Done |
+| R1 | No RPC retry | `torrentManager.js:140` | False failures under load | ✅ Done |
+| R2 | Fixed WS reconnect delay | `torrentManager.js:643` | Hammers restarting aria2 | ✅ Done |
+| R3 | Excessive DB writes | `torrentManager.js:491` | Unnecessary write pressure | ✅ Done |
+| R4 | `stopped` state unhandled | `torrentManager.js:505` | Orphaned in-memory GID entries | ✅ Done |
+| R5 | Silent metadata timeout | `torrentManager.js:850` | Zombie torrent cards in UI | ✅ Done |

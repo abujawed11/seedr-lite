@@ -344,7 +344,7 @@ export default function TorrentSection({ torrents, onTorrentAdded, notifications
         ) : (
           <div className="space-y-3">
             {torrents.map((t) => (
-              <TorrentCard key={t.id} torrent={t} onTorrentUpdated={onTorrentAdded} />
+              <TorrentCard key={t.infoHash || t.gid || t.id} torrent={t} onTorrentUpdated={onTorrentAdded} />
             ))}
           </div>
         )}
