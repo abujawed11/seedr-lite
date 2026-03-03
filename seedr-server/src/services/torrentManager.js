@@ -288,8 +288,9 @@ function toSummary(status, meta) {
 
 // ===================== GID LIFECYCLE =====================
 
-function cleanupGid(gid, userId) {
+function cleanupGid(gid, userId, reason = 'unknown') {
   const meta = gidInfo.get(gid);
+  console.log(`🧹 CLEANUP [${reason}]: GID=${gid} name="${meta?.name || 'n/a'}" user=${userId}`);
   if (meta?.infoHash) infoHashToGid.delete(meta.infoHash);
   gidInfo.delete(gid);
   if (userGids.has(userId)) {
@@ -334,7 +335,7 @@ async function validateQuotaForGid(gid, userId, status) {
         timestamp: new Date().toISOString()
       });
 
-      cleanupGid(gid, userId);
+      cleanupGid(gid, userId, 'quota_exceeded');
       return;
     }
 
@@ -411,7 +412,7 @@ async function handleDownloadComplete(gid, status, userId) {
   // After 2 seconds: remove from aria2 results and clean up maps, then push final state
   setTimeout(async () => {
     try { await rpc('removeDownloadResult', gid); } catch (_) {}
-    cleanupGid(gid, userId);
+    cleanupGid(gid, userId, 'download_complete');
     listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
   }, 2000);
 }
@@ -546,14 +547,14 @@ async function pollDownloads() {
             await switchToContentGid(gid, status.followedBy[0], meta.userId);
           } else if (status.status === 'error') {
             console.error(`❌ Download error for "${meta.name}": ${status.errorMessage}`);
-            cleanupGid(gid, meta.userId);
+            cleanupGid(gid, meta.userId, `poll_error: ${status.errorMessage || 'unknown'}`);
             listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
           } else if (status.status === 'complete' && !meta.isMetadata && !meta.done) {
             await handleDownloadComplete(gid, status, meta.userId);
           } else if (status.status === 'removed' || status.status === 'stopped') {
             // Stopped/removed downloads are not in active or waiting — clean them up
             console.log(`🗑️ Cleaning up ${status.status} GID "${meta.name}"`);
-            cleanupGid(gid, meta.userId);
+            cleanupGid(gid, meta.userId, `poll_${status.status}`);
             listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
           }
         } catch (err) {
@@ -561,7 +562,7 @@ async function pollDownloads() {
           // Transient RPC errors must not wipe an active download from memory.
           const isGidNotFound = err.message?.includes('not found') || err.message?.includes('GID');
           if (isGidNotFound) {
-            cleanupGid(gid, meta.userId);
+            cleanupGid(gid, meta.userId, `poll_gid_not_found: ${err.message}`);
           }
         }
       }
@@ -667,7 +668,7 @@ function connectAria2Events() {
       case 'aria2.onDownloadError': {
         if (!meta) break;
         console.error(`❌ aria2 error for "${meta.name}"`);
-        cleanupGid(gid, meta.userId);
+        cleanupGid(gid, meta.userId, 'ws_onDownloadError');
         listTorrents(meta.userId).then(t => pushToUser(meta.userId, 'torrent_update', t)).catch(() => {});
         break;
       }
@@ -795,7 +796,7 @@ async function addMagnet(magnet, userId) {
         return toSummary(status, existingMeta);
       } catch (e) {
         // GID is stale (aria2 lost it) — fall through to re-add
-        cleanupGid(existingGid, userId);
+        cleanupGid(existingGid, userId, `stale_gid_on_dedup: ${e.message}`);
       }
     }
   }
@@ -861,7 +862,7 @@ async function addMagnet(magnet, userId) {
 
         if (status.status === 'error') {
           clearInterval(poll);
-          cleanupGid(gid, userId);
+          cleanupGid(gid, userId, `addMagnet_error: ${status.errorMessage || 'unknown'}`);
           return reject(new Error(`Torrent error: ${status.errorMessage || 'unknown'}`));
         }
 
@@ -906,7 +907,7 @@ async function addMagnet(magnet, userId) {
           });
 
           // Clean up since metadata fetch will never succeed at this point
-          cleanupGid(gid, userId);
+          cleanupGid(gid, userId, 'metadata_fetch_timeout');
 
           return resolve({ id: infoHashFromMagnet || gid, gid, name: timedOutName, progress: 0, downloaded: '0 B', length: '0 B', downloadSpeed: '0 B/s', uploadSpeed: '0 B/s', numPeers: 0, files: [], done: false, status: 'error', infoHash: infoHashFromMagnet });
         }
@@ -971,7 +972,7 @@ async function listTorrents(userId) {
 
     const status = Array.isArray(entry) ? entry[0] : entry;
 
-    if (status.status === 'removed' || status.status === 'error') {
+    if (status.status === 'removed') {
       toRemove.push(gid);
       continue;
     }
@@ -979,7 +980,7 @@ async function listTorrents(userId) {
     results.push(toSummary(status, meta));
   }
 
-  toRemove.forEach(gid => cleanupGid(gid, userId));
+  toRemove.forEach(gid => cleanupGid(gid, userId, 'listTorrents_removed'));
   return results;
 }
 
@@ -1032,7 +1033,7 @@ async function stopTorrent(infoHash, userId) {
   try { await rpc('forceRemove', gid); } catch (err) {}
   try { await rpc('removeDownloadResult', gid); } catch (err) {}
 
-  cleanupGid(gid, userId);
+  cleanupGid(gid, userId, 'user_stop');
   listTorrents(userId).then(t => pushToUser(userId, 'torrent_update', t)).catch(() => {});
   return true;
 }
