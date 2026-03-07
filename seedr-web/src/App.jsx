@@ -3,6 +3,7 @@ import { listTorrents, browse, getNotifications, clearNotification } from "./api
 import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
+import AdBanner from "./components/AdBanner";
 import PlansModal from "./components/PlansModal";
 import AdminDashboard from "./pages/AdminDashboard";
 
@@ -193,6 +194,9 @@ export default function App() {
             onNotificationsChange={setNotifications}
           />
         </section>
+
+        {/* Native Banner Ad */}
+        <AdBanner />
 
         {/* File Explorer Section */}
         <section>
