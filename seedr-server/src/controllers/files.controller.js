@@ -327,13 +327,21 @@ exports.direct = async (req, res) => {
       const folderName = path.basename(fullPath);
       const zipFilename = `${folderName}.zip`;
 
+      // Short-circuit HEAD requests — return headers immediately, no archiving needed
+      if (req.method === 'HEAD') {
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+        res.setHeader('Accept-Ranges', 'none');
+        return res.status(200).end();
+      }
+
       // Set response headers for ZIP download
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
 
       // Create ZIP archive
       const archive = archiver('zip', {
-        zlib: { level: 9 } // Maximum compression
+        zlib: { level: 0 } // No compression — files stream immediately without CPU overhead
       });
 
       // Handle archive errors
@@ -527,7 +535,7 @@ exports.downloadFolder = async (req, res) => {
 
     // Create ZIP archive
     const archive = archiver('zip', {
-      zlib: { level: 9 } // Maximum compression
+      zlib: { level: 0 } // No compression — files stream immediately without CPU overhead
     });
 
     // Handle archive errors

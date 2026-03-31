@@ -15,9 +15,4 @@ services:
       # aria2 writes here; Node.js reads from the same host path
       # Update the left side to match ROOT in your .env (e.g. ./srv/storage/library)
       - ${ROOT:-./src/storage/library}:/downloads
-      # Persist DHT routing table so it doesn't error on every restart
-      - aria2-cache:/root/.cache/aria2
     restart: unless-stopped
-
-volumes:
-  aria2-cache:

@@ -1,4 +1,19 @@
+import { useState } from "react";
+
 export default function FolderItem({ folder, onNavigate, onDelete, formatFileSize }) {
+  const [copyStatus, setCopyStatus] = useState("copy");
+
+  async function handleCopyLink(e) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(folder.downloadUrl);
+      setCopyStatus("copied");
+      setTimeout(() => setCopyStatus("copy"), 3000);
+    } catch {
+      setCopyStatus("error");
+      setTimeout(() => setCopyStatus("copy"), 3000);
+    }
+  }
 
   return (
     <div className="group flex items-center p-4 bg-gray-800 hover:bg-gray-750 rounded-lg border border-gray-700 hover:border-gray-600 transition-all">
@@ -50,6 +65,21 @@ export default function FolderItem({ folder, onNavigate, onDelete, formatFileSiz
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
           </a>
+        )}
+
+        {/* Copy link button */}
+        {folder.downloadUrl && (
+          <button
+            onClick={handleCopyLink}
+            className={`opacity-0 group-hover:opacity-100 p-2 rounded-lg transition-all text-xs font-medium ${
+              copyStatus === "copied" ? "bg-green-600/30 text-green-400" :
+              copyStatus === "error"  ? "bg-red-600/30 text-red-400" :
+                                        "hover:bg-gray-600/40 text-gray-400 hover:text-gray-200"
+            }`}
+            title="Copy download link"
+          >
+            {copyStatus === "copied" ? "✓" : copyStatus === "error" ? "✗" : "🔗"}
+          </button>
         )}
 
         {/* Delete button */}
