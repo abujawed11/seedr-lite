@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.aria2
-    user: "1000:1000"
+    user: "${ARIA2_UID:-1000}:${ARIA2_GID:-1000}"
     environment:
       - ARIA2_SECRET=${ARIA2_SECRET:-seedr_aria2_secret}
       - ARIA2_RPC_PORT=${ARIA2_PORT:-6800}
