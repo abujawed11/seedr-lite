@@ -1,4 +1,5 @@
 import { useState } from "react";
+import R2TransferButton from "./R2TransferButton";
 
 export default function FolderItem({ folder, onNavigate, onDelete, formatFileSize }) {
   const [copyStatus, setCopyStatus] = useState("copy");
@@ -66,6 +67,11 @@ export default function FolderItem({ folder, onNavigate, onDelete, formatFileSiz
             </svg>
           </a>
         )}
+
+        {/* R2 Transfer button */}
+        <div className="opacity-0 group-hover:opacity-100 transition-all">
+          <R2TransferButton itemPath={folder.path} type="folder" fileName={folder.name} />
+        </div>
 
         {/* Copy link button */}
         {folder.downloadUrl && (

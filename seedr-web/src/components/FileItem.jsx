@@ -1,5 +1,6 @@
 import { useState } from "react";
 import MediaPlayer from "./MediaPlayer";
+import R2TransferButton from "./R2TransferButton";
 
 export default function FileItem({ file, formatFileSize, onDelete }) {
   const [copyStatus, setCopyStatus] = useState("copy");
@@ -163,6 +164,8 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
           <span className="mr-1">{copyButton.icon}</span>
           {copyButton.text}
         </button>
+
+        <R2TransferButton itemPath={file.path} type="file" fileName={file.name} />
 
         {onDelete && (
           <button

@@ -328,3 +328,15 @@ export async function getPaymentHistory(limit = 20) {
   });
   return res.data;
 }
+
+// ==================== R2 Transfer API ====================
+
+export async function startR2Transfer(itemPath, type) {
+  const res = await api.post('/r2/transfer', { path: itemPath, type });
+  return res.data;
+}
+
+export async function getR2TransferStatus(jobId) {
+  const res = await api.get(`/r2/transfer/${jobId}`);
+  return res.data;
+}

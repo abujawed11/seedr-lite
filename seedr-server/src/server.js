@@ -65,6 +65,7 @@ app.use('/api/torrents', torrentsRoutes);
 app.use('/', streamRoutes); // /stream /download /direct
 app.use("/api/files", require("./routes/files.routes"));
 app.use("/files", require("./routes/files.routes"));
+app.use("/api/r2", require("./routes/r2.routes"));
 
 app.use(errorHandler);
 
