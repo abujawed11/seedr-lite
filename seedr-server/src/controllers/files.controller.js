@@ -5,6 +5,7 @@ const rangeParser = require("range-parser");
 const archiver = require("archiver");
 const { signLink, verifyLink } = require("../services/linkSigner");
 const { getUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
+const streamRegistry = require("../utils/streamRegistry");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
@@ -238,6 +239,16 @@ async function streamFileFromDisk(req, res, { filePath, asAttachment = false, us
     }
 
     const stream = fs.createReadStream(fullPath, { start, end });
+
+    streamRegistry.register(fullPath, stream);
+    const unregister = () => streamRegistry.unregister(fullPath, stream);
+    stream.once('close', unregister);
+    stream.once('error', unregister);
+
+    // Destroy the read stream immediately when the client disconnects so the
+    // file descriptor is released even if the inode was already unlinked.
+    req.on('close', () => stream.destroy());
+
     stream.on("error", (e) => {
       console.error("Stream error:", e);
       if (!res.headersSent) {
@@ -352,6 +363,10 @@ exports.direct = async (req, res) => {
         }
       });
 
+      // Abort the archiver when the client disconnects so its internal file
+      // handles are released immediately rather than running to completion.
+      res.on('close', () => { try { archive.abort(); } catch (_) {} });
+
       // Pipe archive to response
       archive.pipe(res);
 
@@ -418,10 +433,13 @@ exports.deleteFile = async (req, res) => {
     const stat = fs.statSync(fullPath);
 
     if (stat.isDirectory()) {
-      // Remove directory recursively
+      // Close any streams reading files inside this directory before deleting,
+      // so Linux releases the inodes immediately rather than holding them open.
+      await streamRegistry.drainDirectory(fullPath);
       fs.rmSync(fullPath, { recursive: true, force: true });
     } else {
-      // Remove file
+      // Close any stream currently reading this file before unlinking.
+      await streamRegistry.drainPath(fullPath);
       fs.unlinkSync(fullPath);
     }
 
@@ -545,6 +563,10 @@ exports.downloadFolder = async (req, res) => {
         res.status(500).json({ error: 'Failed to create archive' });
       }
     });
+
+    // Abort the archiver when the client disconnects so its internal file
+    // handles are released immediately rather than running to completion.
+    res.on('close', () => { try { archive.abort(); } catch (_) {} });
 
     // Pipe archive to response
     archive.pipe(res);

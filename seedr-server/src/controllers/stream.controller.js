@@ -71,6 +71,7 @@ const mime = require('mime-types');
 const { getTorrent } = require('../services/torrentManager');
 const { verifyLink } = require('../services/linkSigner');
 const database = require('../models/database');
+const streamRegistry = require('../utils/streamRegistry');
 
 async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false }) {
   // getTorrent is async now — await it
@@ -132,6 +133,15 @@ async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false
   }
 
   const stream = fs.createReadStream(file.path, { start, end });
+
+  streamRegistry.register(file.path, stream);
+  const unregister = () => streamRegistry.unregister(file.path, stream);
+  stream.once('close', unregister);
+  stream.once('error', unregister);
+
+  // Release the file descriptor immediately on client disconnect.
+  req.on('close', () => stream.destroy());
+
   stream.on('error', (e) => {
     console.error('stream error:', e);
     if (!res.headersSent) res.status(500).json({ error: 'stream error' });
