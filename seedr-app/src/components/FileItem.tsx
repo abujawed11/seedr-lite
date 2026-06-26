@@ -1,9 +1,19 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
+import { API_BASE_URL } from '../constants/config';
+
+// Backend generates URLs with its own localhost — replace with the configured server IP
+function fixUrl(url?: string): string {
+  if (!url) return '';
+  // Extract just the origin (protocol + host + port) from API_BASE_URL
+  const serverOrigin = API_BASE_URL.replace(/\/+$/, '');
+  // Replace any localhost or 127.0.0.1 origin in the URL
+  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, serverOrigin);
+}
 
 interface File {
   path: string;
@@ -56,7 +66,7 @@ export default function FileItem({ file, formatFileSize, onDelete, onPlay }: Pro
   const handleCopyLink = async () => {
     if (!file.directUrl) return;
     try {
-      await Clipboard.setStringAsync(file.directUrl);
+      await Clipboard.setStringAsync(fixUrl(file.directUrl));
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus('idle'), 3000);
     } catch {
@@ -71,7 +81,7 @@ export default function FileItem({ file, formatFileSize, onDelete, onPlay }: Pro
     try {
       const fileName = file.name;
       const localUri = `${FileSystem.cacheDirectory}${fileName}`;
-      const { uri } = await FileSystem.downloadAsync(file.downloadUrl, localUri);
+      const { uri } = await FileSystem.downloadAsync(fixUrl(file.downloadUrl), localUri);
       await Sharing.shareAsync(uri, { dialogTitle: `Save ${fileName}` });
     } catch {
       Alert.alert('Download Failed', 'Could not download the file. Please try again.');
@@ -82,9 +92,9 @@ export default function FileItem({ file, formatFileSize, onDelete, onPlay }: Pro
 
   const handlePlay = () => {
     if (isMediaFile(file.name, file.mime)) {
-      onPlay(file);
+      onPlay({ ...file, streamUrl: fixUrl(file.streamUrl), downloadUrl: fixUrl(file.downloadUrl), directUrl: fixUrl(file.directUrl) });
     } else if (file.streamUrl) {
-      WebBrowser.openBrowserAsync(file.streamUrl);
+      WebBrowser.openBrowserAsync(fixUrl(file.streamUrl));
     }
   };
 
