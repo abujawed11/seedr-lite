@@ -12,7 +12,7 @@
 - [x] Phase 2 — Auth Screens
 - [x] Phase 3 — Core: Torrents
 - [x] Phase 4 — Core: File Explorer
-- [ ] Phase 5 — Media Player
+- [~] Phase 5 — Media Player (Skipped — using external players like MX Player via Copy Link)
 - [ ] Phase 6 — Account & Plans
 - [ ] Phase 7 — Polish & Release
 
@@ -141,20 +141,11 @@ Main torrent management screen.
 
 ---
 
-## Phase 5 — Media Player
+## Phase 5 — Media Player (Skipped)
 
-### Components to build
-- [ ] `src/components/MediaPlayer.tsx` — port `MediaPlayer.jsx`
-  - Install `expo-av` (or `expo-video` for SDK 56)
-  - Video playback with controls (play/pause/seek/fullscreen)
-  - Audio playback
-  - Close/dismiss button
-  - Stream from backend URL directly
-
-### Notes
-- `expo-video` is the newer API in SDK 56, preferred over `expo-av` for video
-- Audio still uses `expo-av`
-- Stream URL from backend: `/stream/:infoHash/:fileIndex`
+Skipped — users can stream any file (MP4, MKV, H.265, etc.) directly in MX Player,
+VLC, or any external player using the **Copy Link** button in the File Explorer.
+This covers all formats without extra dependencies.
 
 ---
 
