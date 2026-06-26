@@ -8,8 +8,8 @@
 ## Current Status
 - [x] Expo project initialized (SDK 56)
 - [x] NativeWind v4 configured and working
-- [ ] Phase 1 — Foundation
-- [ ] Phase 2 — Auth Screens
+- [x] Phase 1 — Foundation
+- [x] Phase 2 — Auth Screens
 - [ ] Phase 3 — Core: Torrents
 - [ ] Phase 4 — Core: File Explorer
 - [ ] Phase 5 — Media Player
@@ -23,16 +23,16 @@
 Port the API layer and auth system from web to React Native.
 
 ### Tasks
-- [ ] Install dependencies: `axios`, `@react-native-async-storage/async-storage`
-- [ ] Create `src/api.ts` — port from `seedr-web/src/api.js` with these changes:
+- [x] Install dependencies: `axios`, `@react-native-async-storage/async-storage`
+- [x] Create `src/api.ts` — port from `seedr-web/src/api.js` with these changes:
   - Replace `localStorage` → `AsyncStorage`
   - Replace `window.location.reload()` → navigation reset via Expo Router
   - Set `API_BASE` from an env config (use `expo-constants` or `.env`)
-- [ ] Create `src/context/AuthContext.tsx` — port from web with:
+- [x] Create `src/context/AuthContext.tsx` — port from web with:
   - `AsyncStorage` for token persistence
   - Same `login`, `register`, `logout`, `setAuthData`, `refreshUserProfile`, `fetchDetailedQuota` functions
-- [ ] Create `src/constants/config.ts` — store `API_BASE_URL` here
-- [ ] Set up Expo Router layout in `src/app/_layout.tsx`:
+- [x] Create `src/constants/config.ts` — store `API_BASE_URL` here
+- [x] Set up Expo Router layout in `src/app/_layout.tsx`:
   - Wrap app in `AuthProvider`
   - Handle auth-gated routing (unauthenticated → auth screens)
 
@@ -48,20 +48,20 @@ Port the API layer and auth system from web to React Native.
 ## Phase 2 — Auth Screens
 
 ### Screens to build
-- [ ] `src/app/(auth)/login.tsx` — port `LoginForm.jsx`
+- [x] `src/app/(auth)/login.tsx` — port `LoginForm.jsx`
   - Username + password fields
   - Show password toggle
   - Error display
   - Admin OTP flow (if `requiresOTP` in response)
-- [ ] `src/app/(auth)/register.tsx` — port `RegisterForm.jsx`
+- [x] `src/app/(auth)/register.tsx` — port `RegisterForm.jsx`
   - Username, email, password, confirm password
   - Age/Terms/Privacy checkboxes (Modal bottom sheet instead of LegalModal)
   - OTP verification step after submit
-- [ ] `src/app/(auth)/otp-verify.tsx` — port `OTPVerification.jsx`
-- [ ] `src/app/(auth)/admin-otp.tsx` — port `AdminOTPVerification.jsx`
-- [ ] `src/app/(auth)/forgot-password.tsx` — port `ForgotPassword.jsx`
-- [ ] `src/app/(auth)/reset-password.tsx` — port `ResetPassword.jsx`
-- [ ] `src/app/(auth)/verify-reset-otp.tsx` — port `VerifyResetOTP.jsx`
+- [x] `src/app/(auth)/otp-verify.tsx` — port `OTPVerification.jsx`
+- [x] `src/app/(auth)/admin-otp.tsx` — port `AdminOTPVerification.jsx`
+- [x] `src/app/(auth)/forgot-password.tsx` — port `ForgotPassword.jsx`
+- [x] `src/app/(auth)/reset-password.tsx` — port `ResetPassword.jsx`
+- [x] `src/app/(auth)/verify-reset-otp.tsx` — port `VerifyResetOTP.jsx`
 
 ### Web → RN key differences
 | Web | React Native |
@@ -208,8 +208,8 @@ src/app/
 ## Dependencies to Install (all phases)
 
 ```bash
-# Phase 1
-npm install axios @react-native-async-storage/async-storage
+# Phase 1 ✅ Done — installed via npx expo install for SDK compatibility
+# npm install axios @react-native-async-storage/async-storage
 
 # Phase 3
 npm install react-native-sse
