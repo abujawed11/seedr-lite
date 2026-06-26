@@ -64,9 +64,10 @@ export default function FileItem({ file, formatFileSize, onDelete, onPlay }: Pro
   const [downloading, setDownloading] = useState(false);
 
   const handleCopyLink = async () => {
-    if (!file.directUrl) return;
+    const urlToCopy = file.streamUrl || file.directUrl;
+    if (!urlToCopy) return;
     try {
-      await Clipboard.setStringAsync(fixUrl(file.directUrl));
+      await Clipboard.setStringAsync(fixUrl(urlToCopy));
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus('idle'), 3000);
     } catch {
