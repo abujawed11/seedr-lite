@@ -11,7 +11,7 @@
 - [x] Phase 1 — Foundation
 - [x] Phase 2 — Auth Screens
 - [x] Phase 3 — Core: Torrents
-- [ ] Phase 4 — Core: File Explorer
+- [x] Phase 4 — Core: File Explorer
 - [ ] Phase 5 — Media Player
 - [ ] Phase 6 — Account & Plans
 - [ ] Phase 7 — Polish & Release
@@ -112,21 +112,22 @@ Main torrent management screen.
 ## Phase 4 — Core: File Explorer
 
 ### Screens / Components to build
-- [ ] `src/app/(main)/files.tsx` — File Explorer screen
-- [ ] `src/components/FileExplorer.tsx` — port `FileExplorer.jsx`
+- [x] `src/app/(main)/files.tsx` — File Explorer screen
+- [x] `src/components/FileExplorer.tsx` — port `FileExplorer.jsx`
   - Breadcrumb navigation
   - Folder list + File list
   - List / Grid view toggle
   - Refresh button
-- [ ] `src/components/Breadcrumb.tsx` — port `Breadcrumb.jsx` using `ScrollView` horizontal
-- [ ] `src/components/FolderItem.tsx` — port `FolderItem.jsx`
+  - Back button (UI + Android hardware back button)
+- [x] `src/components/Breadcrumb.tsx` — port `Breadcrumb.jsx` using `ScrollView` horizontal
+- [x] `src/components/FolderItem.tsx` — port `FolderItem.jsx`
   - Tap to navigate into folder
-  - Long press or swipe to delete
-- [ ] `src/components/FileItem.tsx` — port `FileItem.jsx`
+  - Delete with confirmation
+- [x] `src/components/FileItem.tsx` — port `FileItem.jsx`
   - File icon by extension
   - Play button → open MediaPlayer
-  - Download button → `expo-file-system` + `expo-sharing`
-  - Copy link → `expo-clipboard`
+  - Download button → `expo-file-system/legacy` + `expo-sharing`
+  - Copy stream link → `expo-clipboard` (uses streamUrl not directUrl)
   - Delete with `Alert.alert()` confirmation
 
 ### Web → RN key differences
@@ -215,8 +216,8 @@ src/app/
 # npm install react-native-sse
 # npx expo install expo-document-picker
 
-# Phase 4
-npx expo install expo-file-system expo-sharing expo-clipboard expo-web-browser
+# Phase 4 ✅ Done
+# npx expo install expo-file-system expo-sharing expo-clipboard expo-web-browser
 
 # Phase 5
 npx expo install expo-video expo-av
