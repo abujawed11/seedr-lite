@@ -1,19 +1,41 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, ScrollView, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
+import { useTorrents } from '../../hooks/useTorrents';
+import TorrentSection from '../../components/TorrentSection';
 
 export default function TorrentsScreen() {
-  const { logout, user } = useAuth();
+  const { fetchDetailedQuota } = useAuth();
+  const { torrents, loading, notifications, setNotifications, refresh } = useTorrents();
+  const insets = useSafeAreaInsets();
+
+  const handleTorrentAdded = () => {
+    refresh();
+    fetchDetailedQuota();
+  };
 
   return (
-    <View className="flex-1 bg-gray-900 items-center justify-center gap-4">
-      <Text className="text-yellow-400 text-lg font-bold">Torrents — Phase 3 in progress</Text>
-      <Text className="text-gray-400 text-sm">Logged in as: {user?.username}</Text>
-      <TouchableOpacity
-        className="mt-4 px-6 py-3 bg-red-600 rounded-xl"
-        onPress={logout}
+    <View className="flex-1 bg-gray-900" style={{ paddingTop: insets.top }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refresh}
+            tintColor="#eab308"
+            colors={['#eab308']}
+          />
+        }
       >
-        <Text className="text-white font-bold">Logout</Text>
-      </TouchableOpacity>
+        <TorrentSection
+          torrents={torrents}
+          loading={loading}
+          notifications={notifications}
+          onNotificationsChange={setNotifications}
+          onTorrentAdded={handleTorrentAdded}
+        />
+      </ScrollView>
     </View>
   );
 }
