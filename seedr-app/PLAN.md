@@ -13,8 +13,8 @@
 - [x] Phase 3 — Core: Torrents
 - [x] Phase 4 — Core: File Explorer
 - [~] Phase 5 — Media Player (Skipped — using external players like MX Player via Copy Link)
-- [ ] Phase 6 — Account & Plans
-- [ ] Phase 7 — Polish & Release
+- [x] Phase 6 — Account & Plans
+- [ ] Phase 7 — Polish & Release ← Next
 
 ---
 
@@ -152,16 +152,14 @@ This covers all formats without extra dependencies.
 ## Phase 6 — Account & Plans
 
 ### Screens to build
-- [ ] `src/app/(main)/account.tsx` — port `MyAccount.jsx`
-  - Profile info (username, email, plan)
-  - Storage quota bar
-  - Subscription details
-  - Logout button
-- [ ] `src/app/(main)/plans.tsx` — port `PlansModal.jsx` as a full screen
-  - Plan cards (Free / Premium tiers)
-  - Upgrade request form
-  - Payment history
-- [ ] `src/components/StorageBar.tsx` — quota used / available visual bar
+- [x] `src/app/(main)/account.tsx` — port `MyAccount.jsx`
+  - Profile info (username, email, role, status, member since)
+  - Storage quota bar (used / reserved / available)
+  - Subscription details with progress bar
+  - Subscription history log
+  - Logout button with confirmation
+- [~] `src/app/(main)/plans.tsx` — Skipped (upgrade handled via web app)
+- [x] `src/components/StorageBar.tsx` — quota used / available visual bar
 
 ---
 
