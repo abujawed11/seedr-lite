@@ -124,7 +124,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.error || 'Login failed',
+        error: error.response?.data?.error || error.response?.data?.detail || error.message || 'Login failed',
       };
     }
   };
