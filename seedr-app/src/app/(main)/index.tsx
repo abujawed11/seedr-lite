@@ -1,12 +1,12 @@
 import { View, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import { useTorrents } from '../../hooks/useTorrents';
+import { useTorrentContext } from '../../context/TorrentContext';
 import TorrentSection from '../../components/TorrentSection';
 
 export default function TorrentsScreen() {
   const { fetchDetailedQuota } = useAuth();
-  const { torrents, loading, notifications, setNotifications, refresh } = useTorrents();
+  const { torrents, loading, notifications, setNotifications, refresh } = useTorrentContext();
   const insets = useSafeAreaInsets();
 
   const handleTorrentAdded = () => {

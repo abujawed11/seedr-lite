@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { browse } from '../../api';
 import FileExplorer from '../../components/FileExplorer';
+import { useTorrentContext } from '../../context/TorrentContext';
 
 interface File {
   path: string;
@@ -23,10 +24,12 @@ interface BrowseData {
 
 export default function FilesScreen() {
   const insets = useSafeAreaInsets();
+  const { notifications } = useTorrentContext();
   const [browseData, setBrowseData] = useState<BrowseData>({ cwd: '', parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState('');
   const [loading, setLoading] = useState(false);
   const [playingFile, setPlayingFile] = useState<File | null>(null);
+  const prevNotifCountRef = useRef(0);
 
   const fetchBrowse = useCallback(async (path = currentPath) => {
     setLoading(true);
@@ -43,6 +46,15 @@ export default function FilesScreen() {
   useEffect(() => {
     fetchBrowse('');
   }, []);
+
+  // Auto-refresh when a download_completed notification arrives
+  useEffect(() => {
+    const completed = notifications.filter(n => n.type === 'download_completed');
+    if (completed.length > prevNotifCountRef.current) {
+      fetchBrowse(currentPath);
+    }
+    prevNotifCountRef.current = completed.length;
+  }, [notifications]);
 
   const navigateToPath = (path: string) => {
     setCurrentPath(path);

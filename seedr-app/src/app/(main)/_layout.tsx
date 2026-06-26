@@ -1,11 +1,13 @@
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TorrentProvider } from '../../context/TorrentContext';
 
 export default function MainLayout() {
   const insets = useSafeAreaInsets();
 
   return (
+    <TorrentProvider>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -44,5 +46,6 @@ export default function MainLayout() {
         }}
       />
     </Tabs>
+    </TorrentProvider>
   );
 }
