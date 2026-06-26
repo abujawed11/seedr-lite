@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, RefreshControl } from 'react-native';
+import { View, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { browse } from '../../api';
 import FileExplorer from '../../components/FileExplorer';
@@ -49,6 +49,22 @@ export default function FilesScreen() {
     fetchBrowse(path);
   };
 
+  const navigateBack = () => {
+    if (!currentPath) return false;
+    // Go to parent: remove last segment from path
+    const parts = currentPath.split('/').filter(Boolean);
+    parts.pop();
+    const parentPath = parts.join('/');
+    navigateToPath(parentPath);
+    return true; // consumed the back press
+  };
+
+  // Intercept Android back button when inside a folder
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', navigateBack);
+    return () => sub.remove();
+  }, [currentPath]);
+
   return (
     <View className="flex-1 bg-gray-900" style={{ paddingTop: insets.top }}>
       <ScrollView
@@ -68,6 +84,7 @@ export default function FilesScreen() {
           currentPath={currentPath}
           loading={loading}
           onNavigate={navigateToPath}
+          onBack={navigateBack}
           onFileDeleted={() => fetchBrowse(currentPath)}
           onRefresh={() => fetchBrowse(currentPath)}
           onPlayFile={(file) => setPlayingFile(file)}

@@ -33,6 +33,7 @@ interface Props {
   currentPath: string;
   loading: boolean;
   onNavigate: (path: string) => void;
+  onBack: () => boolean;
   onFileDeleted: () => void;
   onRefresh: () => void;
   onPlayFile: (file: File) => void;
@@ -46,7 +47,7 @@ function formatFileSize(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export default function FileExplorer({ browseData, currentPath, loading, onNavigate, onFileDeleted, onRefresh, onPlayFile }: Props) {
+export default function FileExplorer({ browseData, currentPath, loading, onNavigate, onBack, onFileDeleted, onRefresh, onPlayFile }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -71,7 +72,17 @@ export default function FileExplorer({ browseData, currentPath, loading, onNavig
     <View className="flex-1">
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
-        <Text className="text-yellow-400 text-xl font-bold">🗂️ File Explorer</Text>
+        <View className="flex-row items-center gap-2">
+          {currentPath ? (
+            <TouchableOpacity
+              className="px-3 py-1.5 bg-gray-700 rounded-lg border border-gray-600 mr-1"
+              onPress={onBack}
+            >
+              <Text className="text-white text-sm font-bold">← Back</Text>
+            </TouchableOpacity>
+          ) : null}
+          <Text className="text-yellow-400 text-xl font-bold">🗂️ File Explorer</Text>
+        </View>
         <View className="flex-row items-center gap-2">
           {/* Stats */}
           <Text className="text-gray-400 text-xs">
