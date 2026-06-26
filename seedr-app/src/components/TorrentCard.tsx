@@ -109,11 +109,11 @@ export default function TorrentCard({ torrent, onUpdated }: Props) {
 
         {/* Controls */}
         {!isComplete && (
-          <View className="flex-row items-center space-x-2">
+          <View className="flex-row items-center gap-2">
             {/* Pause / Resume */}
             {torrent.status === 'paused' ? (
               <TouchableOpacity
-                className="flex-row items-center px-3 py-1.5 bg-green-800/50 rounded-lg border border-green-700/50"
+                className="flex-row items-center px-4 py-2 bg-green-800/50 rounded-lg border border-green-700/50"
                 onPress={() => handleAction(resumeTorrent, 'resume')}
                 disabled={!!actionLoading}
               >
@@ -123,7 +123,7 @@ export default function TorrentCard({ torrent, onUpdated }: Props) {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                className="flex-row items-center px-3 py-1.5 bg-gray-700 rounded-lg border border-gray-600"
+                className="flex-row items-center px-4 py-2 bg-gray-700 rounded-lg border border-gray-600"
                 onPress={() => handleAction(pauseTorrent, 'pause')}
                 disabled={!!actionLoading || isInitializing}
               >
@@ -135,7 +135,7 @@ export default function TorrentCard({ torrent, onUpdated }: Props) {
 
             {/* Stop */}
             <TouchableOpacity
-              className="flex-row items-center px-3 py-1.5 bg-gray-700 rounded-lg border border-gray-600"
+              className="flex-row items-center px-4 py-2 bg-gray-700 rounded-lg border border-gray-600"
               onPress={() => handleAction(stopTorrent, 'stop')}
               disabled={!!actionLoading}
             >
@@ -146,7 +146,7 @@ export default function TorrentCard({ torrent, onUpdated }: Props) {
 
             {/* Delete */}
             <TouchableOpacity
-              className="flex-row items-center px-3 py-1.5 bg-red-900/40 rounded-lg border border-red-700/50"
+              className="flex-row items-center px-4 py-2 bg-red-900/40 rounded-lg border border-red-700/50"
               onPress={handleDelete}
               disabled={!!actionLoading}
             >
