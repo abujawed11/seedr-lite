@@ -14,7 +14,7 @@
 - [x] Phase 4 — Core: File Explorer
 - [~] Phase 5 — Media Player (Skipped — using external players like MX Player via Copy Link)
 - [x] Phase 6 — Account & Plans
-- [ ] Phase 7 — Polish & Release ← Next
+- [x] Phase 7 — Polish & Release
 
 ---
 
@@ -184,14 +184,14 @@ src/app/
 ```
 
 ### Polish tasks
-- [ ] Bottom tab bar with 3 tabs: Torrents, Files, Account
-- [ ] Storage quota bar in Account tab
-- [ ] Pull-to-refresh on Torrents and Files screens
-- [ ] Loading skeletons / spinners
-- [ ] Empty states (no torrents, no files)
-- [ ] App icon and splash screen (already configured in `app.json`)
-- [ ] `.env` setup for `API_BASE_URL` (use `expo-constants` + `app.config.js`)
-- [ ] Android back button handling
+- [x] Bottom tab bar with 3 tabs: Torrents, Files, Account
+- [x] Storage quota bar in Account tab
+- [x] Pull-to-refresh on Torrents and Files screens
+- [x] Loading skeletons / spinners
+- [x] Empty states (no torrents, no files)
+- [~] App icon and splash screen (skipped — default assets kept)
+- [x] `.env` setup for `API_BASE_URL`
+- [x] Android back button handling
 
 ---
 

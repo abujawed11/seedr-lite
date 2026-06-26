@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import { addTorrent, addTorrentFile } from '../api';
 import { Torrent, Notification } from '../hooks/useTorrents';
@@ -81,6 +82,15 @@ export default function TorrentSection({ torrents, loading, notifications, onNot
     }
   };
 
+  const handlePaste = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) {
+      setMagnet(text);
+      setAddState('idle');
+      setAddError('');
+    }
+  };
+
   const canAdd = magnet.trim().startsWith('magnet:') && addState !== 'adding';
 
   return (
@@ -117,16 +127,24 @@ export default function TorrentSection({ torrents, loading, notifications, onNot
 
         {/* Magnet Input */}
         <View className="flex-row gap-2 mb-3">
-          <TextInput
-            className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm"
-            placeholder="magnet:?xt=urn:btih:..."
-            placeholderTextColor="#6b7280"
-            value={magnet}
-            onChangeText={(v) => { setMagnet(v); setAddState('idle'); setAddError(''); }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            multiline={false}
-          />
+          <View className="flex-1 relative">
+            <TextInput
+              className="w-full px-4 py-3 pr-11 bg-gray-700 border border-gray-600 rounded-xl text-white text-sm"
+              placeholder="magnet:?xt=urn:btih:..."
+              placeholderTextColor="#6b7280"
+              value={magnet}
+              onChangeText={(v) => { setMagnet(v); setAddState('idle'); setAddError(''); }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline={false}
+            />
+            <TouchableOpacity
+              className="absolute right-2 top-0 bottom-0 justify-center items-center w-8"
+              onPress={handlePaste}
+            >
+              <Text className="text-gray-400 text-lg">📋</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             className={`px-4 py-3 rounded-xl items-center justify-center min-w-[80px] ${
               addState === 'added' ? 'bg-green-500' :
