@@ -10,7 +10,7 @@
 - [x] NativeWind v4 configured and working
 - [x] Phase 1 — Foundation
 - [x] Phase 2 — Auth Screens
-- [ ] Phase 3 — Core: Torrents
+- [x] Phase 3 — Core: Torrents
 - [ ] Phase 4 — Core: File Explorer
 - [ ] Phase 5 — Media Player
 - [ ] Phase 6 — Account & Plans
@@ -80,21 +80,21 @@ Port the API layer and auth system from web to React Native.
 Main torrent management screen.
 
 ### Screens / Components to build
-- [ ] `src/app/(main)/index.tsx` — Home screen (combines TorrentSection + quota bar)
-- [ ] `src/components/TorrentSection.tsx` — port `TorrentSection.jsx`
+- [x] `src/app/(main)/index.tsx` — Home screen (combines TorrentSection + quota bar)
+- [x] `src/components/TorrentSection.tsx` — port `TorrentSection.jsx`
   - Magnet link input (TextInput)
   - Add multiple magnet fields
   - `.torrent` file upload via `expo-document-picker`
   - Copyright warning collapsible
   - Active torrents list
-- [ ] `src/components/TorrentCard.tsx` — port `TorrentCard` inner component
+- [x] `src/components/TorrentCard.tsx` — port `TorrentCard` inner component
   - Progress bar
   - Status badge (Downloading / Paused / Connecting / Completed)
   - Controls: Pause, Resume, Stop, Delete
   - File list (collapsible)
   - `Alert.alert()` for delete confirmation (replaces `window.confirm()`)
-- [ ] `src/components/NotificationBanner.tsx` — quota exceeded alerts
-- [ ] `src/hooks/useTorrents.ts` — SSE or polling logic
+- [x] `src/components/NotificationBanner.tsx` — quota exceeded alerts
+- [x] `src/hooks/useTorrents.ts` — SSE or polling logic
   - Install `react-native-sse`
   - Connect to `/api/torrents/events?token=...`
   - Fallback: poll `/api/torrents` every 5s if SSE fails
@@ -211,9 +211,9 @@ src/app/
 # Phase 1 ✅ Done — installed via npx expo install for SDK compatibility
 # npm install axios @react-native-async-storage/async-storage
 
-# Phase 3
-npm install react-native-sse
-npx expo install expo-document-picker
+# Phase 3 ✅ Done
+# npm install react-native-sse
+# npx expo install expo-document-picker
 
 # Phase 4
 npx expo install expo-file-system expo-sharing expo-clipboard expo-web-browser
