@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  FlatList,
   Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -189,14 +188,11 @@ export default function TorrentSection({ torrents, loading, notifications, onNot
           <Text className="text-gray-500 text-sm mt-2">Add a magnet link above to get started</Text>
         </View>
       ) : (
-        <FlatList
-          data={torrents}
-          keyExtractor={(item) => item.gid || item.id}
-          renderItem={({ item }) => (
-            <TorrentCard torrent={item} onUpdated={onTorrentAdded} />
-          )}
-          scrollEnabled={false}
-        />
+        <View>
+          {torrents.map((item) => (
+            <TorrentCard key={item.gid || item.id} torrent={item} onUpdated={onTorrentAdded} />
+          ))}
+        </View>
       )}
     </View>
   );
