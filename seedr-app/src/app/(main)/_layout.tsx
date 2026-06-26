@@ -1,0 +1,44 @@
+import { Tabs } from 'expo-router';
+import { Text } from 'react-native';
+
+export default function MainLayout() {
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: '#1f2937',
+          borderTopColor: '#374151',
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+        },
+        tabBarActiveTintColor: '#eab308',
+        tabBarInactiveTintColor: '#6b7280',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Torrents',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚡</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="files"
+        options={{
+          title: 'Files',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🗂️</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text>,
+        }}
+      />
+    </Tabs>
+  );
+}
