@@ -28,6 +28,7 @@ export default function FilesScreen() {
   const [browseData, setBrowseData] = useState<BrowseData>({ cwd: '', parent: null, dirs: [], files: [] });
   const [currentPath, setCurrentPath] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [playingFile, setPlayingFile] = useState<File | null>(null);
   const prevNotifCountRef = useRef(0);
 
@@ -61,6 +62,12 @@ export default function FilesScreen() {
     fetchBrowse(path);
   };
 
+  const handlePullRefresh = async () => {
+    setRefreshing(true);
+    await fetchBrowse(currentPath);
+    setRefreshing(false);
+  };
+
   const navigateBack = () => {
     if (!currentPath) return false;
     // Go to parent: remove last segment from path
@@ -84,8 +91,8 @@ export default function FilesScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={() => fetchBrowse(currentPath)}
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
             tintColor="#eab308"
             colors={['#eab308']}
           />
