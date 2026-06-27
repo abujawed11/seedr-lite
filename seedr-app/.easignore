@@ -1,0 +1,17 @@
+node_modules/
+android/
+ios/
+.expo/
+dist/
+build/
+*.log
+
+# sibling folders and files in the monorepo root
+seedr-server/
+seedr-web/
+backup-working-torrent-implementation/
+*.md
+*.sh
+*.ps1
+deploy.sh
+token.txt
