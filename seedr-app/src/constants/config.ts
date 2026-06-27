@@ -6,4 +6,4 @@
 // Production:  EXPO_PUBLIC_API_BASE_URL=https://mypeercloud.in   (.env.production)
 
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.7:5002';
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mypeercloud.in';
