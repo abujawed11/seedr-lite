@@ -12,13 +12,22 @@ api.interceptors.request.use(async (config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
   return config;
 });
 
 // Handle 401 errors — token expired or invalid
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`[API] ${response.status} ${response.config.url}`);
+    return response;
+  },
   async (error) => {
+    if (error.response) {
+      console.log(`[API] ERROR ${error.response.status} ${error.config?.url} — ${JSON.stringify(error.response.data)}`);
+    } else {
+      console.log(`[API] NETWORK ERROR ${error.config?.url} — ${error.message}`);
+    }
     if (error.response?.status === 401) {
       const url = error.config?.url;
       // Don't clear token for login/register attempts
