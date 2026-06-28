@@ -37,6 +37,37 @@ function calculateDirectorySize(dirPath) {
   return { size: totalSize, files: fileCount };
 }
 
+// Estimate the byte size of a ZIP archive (level 0) before streaming it.
+// With no compression, each file contributes:
+//   30 (local header) + nameBytes + fileSize + 16 (data descriptor)
+//   + 46 (central directory entry) + nameBytes
+// Plus 22 bytes for the end-of-central-directory record.
+function calculateZipContentLength(dirPath, archiveName) {
+  let size = 22; // end-of-central-directory record
+
+  function walk(currentPath, archivePath) {
+    let entries;
+    try { entries = fs.readdirSync(currentPath, { withFileTypes: true }); }
+    catch (e) { return; }
+
+    for (const entry of entries) {
+      const fullEntryPath = path.join(currentPath, entry.name);
+      const entryArchivePath = archivePath + '/' + entry.name;
+      if (entry.isDirectory()) {
+        walk(fullEntryPath, entryArchivePath);
+      } else {
+        let fileSize = 0;
+        try { fileSize = fs.statSync(fullEntryPath).size; } catch (e) {}
+        const nameBytes = Buffer.byteLength(entryArchivePath, 'utf8');
+        size += 30 + nameBytes + fileSize + 16 + 46 + nameBytes;
+      }
+    }
+  }
+
+  walk(dirPath, archiveName);
+  return size;
+}
+
 // function validatePath(userPath) {
 //   if (!userPath) return "";
 
@@ -346,9 +377,13 @@ exports.direct = async (req, res) => {
         return res.status(200).end();
       }
 
+      // Pre-calculate ZIP size so clients can show download progress
+      const contentLength = calculateZipContentLength(fullPath, folderName);
+
       // Set response headers for ZIP download
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+      res.setHeader('Content-Length', contentLength);
 
       // Create ZIP archive
       const archive = archiver('zip', {
@@ -547,9 +582,13 @@ exports.downloadFolder = async (req, res) => {
     const folderName = path.basename(fullPath);
     const zipFilename = `${folderName}.zip`;
 
+    // Pre-calculate ZIP size so clients can show download progress
+    const contentLength = calculateZipContentLength(fullPath, folderName);
+
     // Set response headers for ZIP download
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+    res.setHeader('Content-Length', contentLength);
 
     // Create ZIP archive
     const archive = archiver('zip', {
