@@ -150,3 +150,4 @@ src/storage/*
 
 seedr-server/data/users.db
 backup-working-torrent-implementation/
+backup-db/

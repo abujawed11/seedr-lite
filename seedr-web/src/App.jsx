@@ -5,6 +5,7 @@ import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 import AdBanner from "./components/AdBanner";
 import PlansModal from "./components/PlansModal";
+import DonationPopup from "./components/DonationPopup";
 import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState("");
   const [loading, setLoading] = useState({ torrents: false, files: false });
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [showDonationPopup, setShowDonationPopup] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
 
@@ -162,6 +164,17 @@ export default function App() {
     }
   }, [user?.role, currentView]);
 
+  // Show donation popup once per login/session, unless permanently dismissed
+  useEffect(() => {
+    if (!user) return;
+    const dismissedForever = localStorage.getItem('donationPopupDismissed') === 'true';
+    const shownThisSession = sessionStorage.getItem('donationPopupShown') === 'true';
+    if (!dismissedForever && !shownThisSession) {
+      setShowDonationPopup(true);
+      sessionStorage.setItem('donationPopupShown', 'true');
+    }
+  }, [user]);
+
   // Listen for navbar events
   useEffect(() => {
     const handleShowPlansModal = () => setShowPlansModal(true);
@@ -246,6 +259,17 @@ export default function App() {
           // Refresh detailed quota info
           await fetchDetailedQuota();
         }}
+      />
+
+      {/* Donation Popup */}
+      <DonationPopup
+        isOpen={showDonationPopup}
+        onClose={() => setShowDonationPopup(false)}
+        onDismissForever={() => {
+          localStorage.setItem('donationPopupDismissed', 'true');
+          setShowDonationPopup(false);
+        }}
+        user={user}
       />
     </div>
   );

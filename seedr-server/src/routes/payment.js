@@ -236,6 +236,156 @@ router.post('/verify', asyncHandler(async (req, res) => {
   }
 }));
 
+// ==================== Create Donation Order ====================
+
+/**
+ * POST /api/payment/create-donation-order
+ * Creates a Razorpay order for a free-form donation amount
+ */
+router.post('/create-donation-order', asyncHandler(async (req, res) => {
+  const { amount, currency } = req.body;
+
+  const selectedCurrency = currency === 'USD' ? 'USD' : 'INR';
+  const numericAmount = Number(amount);
+
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'Invalid donation amount' });
+  }
+
+  const minAmount = selectedCurrency === 'USD' ? 1 : 10;
+  const maxAmount = selectedCurrency === 'USD' ? 10000 : 500000;
+  if (numericAmount < minAmount || numericAmount > maxAmount) {
+    return res.status(400).json({ error: `Amount must be between ${minAmount} and ${maxAmount} ${selectedCurrency}` });
+  }
+
+  // Convert to smallest currency unit (paise for INR, cents for USD)
+  const amount_ = Math.round(numericAmount * 100);
+
+  try {
+    const shortReceipt = `don_${Date.now().toString().slice(-10)}`;
+
+    const order = await razorpay.orders.create({
+      amount: amount_,
+      currency: selectedCurrency,
+      receipt: shortReceipt,
+      notes: {
+        user_id: req.user.id,
+        username: req.user.username,
+        type: 'donation'
+      }
+    });
+
+    // Reuse payment_orders table with sentinel plan_id/duration values
+    await database.createPaymentOrder({
+      orderId: order.id,
+      userId: req.user.id,
+      planId: 'donation',
+      duration: 'onetime',
+      amount: amount_,
+      currency: selectedCurrency,
+      status: 'created'
+    });
+
+    await req.activityLogger.log(req, 'donation_order_created', {
+      torrentName: 'donation',
+      magnetLink: `order_id:${order.id}`,
+      fileSize: amount_
+    });
+
+    res.json({
+      success: true,
+      order: {
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency
+      },
+      key_id: process.env.RAZORPAY_KEY_ID,
+      user: {
+        name: req.user.username,
+        email: req.user.email
+      }
+    });
+  } catch (error) {
+    console.error('Razorpay donation order creation error:', error);
+    return res.status(500).json({ error: 'Failed to create donation order' });
+  }
+}));
+
+// ==================== Verify Donation ====================
+
+/**
+ * POST /api/payment/verify-donation
+ * Verifies Razorpay donation payment signature (no plan/quota changes)
+ */
+router.post('/verify-donation', asyncHandler(async (req, res) => {
+  const {
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature
+  } = req.body;
+
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ error: 'Missing payment verification parameters' });
+  }
+
+  try {
+    const body = razorpay_order_id + '|' + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      await req.activityLogger.log(req, 'donation_verification_failed', {
+        torrentName: `order_id:${razorpay_order_id}`,
+        magnetLink: `payment_id:${razorpay_payment_id}`
+      });
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    const orderRecord = await database.getPaymentOrderByOrderId(razorpay_order_id);
+    if (!orderRecord || orderRecord.plan_id !== 'donation') {
+      return res.status(404).json({ error: 'Donation order not found' });
+    }
+
+    if (orderRecord.status === 'completed') {
+      return res.status(400).json({ error: 'Order already processed' });
+    }
+
+    if (orderRecord.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    if (payment.status !== 'captured' && payment.status !== 'authorized') {
+      return res.status(400).json({ error: 'Payment not successful' });
+    }
+
+    await database.updatePaymentOrderStatus(razorpay_order_id, 'completed', razorpay_payment_id);
+
+    await req.activityLogger.log(req, 'donation_success', {
+      torrentName: 'donation',
+      magnetLink: `payment_id:${razorpay_payment_id}`,
+      filePath: `order_id:${razorpay_order_id}`,
+      fileSize: orderRecord.amount
+    });
+
+    console.log(`💖 Donation received: User ${req.user.username} donated ${orderRecord.amount / 100} ${orderRecord.currency}`);
+
+    res.json({
+      success: true,
+      message: 'Thank you for your donation!'
+    });
+  } catch (error) {
+    console.error('Donation verification error:', error);
+    await req.activityLogger.log(req, 'donation_verification_error', {
+      torrentName: `order_id:${razorpay_order_id}`,
+      magnetLink: `error:${error.message}`
+    });
+    return res.status(500).json({ error: 'Payment verification failed' });
+  }
+}));
+
 // ==================== Get Order Status ====================
 
 /**

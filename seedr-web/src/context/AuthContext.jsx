@@ -106,6 +106,7 @@ const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       localStorage.removeItem('seedr_token');
+      sessionStorage.removeItem('donationPopupShown');
       setToken(null);
       setUser(null);
     }

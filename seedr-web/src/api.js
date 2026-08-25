@@ -315,6 +315,21 @@ export async function verifyPayment(paymentData) {
   return res.data;
 }
 
+// Create Razorpay donation order
+export async function createDonationOrder(amount, currency = 'INR') {
+  const res = await api.post('/payment/create-donation-order', {
+    amount,
+    currency
+  });
+  return res.data;
+}
+
+// Verify Razorpay donation payment
+export async function verifyDonation(paymentData) {
+  const res = await api.post('/payment/verify-donation', paymentData);
+  return res.data;
+}
+
 // Get payment order status
 export async function getPaymentOrder(orderId) {
   const res = await api.get(`/payment/order/${orderId}`);
