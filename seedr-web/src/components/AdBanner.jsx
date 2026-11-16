@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { BANNER_AD } from "../utils/adConfig";
 
 export default function AdBanner() {
   const containerRef = useRef(null);
@@ -9,15 +10,14 @@ export default function AdBanner() {
     const script = document.createElement("script");
     script.async = true;
     script.setAttribute("data-cfasync", "false");
-    script.src =
-      "https://pl28862953.effectivegatecpm.com/f712929b7ed9a7e23f0d1b3b12d2487c/invoke.js";
+    script.src = BANNER_AD.scriptUrl;
     containerRef.current.appendChild(script);
   }, []);
 
   return (
     <div className="w-full my-4">
       <div
-        id="container-f712929b7ed9a7e23f0d1b3b12d2487c"
+        id={BANNER_AD.containerId}
         ref={containerRef}
       />
     </div>

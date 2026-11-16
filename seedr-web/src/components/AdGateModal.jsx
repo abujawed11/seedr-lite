@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { startAdGate, completeAdGate } from "../api";
+import { GATE_AD } from "../utils/adConfig";
 
-// Ad unit shown in the gate. It is loaded inside its own iframe, so it can
-// reuse the same Adsterra zone as the page banner without a container-id
-// clash. Set VITE_AD_GATE_SCRIPT_URL / VITE_AD_GATE_CONTAINER_ID to use a
-// dedicated zone (recommended, so stats are tracked separately).
-const AD_SCRIPT_URL =
-  import.meta.env.VITE_AD_GATE_SCRIPT_URL ||
-  "https://pl28862953.effectivegatecpm.com/f712929b7ed9a7e23f0d1b3b12d2487c/invoke.js";
-const AD_CONTAINER_ID =
-  import.meta.env.VITE_AD_GATE_CONTAINER_ID || "container-f712929b7ed9a7e23f0d1b3b12d2487c";
+// Loaded inside its own iframe, so it can reuse the page banner's unit
+// without a container-id clash (see utils/adConfig.js).
+const AD_SCRIPT_URL = GATE_AD.scriptUrl;
+const AD_CONTAINER_ID = GATE_AD.containerId;
 
 const ACTION_LABELS = {
   play: { icon: "▶", text: "Play now", verb: "playback" },
