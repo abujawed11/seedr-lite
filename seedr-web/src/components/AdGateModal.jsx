@@ -14,6 +14,17 @@ const ACTION_LABELS = {
   copy: { icon: "🔗", text: "Copy link", verb: "link" },
 };
 
+// Never show raw server/technical messages to users.
+function friendlyError(err) {
+  const status = err?.response?.status;
+  if (!err?.response) return "Couldn't connect. Please check your internet and try again.";
+  if (status === 429) return "You're going a bit fast. Please wait a minute and try again.";
+  if (status === 404 && err.response.data?.error === "Not found") {
+    return "This file is no longer available. Try refreshing the page.";
+  }
+  return "Sorry, that didn't work. Please try again.";
+}
+
 function buildAdDoc(nonce) {
   // Runs inside the iframe. Reports 'loaded' | 'nofill' | 'blocked' to the parent.
   return `<!doctype html><html><head><meta charset="utf-8">
@@ -128,7 +139,7 @@ export default function AdGateModal({ path, kind, name, action = "download", ope
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err.response?.data?.error || "Could not start. Please try again.");
+        setError(friendlyError(err));
         setPhase("error");
       });
 
@@ -175,7 +186,10 @@ export default function AdGateModal({ path, kind, name, action = "download", ope
     // Ignore the result if the user closed the modal or restarted the flow
     const stale = () => !mountedRef.current || sessionRef.current !== sessionId;
 
-    const finish = (retries) => {
+    // Retry quietly before ever showing an error:
+    //  - 425: not allowed yet (e.g. another tab just got a link) → wait as told
+    //  - network error / 5xx: transient → retry once after a second
+    const finish = (waitRetries, transientRetries) => {
       completeAdGate(sessionId)
         .then((data) => {
           if (stale()) return;
@@ -184,19 +198,21 @@ export default function AdGateModal({ path, kind, name, action = "download", ope
         })
         .catch((err) => {
           if (stale()) return;
+          const status = err.response?.status;
           const retryAfter = err.response?.data?.retryAfterMs;
-          if (err.response?.status === 425 && retryAfter && retries > 0) {
-            setTimeout(() => finish(retries - 1), retryAfter + 250);
+          if (status === 425 && retryAfter && waitRetries > 0) {
+            setTimeout(() => finish(waitRetries - 1, transientRetries), retryAfter + 250);
             return;
           }
-          setError(
-            err.response?.data?.error ||
-              (err.response ? "Something went wrong. Please try again." : "Can't reach the server. Please try again.")
-          );
+          if ((!status || status >= 500) && transientRetries > 0) {
+            setTimeout(() => finish(waitRetries, transientRetries - 1), 1000);
+            return;
+          }
+          setError(friendlyError(err));
           setPhase("error");
         });
     };
-    finish(2);
+    finish(3, 1);
   }, [countdownDone]);
 
   // Close on Escape
