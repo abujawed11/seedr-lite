@@ -1,17 +1,65 @@
-import { useState, useEffect } from 'react';
-import { getActivityLogs, deleteActivityLog, clearOldActivityLogs, deleteUserFile } from '../api';
+import { useState, useEffect, useCallback } from 'react';
+import { getActivityLogs, getActivityActionTypes, deleteActivityLog, clearOldActivityLogs, deleteUserFile } from '../api';
+
+// Group action types in the filter dropdown by prefix
+const ACTION_GROUPS = [
+  { label: 'Authentication', test: (t) => /login|logout|register|otp|password/.test(t) && !t.startsWith('admin_') },
+  { label: 'Torrent Operations', test: (t) => t.startsWith('torrent_') || t === 'reservation_cleanup' },
+  { label: 'File Operations', test: (t) => t.startsWith('file_') || t.startsWith('folder_') || t === 'direct_link_access' },
+  { label: 'Security Events', test: (t) => t.startsWith('security_') || t.includes('dmca') && !t.startsWith('admin_') },
+  { label: 'Admin Actions', test: (t) => t.startsWith('admin_') },
+];
+
+function humanizeAction(t) {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const EMPTY_FILTERS = { search: '', actionType: 'all', userId: null, userName: null, ip: null };
 
 export default function AdminActivityLogs() {
   const [logs, setLogs] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, security: 0, users: 0 });
+  const [actionTypes, setActionTypes] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const [searchInput, setSearchInput] = useState(''); // text box (not applied until Search)
+  const [filters, setFilters] = useState(EMPTY_FILTERS); // applied filters
   const [limit, setLimit] = useState(100);
   const [expandedLogs, setExpandedLogs] = useState(new Set());
 
+  // Any change to the applied filters or limit refetches — no stale values
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = { limit };
+      if (filters.actionType !== 'all') params.actionType = filters.actionType;
+      if (filters.search) params.search = filters.search;
+      if (filters.userId) params.userId = filters.userId;
+      if (filters.ip) params.ip = filters.ip;
+
+      const response = await getActivityLogs(params);
+      setLogs(response.logs);
+      if (response.summary) setSummary(response.summary);
+    } catch (error) {
+      console.error('Failed to fetch activity logs:', error);
+      alert('Failed to load activity logs');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, limit]);
+
   useEffect(() => {
     fetchLogs();
-  }, [filterType, limit]);
+  }, [fetchLogs]);
+
+  const fetchActionTypes = useCallback(() => {
+    getActivityActionTypes()
+      .then(setActionTypes)
+      .catch((e) => console.error('Failed to load action types:', e));
+  }, []);
+
+  useEffect(() => {
+    fetchActionTypes();
+  }, [fetchActionTypes]);
 
   const toggleExpand = (id) => {
     const newExpanded = new Set(expandedLogs);
@@ -23,40 +71,35 @@ export default function AdminActivityLogs() {
     setExpandedLogs(newExpanded);
   };
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      const params = { limit };
-      if (filterType !== 'all') {
-        params.actionType = filterType;
-      }
-      if (searchTerm) {
-        params.search = searchTerm;
-      }
-
-      const response = await getActivityLogs(params);
-      setLogs(response.logs);
-    } catch (error) {
-      console.error('Failed to fetch activity logs:', error);
-      alert('Failed to load activity logs');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSearch = () => {
-    fetchLogs();
+    setFilters((f) => ({ ...f, search: searchInput.trim() }));
   };
 
   const handleResetFilters = () => {
-    setSearchTerm('');
-    setFilterType('all');
-    // fetchLogs will be triggered by the useEffect on filterType change
-    // but if filterType was already 'all', we might need to call it manually for searchTerm
-    if (filterType === 'all') {
-      fetchLogs();
-    }
+    setSearchInput('');
+    setFilters(EMPTY_FILTERS);
   };
+
+  // Clicking a user: exact match on user id (test4 won't also show test40)
+  const filterByUser = (log) => {
+    if (!log.user_id) return;
+    setFilters((f) => ({ ...f, userId: log.user_id, userName: log.username }));
+  };
+
+  // Clicking an IP: exact match
+  const filterByIp = (ip) => {
+    if (!ip || ip === 'unknown') return;
+    setFilters((f) => ({ ...f, ip }));
+  };
+
+  // Dropdown options: every type that exists in the log, grouped; keep the
+  // selected one visible even if it has no rows yet.
+  const typeNames = actionTypes.map((t) => t.action_type);
+  if (filters.actionType !== 'all' && !typeNames.includes(filters.actionType)) typeNames.push(filters.actionType);
+  const countFor = (t) => actionTypes.find((x) => x.action_type === t)?.count;
+  const grouped = ACTION_GROUPS.map((g) => ({ label: g.label, types: typeNames.filter(g.test) }));
+  const groupedSet = new Set(grouped.flatMap((g) => g.types));
+  const otherTypes = typeNames.filter((t) => !groupedSet.has(t));
 
   const handleDeleteLog = async (logId) => {
     if (!confirm('Delete this activity log entry?')) return;
@@ -79,6 +122,7 @@ export default function AdminActivityLogs() {
       const response = await clearOldActivityLogs(parseInt(days));
       alert(response.message);
       fetchLogs();
+      fetchActionTypes();
     } catch (error) {
       console.error('Failed to cleanup logs:', error);
       alert('Failed to cleanup old logs');
@@ -136,22 +180,9 @@ export default function AdminActivityLogs() {
         second: '2-digit',
         hour12: true
       });
-    } catch (e) {
+    } catch {
       return new Date(safeDateString).toLocaleString();
     }
-  };
-
-  const getRelativeTime = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
-    
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-    return date.toLocaleDateString();
   };
 
   const getActionIcon = (actionType) => {
@@ -185,10 +216,10 @@ export default function AdminActivityLogs() {
     return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
-  // Stats Calculation
-  const totalEvents = logs.length;
-  const securityEvents = logs.filter(l => l.action_type.startsWith('security_') || l.action_type.includes('dmca')).length;
-  const uniqueUsers = new Set(logs.map(l => l.username)).size;
+  // Stats: server-side totals for the current filters (not just loaded rows)
+  const totalEvents = summary.total;
+  const securityEvents = summary.security;
+  const uniqueUsers = summary.users;
 
   return (
     <div className="space-y-6">
@@ -208,6 +239,7 @@ export default function AdminActivityLogs() {
         <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Total Events</p>
+            <p className="text-[10px] text-gray-500">matching current filters</p>
             <p className="text-2xl font-bold text-white mt-1">{totalEvents}</p>
           </div>
           <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -217,7 +249,8 @@ export default function AdminActivityLogs() {
         
         <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Security Alerts</p>
+            <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Security & Failures</p>
+            <p className="text-[10px] text-gray-500">security, DMCA, failed logins/OTP</p>
             <p className={`text-2xl font-bold mt-1 ${securityEvents > 0 ? 'text-orange-400' : 'text-green-400'}`}>{securityEvents}</p>
           </div>
           <div className={`p-3 rounded-lg ${securityEvents > 0 ? 'bg-orange-500/10' : 'bg-green-500/10'}`}>
@@ -227,7 +260,8 @@ export default function AdminActivityLogs() {
 
         <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Active Users</p>
+            <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Users</p>
+            <p className="text-[10px] text-gray-500">distinct logged-in users</p>
             <p className="text-2xl font-bold text-white mt-1">{uniqueUsers}</p>
           </div>
           <div className="p-3 bg-purple-500/10 rounded-lg">
@@ -245,8 +279,8 @@ export default function AdminActivityLogs() {
             <div className="flex gap-2">
               <input
                 type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search by username, torrent name, file path..."
                 className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -271,65 +305,30 @@ export default function AdminActivityLogs() {
           <div>
             <label className="block text-sm text-gray-400 mb-2">Action Type</label>
             <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
+              value={filters.actionType}
+              onChange={(e) => setFilters((f) => ({ ...f, actionType: e.target.value }))}
+              onFocus={fetchActionTypes}
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
             >
               <option value="all">All Actions</option>
-              
-              <optgroup label="Authentication">
-                <option value="login_success">Login Success</option>
-                <option value="login_failure">Login Failure</option>
-                <option value="logout_success">Logout</option>
-                <option value="register_success">Register Success</option>
-                <option value="register_failure">Register Failure</option>
-                <option value="otp_verify_success">OTP Verify Success</option>
-                <option value="otp_verify_failure">OTP Verify Failure</option>
-                <option value="password_reset_request">Pass Reset Request</option>
-                <option value="password_reset_complete">Pass Reset Complete</option>
-              </optgroup>
-
-              <optgroup label="Torrent Operations">
-                <option value="torrent_add">Torrent Add</option>
-                <option value="torrent_complete">Torrent Complete</option>
-                <option value="torrent_stop">Torrent Stop</option>
-                <option value="torrent_delete">Torrent Delete</option>
-                <option value="torrent_error">Torrent Error</option>
-                <option value="reservation_cleanup">Reservation Cleanup</option>
-              </optgroup>
-
-              <optgroup label="File Operations">
-                <option value="file_download">File Download</option>
-                <option value="file_stream">File Stream</option>
-                <option value="file_delete">File Delete</option>
-                <option value="folder_download">Folder Download</option>
-                <option value="direct_link_access">Direct Link Access</option>
-              </optgroup>
-
-              <optgroup label="Security Events">
-                <option value="security_quota_exceeded">Quota Exceeded</option>
-                <option value="security_concurrent_limit_exceeded">Concurrent Limit Exceeded</option>
-                <option value="security_path_traversal_attempt">Path Traversal Attempt</option>
-                <option value="dmca_report_submit">DMCA Report Submit</option>
-              </optgroup>
-
-              <optgroup label="Admin Actions">
-                <option value="admin_login_success">Admin Login</option>
-                <option value="admin_quota_update">Quota Update</option>
-                <option value="admin_status_update">Status Update</option>
-                <option value="admin_user_delete">User Delete</option>
-                <option value="admin_storage_clear">Storage Clear</option>
-                <option value="admin_upgrade_approve">Upgrade Approve</option>
-                <option value="admin_upgrade_reject">Upgrade Reject</option>
-                <option value="admin_subscription_activate">Sub Activate</option>
-                <option value="admin_subscription_cancel">Sub Cancel</option>
-                <option value="admin_dmca_action">DMCA Action</option>
-              </optgroup>
-
-              <optgroup label="Plans">
-                <option value="upgrade_request_submit">Upgrade Request</option>
-                <option value="current_plan_view">Plan View</option>
-              </optgroup>
+              {grouped.filter((g) => g.types.length > 0).map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.types.map((t) => (
+                    <option key={t} value={t}>
+                      {humanizeAction(t)}{countFor(t) ? ` (${countFor(t)})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {otherTypes.length > 0 && (
+                <optgroup label="Other">
+                  {otherTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {humanizeAction(t)}{countFor(t) ? ` (${countFor(t)})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -348,6 +347,40 @@ export default function AdminActivityLogs() {
             </select>
           </div>
         </div>
+
+        {/* Active exact filters (from clicking a user or IP) */}
+        {(filters.userId || filters.ip || filters.search) && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-gray-500">Filtered by:</span>
+            {filters.userId && (
+              <button
+                onClick={() => setFilters((f) => ({ ...f, userId: null, userName: null }))}
+                className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-3 py-1 text-blue-300 hover:bg-blue-500/25"
+                title="Remove filter"
+              >
+                User: {filters.userName || filters.userId} <span aria-hidden>✕</span>
+              </button>
+            )}
+            {filters.ip && (
+              <button
+                onClick={() => setFilters((f) => ({ ...f, ip: null }))}
+                className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-3 py-1 text-blue-300 hover:bg-blue-500/25"
+                title="Remove filter"
+              >
+                IP: {filters.ip} <span aria-hidden>✕</span>
+              </button>
+            )}
+            {filters.search && (
+              <button
+                onClick={() => { setSearchInput(''); setFilters((f) => ({ ...f, search: '' })); }}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-600/30 px-3 py-1 text-gray-300 hover:bg-gray-600/50"
+                title="Remove filter"
+              >
+                Search: “{filters.search}” <span aria-hidden>✕</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Loading */}
@@ -386,13 +419,22 @@ export default function AdminActivityLogs() {
                       {formatDate(log.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <button 
-                        onClick={() => { setSearchTerm(log.username); handleSearch(); }}
-                        className="text-left hover:bg-gray-700 p-1 -ml-1 rounded transition-colors"
-                      >
-                        <div className="text-sm text-white font-medium hover:text-blue-400 transition-colors">{log.username}</div>
-                        <div className="text-xs text-gray-500">{log.user_id?.substring(0, 8)}...</div>
-                      </button>
+                      {log.user_id ? (
+                        <button
+                          onClick={() => filterByUser(log)}
+                          className="text-left hover:bg-gray-700 p-1 -ml-1 rounded transition-colors"
+                          title="Show only this user's activity"
+                        >
+                          <div className="text-sm text-white font-medium hover:text-blue-400 transition-colors">{log.username}</div>
+                          <div className="text-xs text-gray-500">{log.user_id.substring(0, 8)}...</div>
+                        </button>
+                      ) : (
+                        // No account involved (e.g. failed login for an unknown username)
+                        <div className="p-1 -ml-1">
+                          <div className="text-sm text-gray-300 font-medium">{log.username}</div>
+                          <div className="text-xs text-gray-500 italic">not logged in</div>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium border ${getActionBadgeColor(log.action_type)}`}>
@@ -444,7 +486,7 @@ export default function AdminActivityLogs() {
                     <td className="px-4 py-3 text-sm text-gray-400">
                       <div className="flex items-center gap-2">
                         <button 
-                          onClick={() => { setSearchTerm(log.ip_address); handleSearch(); }}
+                          onClick={() => filterByIp(log.ip_address)}
                           className="hover:text-blue-400 hover:underline transition-colors"
                           title="Filter by this IP"
                         >
@@ -485,7 +527,8 @@ export default function AdminActivityLogs() {
           </div>
           <div className="bg-gray-900 px-4 py-3 border-t border-gray-700">
             <p className="text-sm text-gray-400">
-              Showing {logs.length} activity logs
+              Showing {logs.length} of {summary.total} activity logs
+              {summary.total > logs.length && ' (newest first — increase the limit to see more)'}
             </p>
           </div>
         </div>

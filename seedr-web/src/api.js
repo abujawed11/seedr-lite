@@ -240,6 +240,12 @@ export async function getActivityLogs(params = {}) {
   return res.data;
 }
 
+// [{ action_type, count }] — every action type present in the log
+export async function getActivityActionTypes() {
+  const res = await api.get('/admin/activity-logs/action-types');
+  return res.data.types || [];
+}
+
 export async function getActivityLogsByUser(userId, limit = 50) {
   const res = await api.get(`/admin/activity-logs/user/${userId}`, {
     params: { limit }

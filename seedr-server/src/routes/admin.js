@@ -903,25 +903,29 @@ router.post('/subscriptions/monitor/trigger', asyncHandler(async (req, res) => {
 
 // Get all activity logs with pagination and filtering
 router.get('/activity-logs', asyncHandler(async (req, res) => {
-  const { limit = 100, offset = 0, userId, actionType, search } = req.query;
+  const { limit = 100, offset = 0, userId, actionType, search, ip } = req.query;
+  const filters = { search, actionType, userId, ip };
+  const lim = Math.min(Math.max(parseInt(limit) || 100, 1), 1000);
+  const off = Math.max(parseInt(offset) || 0, 0);
 
-  // Use the new combined filtering function that supports multiple filters at once
-  const logs = await database.getActivityLogsFiltered(
-    {
-      search,
-      actionType,
-      userId
-    },
-    parseInt(limit),
-    parseInt(offset)
-  );
+  const [logs, summary] = await Promise.all([
+    database.getActivityLogsFiltered(filters, lim, off),
+    database.getActivityLogsSummary(filters),
+  ]);
 
   res.json({
     logs,
     count: logs.length,
-    limit: parseInt(limit),
-    offset: parseInt(offset)
+    summary, // { total, security, users } for the current filters
+    limit: lim,
+    offset: off
   });
+}));
+
+// Action types that actually exist in the log (for the filter dropdown)
+router.get('/activity-logs/action-types', asyncHandler(async (req, res) => {
+  const types = await database.getActivityActionTypes();
+  res.json({ types });
 }));
 
 // Get activity logs for a specific user

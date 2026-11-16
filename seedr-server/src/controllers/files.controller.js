@@ -96,6 +96,30 @@ function validatePath(userPath, userRoot) {
 }
 
 
+// De-duplicate direct_link_access log entries
+const DIRECT_LOG_WINDOW_MS = 30 * 60 * 1000;
+const directLogSeen = new Map(); // "userId|path|mode" -> last logged timestamp
+
+function shouldLogDirectAccess(req, payload) {
+  // Only the start of a file counts: no Range header, or a range from byte 0.
+  // Seeks and later chunks of the same playback/download are skipped.
+  const range = req.headers.range;
+  if (range && !/^bytes=0-/.test(range)) return false;
+
+  const key = `${payload.userId}|${payload.path}|${payload.asAttachment ? 'dl' : 'st'}`;
+  const now = Date.now();
+  const last = directLogSeen.get(key);
+  if (last && now - last < DIRECT_LOG_WINDOW_MS) return false;
+
+  directLogSeen.set(key, now);
+  if (directLogSeen.size > 10000) {
+    for (const [k, t] of directLogSeen) {
+      if (now - t > DIRECT_LOG_WINDOW_MS) directLogSeen.delete(k);
+    }
+  }
+  return true;
+}
+
 function buildDirectUrl(req, token, filename) {
   const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
   return `${baseUrl}/files/direct/${token}/${encodeURIComponent(filename)}`;
@@ -439,13 +463,15 @@ exports.direct = async (req, res) => {
       userId: payload.userId  // Use userId from token
     });
 
-    // Log direct link access
-    if (req.activityLogger) {
-      // Simulate user context for logger since this is a public route
-      const mockReq = { ...req, user: { id: payload.userId, username: 'direct_link_user' } };
-      await req.activityLogger.log(mockReq, 'direct_link_access', {
+    // Log direct link access — once per user/file/mode per window, not once per
+    // video chunk (players and download managers send many Range requests).
+    if (req.activityLogger && res.statusCode < 400 && shouldLogDirectAccess(req, payload)) {
+      // Pass the real req (keeps the real client IP); the username is looked
+      // up from the token's userId.
+      await req.activityLogger.log(req, 'direct_link_access', {
+        userId: payload.userId,
         filePath: payload.path,
-        torrentName: 'direct_link'
+        torrentName: payload.asAttachment ? 'download' : 'stream'
       });
     }
   } catch (err) {

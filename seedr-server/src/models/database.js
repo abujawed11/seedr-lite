@@ -1422,7 +1422,7 @@ class Database {
         ORDER BY created_at DESC
         LIMIT ?
       `;
-      this.db.get(sql, [userId, limit], (err, rows) =>
+      this.db.all(sql, [userId, limit], (err, rows) =>
         err ? reject(err) : resolve(rows || [])
       );
     });
@@ -1457,34 +1457,78 @@ class Database {
     });
   }
 
+  // Shared WHERE builder for activity log list + summary
+  _buildActivityLogWhere(filters = {}) {
+    const { search, actionType, userId, ip } = filters;
+    const whereClauses = [];
+    const params = [];
+
+    // Free-text search (IP address, username, torrent name, file path)
+    if (search && search.trim()) {
+      whereClauses.push('(ip_address LIKE ? OR username LIKE ? OR torrent_name LIKE ? OR file_path LIKE ?)');
+      const searchPattern = `%${search.trim()}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    if (actionType && actionType !== 'all') {
+      whereClauses.push('action_type = ?');
+      params.push(actionType);
+    }
+
+    // Exact user filter (clicking a user) — no partial matches like test4/test40
+    if (userId) {
+      whereClauses.push('user_id = ?');
+      params.push(userId);
+    }
+
+    // Exact IP filter (clicking an IP) — 1.2.3.4 must not match 11.2.3.45
+    if (ip) {
+      whereClauses.push('ip_address = ?');
+      params.push(ip);
+    }
+
+    return {
+      whereClause: whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '',
+      params,
+    };
+  }
+
+  // Totals for the current filters (not just the rows loaded on screen)
+  async getActivityLogsSummary(filters = {}) {
+    const { whereClause, params } = this._buildActivityLogWhere(filters);
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN action_type LIKE 'security\\_%' ESCAPE '\\'
+                     OR action_type LIKE '%dmca%'
+                     OR action_type LIKE '%failure%' THEN 1 ELSE 0 END) AS security,
+          COUNT(DISTINCT CASE WHEN user_id <> '' THEN user_id END) AS users
+        FROM activity_logs
+        ${whereClause}
+      `;
+      this.db.get(sql, params, (err, row) =>
+        err
+          ? reject(err)
+          : resolve({ total: row?.total || 0, security: row?.security || 0, users: row?.users || 0 })
+      );
+    });
+  }
+
+  // Every action type that actually exists in the log, with counts
+  async getActivityActionTypes() {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        'SELECT action_type, COUNT(*) AS count FROM activity_logs GROUP BY action_type ORDER BY action_type',
+        [],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+  }
+
   async getActivityLogsFiltered(filters = {}, limit = 100, offset = 0) {
     return new Promise((resolve, reject) => {
-      const { search, actionType, userId } = filters;
-      const whereClauses = [];
-      const params = [];
-
-      // Add search filter (IP address, username, torrent name, file path)
-      if (search && search.trim()) {
-        whereClauses.push('(ip_address LIKE ? OR username LIKE ? OR torrent_name LIKE ? OR file_path LIKE ?)');
-        const searchPattern = `%${search.trim()}%`;
-        params.push(searchPattern, searchPattern, searchPattern, searchPattern);
-      }
-
-      // Add action type filter
-      if (actionType && actionType !== 'all') {
-        whereClauses.push('action_type = ?');
-        params.push(actionType);
-      }
-
-      // Add user ID filter
-      if (userId) {
-        whereClauses.push('user_id = ?');
-        params.push(userId);
-      }
-
-      const whereClause = whereClauses.length > 0
-        ? `WHERE ${whereClauses.join(' AND ')}`
-        : '';
+      const { whereClause, params } = this._buildActivityLogWhere(filters);
 
       const sql = `
         SELECT * FROM activity_logs

@@ -556,20 +556,12 @@ exports.create = async (req, res) => {
 
               // Log activity: torrent addition after cleanup
               try {
-                const clientIp = req.ip || req.connection.remoteAddress;
-                const userAgent = req.get('user-agent') || 'Unknown';
-
-                await database.logActivity({
-                  userId,
-                  username: req.user.username,
-                  actionType: 'torrent_add',
+                // Shared logger: same IP handling + country code as other events
+                await req.activityLogger.log(req, 'torrent_add', {
                   torrentName: torrentNameForCleanup,
-                  torrentHash: null,
                   magnetLink: magnetForCleanup,
                   filePath: torrentFile ? torrentFile.originalname : null,
                   fileSize: torrentFile ? torrentFile.size : null,
-                  ipAddress: clientIp,
-                  userAgent
                 });
                 console.log(`📝 Activity logged: torrent_add by ${req.user.username} (after cleanup)`);
               } catch (logError) {
@@ -706,10 +698,6 @@ exports.create = async (req, res) => {
     // Start torrent in background (async - don't wait)
     console.log('⚡ Starting torrent immediately in background...');
 
-    // Activity logging setup
-    const clientIp = req.ip || req.connection.remoteAddress;
-    const userAgent = req.get('user-agent') || 'Unknown';
-
     // Start torrent and log activity in background (don't block response)
     Promise.all([
       addMagnet(magnetToUse, userId).catch((e) => {
@@ -721,19 +709,12 @@ exports.create = async (req, res) => {
           errorStack: e.stack
         });
       }),
-      database.logActivity({
-        userId,
-        username: req.user.username,
-        actionType: 'torrent_add',
+      // Shared logger: same IP handling + country code as other events (never throws)
+      req.activityLogger.log(req, 'torrent_add', {
         torrentName: torrentNameFromMagnet, // Use name from magnet link or torrent file!
-        torrentHash: null,
         magnetLink: magnetToUse,
         filePath: torrentFile ? torrentFile.originalname : null,
         fileSize: torrentFile ? torrentFile.size : null,
-        ipAddress: clientIp,
-        userAgent
-      }).catch(logError => {
-        console.error('⚠️ Failed to log activity:', logError);
       })
     ]).then(() => {
       console.log(`✅ Torrent started and activity logged for ${req.user.username}`);

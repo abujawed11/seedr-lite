@@ -392,9 +392,17 @@ async function handleDownloadComplete(gid, status, userId) {
   });
 
   try {
+    // Completion is triggered by aria2, not a user request, so look up the
+    // owner's username (there is no client IP for this event).
+    let username = 'system';
+    try {
+      const owner = userId ? await database.getUserById(userId) : null;
+      if (owner?.username) username = owner.username;
+    } catch (_) { /* fall back to 'system' */ }
+
     await database.logActivity({
       userId,
-      username: 'system',
+      username,
       actionType: 'torrent_complete',
       torrentName: name,
       torrentHash: infoHash,
