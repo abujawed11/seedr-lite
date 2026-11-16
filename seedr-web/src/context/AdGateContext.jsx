@@ -22,10 +22,12 @@ export function AdGateProvider({ children }) {
           kind={request.kind}
           name={request.name}
           action={request.action}
+          opensWindow={request.opensWindow}
           onClose={close}
           onReady={(url) => {
-            setRequest(null);
             request.onReady(url);
+            // Play opens the player, so close; download/copy keep the modal (and ad) open
+            if (request.action === "play") setRequest(null);
           }}
         />
       )}

@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const database = require('../models/database');
 
 const ENABLED = process.env.AD_GATE_ENABLED !== 'false';
-const WAIT_SECONDS = Math.max(1, Number(process.env.AD_GATE_WAIT_SECONDS || 5));
+const WAIT_SECONDS = Math.max(1, Number(process.env.AD_GATE_WAIT_SECONDS || 10));
 const DOWNLOAD_LINK_TTL = Number(process.env.AD_GATE_DOWNLOAD_TTL_SECONDS || 15 * 60);
 const STREAM_LINK_TTL = Number(process.env.AD_GATE_STREAM_TTL_SECONDS || 4 * 3600);
 const BIND_IP = process.env.AD_GATE_BIND_IP !== 'false';

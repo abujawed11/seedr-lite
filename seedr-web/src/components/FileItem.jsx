@@ -125,7 +125,7 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
 
     if (file.streamUrl) return play(file.streamUrl);
     // Free plan: watch an ad first
-    openAdGate({ path: file.path, kind: "stream", name: file.name, action: "play", onReady: play });
+    openAdGate({ path: file.path, kind: "stream", name: file.name, action: "play", opensWindow: !isMedia, onReady: play });
   };
 
   return (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { startAdGate, completeAdGate } from "../api";
 import { GATE_AD } from "../utils/adConfig";
+import { openSmartlink } from "../utils/smartlink";
 
 // Loaded inside its own iframe, so it can reuse the page banner's unit
 // without a container-id clash (see utils/adConfig.js).
@@ -87,10 +88,13 @@ function AdSlot({ onStatus }) {
   );
 }
 
-export default function AdGateModal({ path, kind, name, action = "download", onReady, onClose }) {
+// opensWindow: true when onReady itself opens a new tab (e.g. a PDF). Browsers
+// allow only one new tab per click, so the Smartlink is skipped in that case.
+export default function AdGateModal({ path, kind, name, action = "download", opensWindow = false, onReady, onClose }) {
   const [phase, setPhase] = useState("starting"); // starting | waiting | finalizing | ready | blocked | error
   const [adStatus, setAdStatus] = useState("loading"); // loading | loaded | nofill | blocked
-  const [waitSeconds, setWaitSeconds] = useState(5);
+  const [waitSeconds, setWaitSeconds] = useState(10);
+  const [viaAd, setViaAd] = useState(false); // false when a paid user skipped the ad
   const [elapsedMs, setElapsedMs] = useState(0);
   const [url, setUrl] = useState(null);
   const [error, setError] = useState("");
@@ -106,6 +110,7 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
     setElapsedMs(0);
     setUrl(null);
     setError("");
+    setViaAd(false);
     sessionRef.current = null;
 
     startAdGate(path, kind)
@@ -117,7 +122,8 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
           return;
         }
         sessionRef.current = data.sessionId;
-        setWaitSeconds(data.waitSeconds || 5);
+        setWaitSeconds(data.waitSeconds || 10);
+        setViaAd(true);
         setPhase("waiting");
       })
       .catch((err) => {
@@ -202,7 +208,16 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
 
   const remaining = Math.max(0, Math.ceil(waitSeconds - elapsedMs / 1000));
   const progress = Math.min(100, (elapsedMs / (waitSeconds * 1000)) * 100);
-  const showAd = phase === "waiting" || phase === "finalizing" || phase === "blocked";
+  // Keep the ad on screen after the countdown too (ready / done), not just while waiting
+  const showAd = viaAd && ["waiting", "finalizing", "blocked", "ready", "done"].includes(phase);
+
+  const handleAction = () => {
+    onReady(url); // start the download / player / copy first
+    // Free users: open the Smartlink ad tab on this click (cooldown applies)
+    if (viaAd && !opensWindow) openSmartlink();
+    // Play closes the modal (the player opens); download/copy keep it open with the ad
+    if (action !== "play") setPhase("done");
+  };
 
   const handleUpgrade = () => {
     onClose();
@@ -215,7 +230,9 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-700 px-5 py-3">
           <div className="min-w-0">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Preparing your {label.verb}</div>
+            <div className="text-xs uppercase tracking-wide text-gray-500">
+              {phase === "done" ? `Your ${label.verb} is ready` : `Preparing your ${label.verb}`}
+            </div>
             <div className="truncate font-medium text-white" title={name}>{name}</div>
           </div>
           <button onClick={onClose} className="ml-4 rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white" aria-label="Close">
@@ -290,12 +307,39 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
 
           {phase === "ready" && url && (
             <button
-              onClick={() => onReady(url)}
+              onClick={handleAction}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-base font-semibold text-white hover:bg-green-700"
               autoFocus
             >
               <span>{label.icon}</span> {label.text}
             </button>
+          )}
+
+          {phase === "done" && url && (
+            <div className="text-center">
+              <div className="text-sm font-medium text-green-400">
+                {action === "copy" ? "✓ Link copied to clipboard" : "✓ Your download has started"}
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                {action === "copy"
+                  ? "The link works for a limited time from this network."
+                  : "Didn't start? Use the button below."}
+              </div>
+              <div className="mt-3 flex justify-center gap-3">
+                <button
+                  onClick={() => onReady(url)}
+                  className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
+                >
+                  {label.icon} {action === "copy" ? "Copy again" : "Download again"}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           )}
 
           {phase === "error" && (
@@ -310,7 +354,7 @@ export default function AdGateModal({ path, kind, name, action = "download", onR
             </div>
           )}
 
-          {phase !== "ready" && phase !== "blocked" && (
+          {!["ready", "done", "blocked"].includes(phase) && (
             <div className="mt-3 text-center text-xs text-gray-500">
               Don't want to wait?{" "}
               <button onClick={handleUpgrade} className="text-yellow-400 hover:underline">Upgrade to Premium</button>{" "}
