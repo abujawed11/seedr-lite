@@ -6,6 +6,7 @@ const archiver = require("archiver");
 const { signLink, verifyLink } = require("../services/linkSigner");
 const { getUserStorageDir, updateUserStorageUsage } = require("../utils/storage");
 const streamRegistry = require("../utils/streamRegistry");
+const adGate = require("../services/adGate");
 
 const ROOT = process.env.ROOT || path.resolve(__dirname, "../storage/library");
 
@@ -95,6 +96,11 @@ function validatePath(userPath, userRoot) {
 }
 
 
+function buildDirectUrl(req, token, filename) {
+  const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl}/files/direct/${token}/${encodeURIComponent(filename)}`;
+}
+
 function getAbsolutePath(relativePath, userRoot) {
   const safePath = validatePath(relativePath, userRoot);
   return path.resolve(userRoot, safePath);
@@ -142,6 +148,7 @@ exports.browse = async (req, res) => {
       return res.status(400).json({ error: "Path is not a directory" });
     }
 
+    const adRequired = !adGate.isExemptUser(req.user);
     const items = fs.readdirSync(fullPath);
     const dirs = [];
     const files = [];
@@ -158,36 +165,39 @@ exports.browse = async (req, res) => {
         // Calculate directory size and file count
         const sizeInfo = calculateDirectorySize(itemPath);
 
-        // Create download token for the folder
-        const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId, isFolder: true });
-        const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
-
-        dirs.push({
+        const dir = {
           name: item,
           path: relativePath,
           size: sizeInfo.size,
           fileCount: sizeInfo.files,
-          downloadUrl: `${baseUrl}/files/direct/${downloadToken}/${encodeURIComponent(item)}.zip`
-        });
+        };
+
+        // Free users get no links here — they must go through the ad gate
+        if (!adRequired) {
+          const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId, isFolder: true });
+          dir.downloadUrl = buildDirectUrl(req, downloadToken, `${item}.zip`);
+        }
+
+        dirs.push(dir);
       } else {
         const mimeType = mime.lookup(item) || "application/octet-stream";
-        const baseUrl = process.env.WEB_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
-        const streamToken = signLink({ path: relativePath, asAttachment: false, userId: userId });
-        const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId });
-
-        // Encode filename for URL but keep it readable
-        const encodedFilename = encodeURIComponent(item);
-
-        files.push({
+        const file = {
           name: item,
           path: relativePath,
           size: itemStat.size,
           mime: mimeType,
-          streamUrl: `${baseUrl}/files/direct/${streamToken}/${encodedFilename}`,
-          downloadUrl: `${baseUrl}/files/direct/${downloadToken}/${encodedFilename}`,
-          directUrl: `${baseUrl}/files/direct/${downloadToken}/${encodedFilename}`
-        });
+        };
+
+        if (!adRequired) {
+          const streamToken = signLink({ path: relativePath, asAttachment: false, userId: userId });
+          const downloadToken = signLink({ path: relativePath, asAttachment: true, userId: userId });
+          file.streamUrl = buildDirectUrl(req, streamToken, item);
+          file.downloadUrl = buildDirectUrl(req, downloadToken, item);
+          file.directUrl = file.downloadUrl;
+        }
+
+        files.push(file);
       }
     }
 
@@ -200,6 +210,7 @@ exports.browse = async (req, res) => {
     res.json({
       cwd: safePath.replace(/\\/g, "/") || "",
       parent: parent,
+      adRequired,
       dirs,
       files
     });
@@ -347,6 +358,12 @@ exports.direct = async (req, res) => {
 
     if (!payload.path) {
       return res.status(400).json({ error: "Invalid token payload" });
+    }
+
+    // Free users may only use links issued after watching an ad
+    const access = await adGate.checkDirectAccess(payload, req);
+    if (!access.ok) {
+      return res.status(403).json({ error: access.reason, adRequired: true });
     }
 
     // Check if this is a folder download request
@@ -642,5 +659,100 @@ exports.downloadFolder = async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to download folder" });
     }
+  }
+};
+// ---------------------------------------------------------------------------
+// Ad gate
+// ---------------------------------------------------------------------------
+
+// Resolve and validate a path for the ad gate. Returns { safePath, name } or
+// throws an Error with a `status` property.
+function resolveGateTarget(userId, rawPath, kind) {
+  if (!rawPath || typeof rawPath !== "string") {
+    const e = new Error("Missing path"); e.status = 400; throw e;
+  }
+  const userRoot = getUserStorageDir(userId);
+  const safePath = validatePath(rawPath, userRoot).split(path.sep).join("/");
+  const fullPath = path.resolve(userRoot, safePath);
+
+  if (!safePath || !fs.existsSync(fullPath)) {
+    const e = new Error("Not found"); e.status = 404; throw e;
+  }
+  const stat = fs.statSync(fullPath);
+  if (kind === "folder" ? !stat.isDirectory() : !stat.isFile()) {
+    const e = new Error(kind === "folder" ? "Path is not a directory" : "Path is not a file");
+    e.status = 400; throw e;
+  }
+  return { safePath, name: path.basename(fullPath) };
+}
+
+function issueGateLink(req, { userId, safePath, name, kind, viaAd }) {
+  let token;
+  if (viaAd) {
+    token = signLink(adGate.adLinkPayload(req, { userId, path: safePath, kind }), adGate.linkTtl(kind));
+  } else {
+    const payload = { path: safePath, userId, asAttachment: kind !== "stream" };
+    if (kind === "folder") payload.isFolder = true;
+    token = signLink(payload);
+  }
+  return buildDirectUrl(req, token, kind === "folder" ? `${name}.zip` : name);
+}
+
+function handleGateError(req, res, err, op) {
+  if (err.message === "Path traversal attempt detected") {
+    if (req.activityLogger) {
+      req.activityLogger.logSecurity(req, "path_traversal_attempt", {
+        filePath: req.body?.path || "unknown",
+        torrentName: op,
+      }).catch(() => {});
+    }
+    return res.status(403).json({ error: "Invalid path" });
+  }
+  if (err.status) return res.status(err.status).json({ error: err.message });
+  console.error(`Ad gate ${op} error:`, err);
+  return res.status(500).json({ error: "Ad gate error" });
+}
+
+// POST /files/ad/start  { path, kind: 'stream' | 'download' | 'folder' }
+exports.adStart = async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const userId = req.user.id;
+    const kind = req.body?.kind;
+    if (!adGate.KINDS.has(kind)) return res.status(400).json({ error: "Invalid kind" });
+
+    const { safePath, name } = resolveGateTarget(userId, req.body?.path, kind);
+
+    // Paid plans and admins skip the ad entirely
+    if (adGate.isExemptUser(req.user)) {
+      return res.json({ skip: true, url: issueGateLink(req, { userId, safePath, name, kind, viaAd: false }) });
+    }
+
+    const result = adGate.startSession(userId, { path: safePath, kind });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    res.json({ sessionId: result.sessionId, waitSeconds: result.waitSeconds });
+  } catch (err) {
+    handleGateError(req, res, err, "ad_start");
+  }
+};
+
+// POST /files/ad/complete  { sessionId }
+exports.adComplete = async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const userId = req.user.id;
+    const result = adGate.completeSession(userId, req.body?.sessionId);
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error, retryAfterMs: result.retryAfterMs });
+    }
+
+    const { path: storedPath, kind } = result.session;
+    // Re-check: the file may have been deleted while the ad was showing
+    const { safePath, name } = resolveGateTarget(userId, storedPath, kind);
+
+    res.json({ url: issueGateLink(req, { userId, safePath, name, kind, viaAd: true }) });
+  } catch (err) {
+    handleGateError(req, res, err, "ad_complete");
   }
 };

@@ -68,6 +68,19 @@ export async function browse(path = "") {
   return res.data;
 }
 
+// Ad gate — kind: 'stream' | 'download' | 'folder'
+// Returns { skip: true, url } for paid users, or { sessionId, waitSeconds }.
+export async function startAdGate(path, kind) {
+  const res = await api.post('/files/ad/start', { path, kind });
+  return res.data;
+}
+
+// Returns { url } once the server-side wait has elapsed.
+export async function completeAdGate(sessionId) {
+  const res = await api.post('/files/ad/complete', { sessionId });
+  return res.data;
+}
+
 export async function stopTorrent(id) {
   return api.put(`/torrents/${id}/stop`);
 }

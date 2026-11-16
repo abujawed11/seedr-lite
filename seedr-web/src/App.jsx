@@ -4,6 +4,7 @@ import { useAuth } from "./context/AuthContext";
 import TorrentSection from "./components/TorrentSection";
 import FileExplorer from "./components/FileExplorer";
 import AdBanner from "./components/AdBanner";
+import { AdGateProvider } from "./context/AdGateContext";
 import PlansModal from "./components/PlansModal";
 import DonationPopup from "./components/DonationPopup";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -213,14 +214,16 @@ export default function App() {
 
         {/* File Explorer Section */}
         <section>
-          <FileExplorer
-            browseData={browseData}
-            currentPath={currentPath}
-            onNavigate={navigateToPath}
-            formatFileSize={formatFileSize}
-            onFileDeleted={() => fetchBrowse()}
-            onRefresh={() => fetchBrowse()}
-          />
+          <AdGateProvider>
+            <FileExplorer
+              browseData={browseData}
+              currentPath={currentPath}
+              onNavigate={navigateToPath}
+              formatFileSize={formatFileSize}
+              onFileDeleted={() => fetchBrowse()}
+              onRefresh={() => fetchBrowse()}
+            />
+          </AdGateProvider>
         </section>
       </main>
 

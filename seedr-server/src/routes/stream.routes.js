@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const { authenticateToken } = require('../middlewares/auth');
+const { requireAdExempt } = require('../services/adGate');
 const s = require('../controllers/stream.controller');
 
 // CORS preflight handling for streaming endpoints
@@ -28,8 +29,9 @@ router.options('/direct/:token/:filename', (req, res) => {
 });
 
 // Protected routes that require authentication
-router.get('/stream/:id/:fileIndex', authenticateToken, s.stream);      // inline play (Range)
-router.get('/download/:id/:fileIndex', authenticateToken, s.download);  // attachment
+// Paid-only: free users must go through the ad gate (/files/ad/*) instead
+router.get('/stream/:id/:fileIndex', authenticateToken, requireAdExempt, s.stream);      // inline play (Range)
+router.get('/download/:id/:fileIndex', authenticateToken, requireAdExempt, s.download);  // attachment
 
 // Public route with signed token (no auth required)
 router.get('/direct/:token', s.direct);              // signed public link

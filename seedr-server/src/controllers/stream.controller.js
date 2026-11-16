@@ -72,6 +72,7 @@ const { getTorrent } = require('../services/torrentManager');
 const { verifyLink } = require('../services/linkSigner');
 const database = require('../models/database');
 const streamRegistry = require('../utils/streamRegistry');
+const adGate = require('../services/adGate');
 
 async function streamFile(req, res, { torrentId, fileIndex, asAttachment = false }) {
   // getTorrent is async now — await it
@@ -195,6 +196,12 @@ exports.download = async (req, res) => {
 exports.direct = async (req, res) => {
   try {
     const payload = verifyLink(req.params.token); // { torrentId, fileIndex, asAttachment?, userId? }
+
+    // Free users may only use links issued through the ad gate
+    const access = await adGate.checkDirectAccess(payload, req);
+    if (!access.ok) {
+      return res.status(403).json({ error: access.reason, adRequired: true });
+    }
 
     // For direct links, we need to simulate the user context
     if (payload.userId) {

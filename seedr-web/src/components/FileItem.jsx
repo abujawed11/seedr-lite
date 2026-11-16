@@ -1,9 +1,11 @@
 import { useState } from "react";
 import MediaPlayer from "./MediaPlayer";
+import { useAdGate, triggerDownload } from "../context/adGate";
 
 export default function FileItem({ file, formatFileSize, onDelete }) {
   const [copyStatus, setCopyStatus] = useState("copy");
-  const [showMediaPlayer, setShowMediaPlayer] = useState(false);
+  const [mediaSrc, setMediaSrc] = useState(null);
+  const openAdGate = useAdGate();
 
   function getFileIcon(fileName, mimeType) {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -66,9 +68,9 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
     return '📄';
   }
 
-  async function handleCopyLink() {
+  async function copyToClipboard(url) {
     try {
-      await navigator.clipboard.writeText(file.directUrl);
+      await navigator.clipboard.writeText(url);
       setCopyStatus("copied");
       setTimeout(() => setCopyStatus("copy"), 3000);
     } catch (err) {
@@ -76,6 +78,18 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
       setCopyStatus("error");
       setTimeout(() => setCopyStatus("copy"), 3000);
     }
+  }
+
+  function handleCopyLink() {
+    if (file.directUrl) return copyToClipboard(file.directUrl);
+    // Free plan: watch an ad first, then copy a short-lived link
+    openAdGate({ path: file.path, kind: "download", name: file.name, action: "copy", onReady: copyToClipboard });
+  }
+
+  function handleDownloadClick(e) {
+    if (file.downloadUrl) return; // paid plan: plain link
+    e.preventDefault();
+    openAdGate({ path: file.path, kind: "download", name: file.name, action: "download", onReady: triggerDownload });
   }
 
   function getCopyButtonContent() {
@@ -105,12 +119,13 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
 
   const handlePlayClick = (e) => {
     e.preventDefault();
-    if (isVideoFile(file.name, file.mime) || isAudioFile(file.name, file.mime)) {
-      setShowMediaPlayer(true);
-    } else {
-      // For non-media files, open in new tab as before
-      window.open(file.streamUrl, '_blank');
-    }
+    const isMedia = isVideoFile(file.name, file.mime) || isAudioFile(file.name, file.mime);
+    // Media files play in the modal player; others open in a new tab
+    const play = (url) => (isMedia ? setMediaSrc(url) : window.open(url, '_blank'));
+
+    if (file.streamUrl) return play(file.streamUrl);
+    // Free plan: watch an ad first
+    openAdGate({ path: file.path, kind: "stream", name: file.name, action: "play", onReady: play });
   };
 
   return (
@@ -147,7 +162,8 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
           Play
         </button>
         <a
-          href={file.downloadUrl}
+          href={file.downloadUrl || "#"}
+          onClick={handleDownloadClick}
           className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium text-white transition-colors flex items-center"
           title="Download file"
           download
@@ -178,11 +194,11 @@ export default function FileItem({ file, formatFileSize, onDelete }) {
       </div>
 
       {/* Media Player Modal */}
-      {showMediaPlayer && (
+      {mediaSrc && (
         <MediaPlayer
-          src={file.streamUrl}
+          src={mediaSrc}
           title={file.name}
-          onClose={() => setShowMediaPlayer(false)}
+          onClose={() => setMediaSrc(null)}
           type={file.mime}
         />
       )}

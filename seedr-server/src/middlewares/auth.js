@@ -29,6 +29,7 @@ const authenticateToken = async (req, res, next) => {
         storageUsed: user.storage_used,
         remainingQuota: user.remaining_quota,
         plan: user.plan,
+        role: user.role || 'user',
         isActive: false
       };
       // Allow user to authenticate but they'll be restricted from certain actions
@@ -44,6 +45,7 @@ const authenticateToken = async (req, res, next) => {
       storageUsed: user.storage_used,
       remainingQuota: user.remaining_quota,
       plan: user.plan,
+      role: user.role || 'user',
       isActive: true
     };
 
