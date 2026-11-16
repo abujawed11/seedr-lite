@@ -16,9 +16,19 @@ const paymentRoutes = require('./routes/payment');
 
 const app = express();
 
-// Trust proxy for correct IP detection (needed for Cloudflare, nginx, load balancers)
-// This allows req.ip to show real client IP instead of proxy IP
-app.set('trust proxy', true);
+// Which proxies may tell us the client IP (via X-Forwarded-For).
+// Default 'loopback': trust only nginx running on this same machine, so req.ip
+// is the address nginx actually saw. Never use `true` — it trusts the leftmost
+// X-Forwarded-For entry, which the client controls, so anyone could fake their IP.
+// Override with TRUST_PROXY (e.g. "1", "loopback", "10.0.0.5", or a list) if
+// the proxy setup changes (Cloudflare, load balancer, Docker network).
+function parseTrustProxy(value) {
+  if (value === undefined || value === '') return 'loopback';
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // Debug middleware: Log all incoming requests immediately
 app.use((req, res, next) => {

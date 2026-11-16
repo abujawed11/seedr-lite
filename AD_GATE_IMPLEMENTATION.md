@@ -156,13 +156,36 @@ The server can't safely exempt the app (any app identifier can be copied by webs
 
 ---
 
-## 11. Separate security issue found (not yet fixed)
+## 11. Separate security issue found — ✅ FIXED
+
+**Fix applied:**
+- `server.js`: `trust proxy` is now `'loopback'` (configurable via `TRUST_PROXY`, documented in `.env.example`) instead of `true`.
+- `utils/activityLogger.js`: `getClientIp()` uses `req.ip` and no longer parses `X-Forwarded-For` itself.
+- `services/adGate.js`: no longer reads `CF-Connecting-IP` (site isn't behind Cloudflare, so that header was fakeable too).
+- Verified: a visitor at 9.9.9.9 sending a forged `X-Forwarded-For: 1.2.3.4` was logged as `1.2.3.4` before, and as `9.9.9.9` after. Honest visitors and local dev are unchanged. Ad gate tests still 27/27.
+- `mypeercloud.in` resolves directly to the VPS (nginx/1.24.0, no Cloudflare), so no Cloudflare `real_ip` config is needed.
+- **After deploy, check:** the admin activity logs show real visitor IPs. If every entry shows the same IP (e.g. a `172.x` Docker address), nginx isn't connecting over loopback: set `TRUST_PROXY` to that address.
+- VPN users will show their VPN server's IP — expected; no site can see past a VPN.
+
+Original finding:
 
 nginx forwards the client's own `X-Forwarded-For` header (`$proxy_add_x_forwarded_for`) and the server uses `app.set('trust proxy', true)`, which trusts the **leftmost** (client-controlled) value. Result: **anyone can fake their IP** to the server.
 
-- Impact on ads: minor (only weakens the IP binding of ad links).
-- **Bigger impact: the admin IP whitelist relies on `req.ip` and can be bypassed** by sending a fake `X-Forwarded-For`.
-- Fix: trust only the real proxy hop, e.g. `app.set('trust proxy', 1)` (nginx only) or Cloudflare's IP ranges if behind Cloudflare. Recommended soon.
+Normal users' real IPs are recorded correctly; the problem is that anyone who *wants* to fake their IP can. Everything that records the visitor IP is affected:
+
+| Feature | Where | Effect |
+|---|---|---|
+| Registration IP (legal record) | `routes/auth.js:60` | Fake IP stored on the user |
+| Activity logs (logins, torrents, downloads, security events) + admin IP filter | `utils/activityLogger.js:165`, `torrents.controller.js:559,710` | Fake IPs in logs. `getClientIp()` reads the raw header itself, so it trusts fake IPs even after the server setting is fixed |
+| DMCA report IP | `routes/dmca.js:46` | Fake reporter IP stored |
+| Ad link IP binding | `services/adGate.js:62` | Minor weakening |
+
+**Correction:** the admin IP whitelist is **not** affected. `ADMIN_IP_WHITELIST` is documented (`ADMIN_IP_WHITELIST_GUIDE.md`, `.env.example`) but **no server code implements it**, so it is currently inactive. Admin login is protected by password + email OTP. If the whitelist is built later, fix the IP issue first.
+
+**Fix:**
+1. `server.js`: `app.set('trust proxy', true)` → `app.set('trust proxy', 'loopback')` (trust only nginx on the same machine).
+2. `activityLogger.getClientIp()`: use `req.ip` instead of parsing `X-Forwarded-For` directly.
+3. If `mypeercloud.in` is behind **Cloudflare**, also configure nginx `real_ip` with Cloudflare's IP ranges, or every visitor will appear as a Cloudflare IP.
 
 ---
 
@@ -214,4 +237,4 @@ Deploy checklist (once the app question is settled)
 
 A separate security issue I found
 
-Your nginx setup forwards the client's own X-Forwarded-For header, and the server trusts it completely (trust proxy: true). That means anyone can fake their IP address to the server. It barely affects the ad links, but your admin IP whitelist relies on the same IP check, so it can be bypassed by faking the header. The fix is a one-line change to how the server trusts the proxy. It's separate from the ads, but I'd fix it soon; I can do it whenever you want.
+Your nginx setup forwards the client's own X-Forwarded-For header, and the server trusts it completely (trust proxy: true). That means anyone can fake their IP address to the server. It barely affects the ad links, but your admin IP whitelist relies on the same IP check, so it can be bypassed by faking the header. [CORRECTION: the admin IP whitelist is not implemented in code, so it is not affected — the real impact is on logged IPs; see section 11.] The fix is a one-line change to how the server trusts the proxy. It's separate from the ads, but I'd fix it soon; I can do it whenever you want.

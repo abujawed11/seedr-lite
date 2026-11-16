@@ -158,20 +158,13 @@ class ActivityLogger {
   }
 
   /**
-   * Extract the best client IP from Express req (supports proxies)
-   * NOTE: If you're behind a proxy (Nginx/Cloudflare), set:
-   *   app.set('trust proxy', true)
+   * Extract the client IP from an Express req.
+   * Uses req.ip, which Express derives from X-Forwarded-For ONLY through the
+   * proxies trusted by `app.set('trust proxy', ...)` in server.js. Never read
+   * X-Forwarded-For directly here — its leftmost entry is client-controlled
+   * and can be faked.
    */
   getClientIp(req) {
-    // Prefer x-forwarded-for when behind proxy
-    const xff = req.headers['x-forwarded-for'];
-    if (xff && typeof xff === 'string') {
-      // Take the first IP in the list
-      const first = xff.split(',')[0].trim();
-      if (first) return first;
-    }
-
-    // Express sets req.ip (depends on trust proxy)
     if (req.ip) return req.ip;
 
     // Fallbacks

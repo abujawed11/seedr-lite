@@ -60,7 +60,9 @@ async function isExemptUserId(userId) {
 }
 
 function clientIp(req) {
-  const raw = req.headers['cf-connecting-ip'] || req.ip || req.socket?.remoteAddress || '';
+  // req.ip is safe (see 'trust proxy' in server.js). Don't read CF-Connecting-IP
+  // or X-Forwarded-For directly: without Cloudflare in front, clients can fake them.
+  const raw = req.ip || req.socket?.remoteAddress || '';
   return String(raw).replace(/^::ffff:/, '');
 }
 
